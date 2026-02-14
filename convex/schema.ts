@@ -1,0 +1,38 @@
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  policies: defineTable({
+    name: v.string(),
+    wandb_artifact: v.string(),
+    wandb_run_url: v.optional(v.string()),
+    environment: v.string(),
+    elo: v.float64(),
+    wins: v.int64(),
+    losses: v.int64(),
+    draws: v.int64(),
+  }).index("by_artifact", ["wandb_artifact"]),
+
+  evalSessions: defineTable({
+    dataset_repo: v.string(),
+    num_rounds: v.int64(),
+    policy_ids: v.array(v.id("policies")),
+    notes: v.optional(v.string()),
+  }),
+
+  roundResults: defineTable({
+    session_id: v.id("evalSessions"),
+    round_index: v.int64(),
+    policy_id: v.id("policies"),
+    success: v.boolean(),
+    episode_index: v.int64(),
+  })
+    .index("by_session", ["session_id"])
+    .index("by_policy", ["policy_id"]),
+
+  eloHistory: defineTable({
+    policy_id: v.id("policies"),
+    elo: v.float64(),
+    session_id: v.id("evalSessions"),
+  }).index("by_policy", ["policy_id"]),
+});

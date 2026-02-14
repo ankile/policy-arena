@@ -1,37 +1,20 @@
+import { useState } from "react";
+import { useQuery } from "convex/react";
+import { api } from "../convex/_generated/api";
+import type { Doc, Id } from "../convex/_generated/dataModel";
 import EpisodeViewer from "./components/EpisodeViewer";
+import EvalSessions from "./components/EvalSessions";
+import PolicyDetail from "./components/PolicyDetail";
 
-type Policy = {
-  name: string;
-  elo: number;
-  environment: string;
-  wins: number;
-  losses: number;
-};
-
-const policies: Policy[] = [
-  { name: "DiffusionPolicy-v2", elo: 1847, environment: "PushT", wins: 142, losses: 38 },
-  { name: "ACT-Large", elo: 1792, environment: "BimanualInsertion", wins: 128, losses: 52 },
-  { name: "VQ-BeT", elo: 1756, environment: "PushT", wins: 119, losses: 61 },
-  { name: "ACT-Small", elo: 1701, environment: "BimanualInsertion", wins: 105, losses: 75 },
-  { name: "BC-Transformer", elo: 1683, environment: "PushT", wins: 98, losses: 82 },
-  { name: "LSTM-GMM", elo: 1624, environment: "PickAndPlace", wins: 87, losses: 93 },
-  { name: "IBC", elo: 1598, environment: "PushT", wins: 79, losses: 101 },
-  { name: "BeT", elo: 1567, environment: "PickAndPlace", wins: 71, losses: 109 },
-  { name: "MLP-MSE", elo: 1489, environment: "PushT", wins: 54, losses: 126 },
-  { name: "RandomPolicy", elo: 1312, environment: "PushT", wins: 21, losses: 159 },
-];
-
-const sortedPolicies = [...policies].sort((a, b) => b.elo - a.elo);
-
-const maxElo = sortedPolicies[0].elo;
-const minElo = sortedPolicies[sortedPolicies.length - 1].elo;
-
-function eloBarWidth(elo: number): number {
+function eloBarWidth(elo: number, minElo: number, maxElo: number): number {
+  if (maxElo === minElo) return 50;
   return 20 + ((elo - minElo) / (maxElo - minElo)) * 80;
 }
 
 function winRate(wins: number, losses: number): number {
-  return Math.round((wins / (wins + losses)) * 100);
+  const total = wins + losses;
+  if (total === 0) return 0;
+  return Math.round((wins / total) * 100);
 }
 
 const medalColors = [
@@ -43,7 +26,9 @@ const medalColors = [
 function RankBadge({ rank }: { rank: number }) {
   if (rank <= 3) {
     return (
-      <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${medalColors[rank - 1]} flex items-center justify-center text-white font-body font-semibold text-sm shadow-sm`}>
+      <div
+        className={`w-8 h-8 rounded-full bg-gradient-to-br ${medalColors[rank - 1]} flex items-center justify-center text-white font-body font-semibold text-sm shadow-sm`}
+      >
         {rank}
       </div>
     );
@@ -64,7 +49,8 @@ function WinRateBar({ wins, losses }: { wins: number; losses: number }) {
           className="h-full rounded-full transition-all duration-700 ease-out"
           style={{
             width: `${rate}%`,
-            backgroundColor: rate >= 50 ? "var(--color-emerald-bar)" : "var(--color-rose-bar)",
+            backgroundColor:
+              rate >= 50 ? "var(--color-emerald-bar)" : "var(--color-rose-bar)",
           }}
         />
       </div>
@@ -75,18 +61,42 @@ function WinRateBar({ wins, losses }: { wins: number; losses: number }) {
 
 function EnvironmentTag({ env }: { env: string }) {
   const colors: Record<string, string> = {
+    franka_pick_cube: "bg-teal-light text-teal",
     PushT: "bg-teal-light text-teal",
     BimanualInsertion: "bg-coral-light text-coral",
     PickAndPlace: "bg-gold-light text-gold",
   };
   return (
-    <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-body font-medium ${colors[env] ?? "bg-warm-100 text-ink-muted"}`}>
+    <span
+      className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-body font-medium ${colors[env] ?? "bg-warm-100 text-ink-muted"}`}
+    >
       {env}
     </span>
   );
 }
 
+type Tab = "leaderboard" | "sessions" | "viewer";
+
 function App() {
+  const policies = useQuery(api.policies.leaderboard);
+  const [activeTab, setActiveTab] = useState<Tab>("leaderboard");
+  const [expandedPolicy, setExpandedPolicy] = useState<Id<"policies"> | null>(
+    null
+  );
+
+  const sortedPolicies = policies ?? [];
+  const maxElo = sortedPolicies.length > 0 ? sortedPolicies[0].elo : 0;
+  const minElo =
+    sortedPolicies.length > 0
+      ? sortedPolicies[sortedPolicies.length - 1].elo
+      : 0;
+
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "leaderboard", label: "Leaderboard" },
+    { id: "sessions", label: "Eval Sessions" },
+    { id: "viewer", label: "Episode Viewer" },
+  ];
+
   return (
     <div className="min-h-screen bg-cream font-body text-ink">
       {/* Subtle top accent line */}
@@ -100,7 +110,16 @@ function App() {
         >
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-teal to-teal/70 flex items-center justify-center">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="white"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <path d="M12 8V4H8" />
                 <rect x="4" y="8" width="16" height="12" rx="2" />
                 <path d="M2 14h2" />
@@ -118,99 +137,210 @@ function App() {
           </p>
         </header>
 
-        {/* Stats summary */}
+        {/* Tab navigation */}
         <div
-          className="grid grid-cols-3 gap-4 mb-10"
-          style={{ animation: "fade-up 0.6s ease-out 0.15s both" }}
+          className="flex gap-1 mb-8 bg-warm-100 rounded-xl p-1 w-fit"
+          style={{ animation: "fade-up 0.6s ease-out 0.1s both" }}
         >
-          {[
-            { label: "Policies", value: sortedPolicies.length.toString() },
-            { label: "Top ELO", value: maxElo.toString() },
-            { label: "Total Matches", value: sortedPolicies.reduce((a, p) => a + p.wins + p.losses, 0).toString() },
-          ].map((stat) => (
-            <div key={stat.label} className="bg-white rounded-xl border border-warm-200 px-5 py-4">
-              <div className="text-xs uppercase tracking-widest text-ink-muted font-medium mb-1">
-                {stat.label}
-              </div>
-              <div className="font-display text-2xl text-ink">{stat.value}</div>
-            </div>
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-5 py-2 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer ${
+                activeTab === tab.id
+                  ? "bg-white text-ink shadow-sm"
+                  : "text-ink-muted hover:text-ink"
+              }`}
+            >
+              {tab.label}
+            </button>
           ))}
         </div>
 
-        {/* Leaderboard */}
-        <div
-          className="bg-white rounded-2xl border border-warm-200 shadow-sm overflow-hidden"
-          style={{ animation: "fade-up 0.6s ease-out 0.3s both" }}
-        >
-          {/* Table header */}
-          <div className="grid grid-cols-[56px_1fr_100px_140px_100px_140px] px-6 py-3.5 border-b border-warm-100 bg-warm-50">
-            <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">#</span>
-            <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">Policy</span>
-            <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">ELO</span>
-            <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">Rating</span>
-            <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">W / L</span>
-            <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">Win Rate</span>
-          </div>
-
-          {/* Rows */}
-          {sortedPolicies.map((policy, i) => (
+        {activeTab === "leaderboard" && (
+          <>
+            {/* Stats summary */}
             <div
-              key={policy.name}
-              className={`grid grid-cols-[56px_1fr_100px_140px_100px_140px] items-center px-6 py-4 transition-colors duration-150 hover:bg-warm-50 ${
-                i < sortedPolicies.length - 1 ? "border-b border-warm-100" : ""
-              }`}
-              style={{
-                animation: `slide-in-right 0.4s ease-out ${0.35 + i * 0.04}s both`,
-              }}
+              className="grid grid-cols-3 gap-4 mb-10"
+              style={{ animation: "fade-up 0.6s ease-out 0.15s both" }}
             >
-              {/* Rank */}
-              <div>
-                <RankBadge rank={i + 1} />
-              </div>
+              {[
+                {
+                  label: "Policies",
+                  value: sortedPolicies.length.toString(),
+                },
+                { label: "Top ELO", value: maxElo ? maxElo.toString() : "—" },
+                {
+                  label: "Total Matches",
+                  value: sortedPolicies
+                    .reduce(
+                      (a, p) =>
+                        a + Number(p.wins) + Number(p.losses) + Number(p.draws),
+                      0
+                    )
+                    .toString(),
+                },
+              ].map((stat) => (
+                <div
+                  key={stat.label}
+                  className="bg-white rounded-xl border border-warm-200 px-5 py-4"
+                >
+                  <div className="text-xs uppercase tracking-widest text-ink-muted font-medium mb-1">
+                    {stat.label}
+                  </div>
+                  <div className="font-display text-2xl text-ink">
+                    {stat.value}
+                  </div>
+                </div>
+              ))}
+            </div>
 
-              {/* Name + Environment */}
-              <div className="flex items-center gap-3">
-                <span className="font-body font-semibold text-ink text-[15px]">
-                  {policy.name}
-                </span>
-                <EnvironmentTag env={policy.environment} />
-              </div>
-
-              {/* ELO number */}
-              <div className="font-mono text-sm font-medium text-ink">
-                {policy.elo}
-              </div>
-
-              {/* ELO bar */}
-              <div className="pr-4">
-                <div className="w-full h-2 rounded-full bg-warm-100 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-teal to-teal/60 transition-all duration-700 ease-out"
-                    style={{ width: `${eloBarWidth(policy.elo)}%` }}
-                  />
+            {/* Leaderboard */}
+            {policies === undefined ? (
+              <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8">
+                <div className="flex items-center justify-center gap-3 text-ink-muted">
+                  <div className="w-5 h-5 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
+                  <span className="font-body">Loading leaderboard...</span>
                 </div>
               </div>
-
-              {/* W / L */}
-              <div className="font-mono text-sm text-ink-muted">
-                <span className="text-emerald-bar">{policy.wins}</span>
-                <span className="text-warm-300 mx-1">/</span>
-                <span className="text-rose-bar">{policy.losses}</span>
+            ) : sortedPolicies.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8 text-center text-ink-muted">
+                No policies registered yet. Submit an eval session to get
+                started.
               </div>
+            ) : (
+              <div
+                className="bg-white rounded-2xl border border-warm-200 shadow-sm overflow-hidden"
+                style={{ animation: "fade-up 0.6s ease-out 0.3s both" }}
+              >
+                {/* Table header */}
+                <div className="grid grid-cols-[56px_1fr_100px_140px_100px_140px] px-6 py-3.5 border-b border-warm-100 bg-warm-50">
+                  <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
+                    #
+                  </span>
+                  <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
+                    Policy
+                  </span>
+                  <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
+                    ELO
+                  </span>
+                  <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
+                    Rating
+                  </span>
+                  <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
+                    W / L
+                  </span>
+                  <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
+                    Win Rate
+                  </span>
+                </div>
 
-              {/* Win Rate */}
-              <WinRateBar wins={policy.wins} losses={policy.losses} />
-            </div>
-          ))}
-        </div>
+                {/* Rows */}
+                {sortedPolicies.map(
+                  (policy: Doc<"policies">, i: number) => (
+                    <div key={policy._id}>
+                      <div
+                        className={`grid grid-cols-[56px_1fr_100px_140px_100px_140px] items-center px-6 py-4 transition-colors duration-150 hover:bg-warm-50 cursor-pointer ${
+                          i < sortedPolicies.length - 1 &&
+                          expandedPolicy !== policy._id
+                            ? "border-b border-warm-100"
+                            : ""
+                        }`}
+                        style={{
+                          animation: `slide-in-right 0.4s ease-out ${0.35 + i * 0.04}s both`,
+                        }}
+                        onClick={() =>
+                          setExpandedPolicy(
+                            expandedPolicy === policy._id
+                              ? null
+                              : policy._id
+                          )
+                        }
+                      >
+                        {/* Rank */}
+                        <div>
+                          <RankBadge rank={i + 1} />
+                        </div>
 
-        {/* Episode Viewer */}
-        <div
-          className="mt-12"
-          style={{ animation: "fade-up 0.6s ease-out 0.8s both" }}
-        >
-          <EpisodeViewer />
-        </div>
+                        {/* Name + Environment */}
+                        <div className="flex items-center gap-3">
+                          <span className="font-body font-semibold text-ink text-[15px]">
+                            {policy.name}
+                          </span>
+                          <EnvironmentTag env={policy.environment} />
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            className={`text-ink-muted/50 transition-transform duration-200 ${
+                              expandedPolicy === policy._id
+                                ? "rotate-90"
+                                : ""
+                            }`}
+                          >
+                            <polyline points="9 18 15 12 9 6" />
+                          </svg>
+                        </div>
+
+                        {/* ELO number */}
+                        <div className="font-mono text-sm font-medium text-ink">
+                          {Math.round(policy.elo)}
+                        </div>
+
+                        {/* ELO bar */}
+                        <div className="pr-4">
+                          <div className="w-full h-2 rounded-full bg-warm-100 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-teal to-teal/60 transition-all duration-700 ease-out"
+                              style={{
+                                width: `${eloBarWidth(policy.elo, minElo, maxElo)}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* W / L */}
+                        <div className="font-mono text-sm text-ink-muted">
+                          <span className="text-emerald-bar">
+                            {Number(policy.wins)}
+                          </span>
+                          <span className="text-warm-300 mx-1">/</span>
+                          <span className="text-rose-bar">
+                            {Number(policy.losses)}
+                          </span>
+                        </div>
+
+                        {/* Win Rate */}
+                        <WinRateBar
+                          wins={Number(policy.wins)}
+                          losses={Number(policy.losses)}
+                        />
+                      </div>
+
+                      {/* Expanded detail */}
+                      {expandedPolicy === policy._id && (
+                        <div className="border-b border-warm-100">
+                          <PolicyDetail policyId={policy._id} />
+                        </div>
+                      )}
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {activeTab === "sessions" && <EvalSessions />}
+
+        {activeTab === "viewer" && (
+          <div style={{ animation: "fade-up 0.6s ease-out 0.3s both" }}>
+            <EpisodeViewer />
+          </div>
+        )}
 
         {/* Footer */}
         <footer

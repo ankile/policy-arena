@@ -1,23 +1,9 @@
 import { asyncBufferFromUrl, parquetReadObjects, toJson } from "hyparquet";
 
-const DATASET_ID = "ankile/dp-franka-pick-cube-2026-02-12";
-const HF_BASE = `https://huggingface.co/datasets/${DATASET_ID}/resolve/main`;
+const DEFAULT_DATASET_ID = "ankile/dp-franka-pick-cube-2026-02-12";
 const DATASETS_SERVER = "https://datasets-server.huggingface.co";
 
 const FPS = 15;
-const NUM_FILES = 4;
-
-export const CAMERA_KEYS = [
-  "observation.images.25916956_left",
-  "observation.images.18650758_left",
-] as const;
-
-export type CameraKey = (typeof CAMERA_KEYS)[number];
-
-export const CAMERA_LABELS: Record<CameraKey, string> = {
-  "observation.images.25916956_left": "Camera 2",
-  "observation.images.18650758_left": "Camera 1",
-};
 
 export interface EpisodeMetadata {
   episodeIndex: number;
@@ -29,67 +15,117 @@ export interface EpisodeMetadata {
   toTimestamp: number;
 }
 
-export function getVideoUrl(cameraKey: CameraKey, fileIndex: number): string {
-  return `${HF_BASE}/videos/${cameraKey}/chunk-000/file-${String(fileIndex).padStart(3, "0")}.mp4`;
+export interface DatasetInfo {
+  episodes: EpisodeMetadata[];
+  cameraKeys: string[];
 }
 
-export async function fetchEpisodeMetadata(): Promise<EpisodeMetadata[]> {
-  const [parquetEpisodes, successMap] = await Promise.all([
-    fetchParquetMetadata(),
-    fetchSuccessStatus(),
+function hfBase(datasetId: string): string {
+  return `https://huggingface.co/datasets/${datasetId}/resolve/main`;
+}
+
+export function getVideoUrl(
+  cameraKey: string,
+  fileIndex: number,
+  datasetId: string = DEFAULT_DATASET_ID
+): string {
+  return `${hfBase(datasetId)}/videos/${cameraKey}/chunk-000/file-${String(fileIndex).padStart(3, "0")}.mp4`;
+}
+
+/** Discover camera keys from parquet column names matching videos/<key>/file_index. */
+function discoverCameraKeys(columnNames: string[]): string[] {
+  const prefix = "videos/";
+  const suffix = "/file_index";
+  return columnNames
+    .filter((col) => col.startsWith(prefix) && col.endsWith(suffix))
+    .map((col) => col.slice(prefix.length, -suffix.length))
+    .sort();
+}
+
+/** Try to read a parquet file, returning null on failure (e.g. 404). */
+async function tryReadParquet(
+  url: string
+): Promise<Record<string, unknown>[] | null> {
+  try {
+    const file = await asyncBufferFromUrl({ url });
+    const rows = await parquetReadObjects({ file });
+    return rows.map((raw) => toJson(raw) as Record<string, unknown>);
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchDatasetInfo(
+  datasetId: string = DEFAULT_DATASET_ID
+): Promise<DatasetInfo> {
+  const [parquetResult, successMap] = await Promise.all([
+    fetchParquetMetadata(datasetId),
+    fetchSuccessStatus(datasetId),
   ]);
 
-  return parquetEpisodes.map((ep) => ({
+  const episodes = parquetResult.episodes.map((ep) => ({
     ...ep,
     success: successMap.get(ep.episodeIndex) ?? false,
   }));
+
+  return { episodes, cameraKeys: parquetResult.cameraKeys };
 }
 
-const VIDEO_COL_PREFIX = `videos/${CAMERA_KEYS[0]}`;
+async function fetchParquetMetadata(
+  datasetId: string
+): Promise<{ episodes: Omit<EpisodeMetadata, "success">[]; cameraKeys: string[] }> {
+  // Read the first parquet file to discover camera keys and column schema
+  const firstUrl = `${hfBase(datasetId)}/meta/episodes/chunk-000/file-000.parquet`;
+  const firstFile = await asyncBufferFromUrl({ url: firstUrl });
+  const firstRows = (await parquetReadObjects({ file: firstFile })).map(
+    (raw) => toJson(raw) as Record<string, unknown>
+  );
 
-async function fetchParquetMetadata(): Promise<
-  Omit<EpisodeMetadata, "success">[]
-> {
-  const results = await Promise.all(
-    Array.from({ length: NUM_FILES }, (_, i) => {
-      const url = `${HF_BASE}/meta/episodes/chunk-000/file-${String(i).padStart(3, "0")}.parquet`;
-      return readEpisodeParquet(url);
+  const cameraKeys =
+    firstRows.length > 0 ? discoverCameraKeys(Object.keys(firstRows[0])) : [];
+
+  // Try to fetch additional parquet files in parallel (up to 20 total)
+  const additionalResults = await Promise.all(
+    Array.from({ length: 19 }, (_, i) => {
+      const url = `${hfBase(datasetId)}/meta/episodes/chunk-000/file-${String(i + 1).padStart(3, "0")}.parquet`;
+      return tryReadParquet(url);
     })
   );
 
-  return results.flat().sort((a, b) => a.episodeIndex - b.episodeIndex);
+  const allRows = [...firstRows];
+  for (const rows of additionalResults) {
+    if (rows !== null) allRows.push(...rows);
+  }
+
+  // Use the first camera key for video timing metadata
+  const videoColPrefix =
+    cameraKeys.length > 0 ? `videos/${cameraKeys[0]}` : null;
+
+  const episodes = allRows.map((row) => ({
+    episodeIndex: row["episode_index"] as number,
+    numFrames: row["length"] as number,
+    duration: (row["length"] as number) / FPS,
+    videoFileIndex: videoColPrefix
+      ? (row[`${videoColPrefix}/file_index`] as number)
+      : 0,
+    fromTimestamp: videoColPrefix
+      ? (row[`${videoColPrefix}/from_timestamp`] as number)
+      : 0,
+    toTimestamp: videoColPrefix
+      ? (row[`${videoColPrefix}/to_timestamp`] as number)
+      : 0,
+  }));
+
+  return {
+    episodes: episodes.sort((a, b) => a.episodeIndex - b.episodeIndex),
+    cameraKeys,
+  };
 }
 
-async function readEpisodeParquet(
-  url: string
-): Promise<Omit<EpisodeMetadata, "success">[]> {
-  const file = await asyncBufferFromUrl({ url });
-  const rows = await parquetReadObjects({
-    file,
-    columns: [
-      "episode_index",
-      "length",
-      `${VIDEO_COL_PREFIX}/file_index`,
-      `${VIDEO_COL_PREFIX}/from_timestamp`,
-      `${VIDEO_COL_PREFIX}/to_timestamp`,
-    ],
-  });
-
-  return rows.map((raw) => {
-    const row = toJson(raw) as Record<string, number>;
-    return {
-      episodeIndex: row["episode_index"],
-      numFrames: row["length"],
-      duration: row["length"] / FPS,
-      videoFileIndex: row[`${VIDEO_COL_PREFIX}/file_index`],
-      fromTimestamp: row[`${VIDEO_COL_PREFIX}/from_timestamp`],
-      toTimestamp: row[`${VIDEO_COL_PREFIX}/to_timestamp`],
-    };
-  });
-}
-
-async function fetchSuccessStatus(): Promise<Map<number, boolean>> {
-  const url = `${DATASETS_SERVER}/filter?dataset=${DATASET_ID}&config=default&split=train&where=frame_index=0&length=100`;
+async function fetchSuccessStatus(
+  datasetId: string
+): Promise<Map<number, boolean>> {
+  const url = `${DATASETS_SERVER}/filter?dataset=${datasetId}&config=default&split=train&where=frame_index=0&length=100`;
   const resp = await fetch(url);
   const data = await resp.json();
   const map = new Map<number, boolean>();

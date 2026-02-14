@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
-  fetchEpisodeMetadata,
+  fetchDatasetInfo,
   getVideoUrl,
-  CAMERA_KEYS,
-  CAMERA_LABELS,
   type EpisodeMetadata,
-  type CameraKey,
 } from "../lib/hf-api";
 
 function formatDuration(seconds: number): string {
@@ -56,10 +53,14 @@ function VideoGrid({
   episode,
   playing,
   onTogglePlay,
+  cameraKeys,
+  datasetId,
 }: {
   episode: EpisodeMetadata;
   playing: boolean;
   onTogglePlay: () => void;
+  cameraKeys: string[];
+  datasetId?: string;
 }) {
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
   const primaryRef = useRef<HTMLVideoElement | null>(null);
@@ -121,14 +122,16 @@ function VideoGrid({
     return () => cancelAnimationFrame(animFrameRef.current);
   }, [playing, episode, onTogglePlay]);
 
+  const gridCols = cameraKeys.length === 1 ? "grid-cols-1" : "grid-cols-2";
+
   return (
     <div>
-      <div className="grid grid-cols-2 gap-3">
-        {CAMERA_KEYS.map((key, i) => (
+      <div className={`grid ${gridCols} gap-3`}>
+        {cameraKeys.map((key, i) => (
           <div key={key} className="relative">
             <video
               ref={setVideoRef(i)}
-              src={getVideoUrl(key as CameraKey, episode.videoFileIndex)}
+              src={getVideoUrl(key, episode.videoFileIndex, datasetId)}
               className="w-full rounded-lg bg-warm-100"
               muted
               playsInline
@@ -139,7 +142,7 @@ function VideoGrid({
               }}
             />
             <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/60 text-white text-[11px] font-mono">
-              {CAMERA_LABELS[key as CameraKey]}
+              Camera {i + 1}
             </span>
           </div>
         ))}
@@ -206,24 +209,46 @@ function VideoGrid({
   );
 }
 
-export default function EpisodeViewer() {
+interface EpisodeViewerProps {
+  datasetId?: string;
+  episodeIndex?: number;
+}
+
+export default function EpisodeViewer({
+  datasetId,
+  episodeIndex,
+}: EpisodeViewerProps = {}) {
   const [episodes, setEpisodes] = useState<EpisodeMetadata[]>([]);
+  const [cameraKeys, setCameraKeys] = useState<string[]>([]);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchEpisodeMetadata()
-      .then((eps) => {
-        setEpisodes(eps);
+    setLoading(true);
+    setError(null);
+    setSelectedIndex(null);
+    setPlaying(false);
+
+    fetchDatasetInfo(datasetId)
+      .then((info) => {
+        setEpisodes(info.episodes);
+        setCameraKeys(info.cameraKeys);
+        // If an episodeIndex was provided, select it
+        if (episodeIndex !== undefined) {
+          const idx = info.episodes.findIndex(
+            (e) => e.episodeIndex === episodeIndex
+          );
+          if (idx >= 0) setSelectedIndex(idx);
+        }
         setLoading(false);
       })
       .catch((err) => {
         setError(err.message);
         setLoading(false);
       });
-  }, []);
+  }, [datasetId, episodeIndex]);
 
   const selectedEpisode =
     selectedIndex !== null ? episodes[selectedIndex] : null;
@@ -231,6 +256,8 @@ export default function EpisodeViewer() {
   const handleTogglePlay = useCallback(() => {
     setPlaying((p) => !p);
   }, []);
+
+  const displayDatasetId = datasetId ?? "ankile/dp-franka-pick-cube-2026-02-12";
 
   if (loading) {
     return (
@@ -262,12 +289,12 @@ export default function EpisodeViewer() {
             <h2 className="font-display text-xl text-ink">Episode Viewer</h2>
             <p className="text-xs text-ink-muted mt-0.5">
               {episodes.length} episodes &middot;{" "}
-              {episodes.filter((e) => e.success).length} successful &middot; 2
-              camera views
+              {episodes.filter((e) => e.success).length} successful &middot;{" "}
+              {cameraKeys.length} camera view{cameraKeys.length !== 1 ? "s" : ""}
             </p>
           </div>
           <a
-            href={`https://huggingface.co/datasets/ankile/dp-franka-pick-cube-2026-02-12`}
+            href={`https://huggingface.co/datasets/${displayDatasetId}`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs text-ink-muted hover:text-teal transition-colors font-mono"
@@ -320,6 +347,8 @@ export default function EpisodeViewer() {
               episode={selectedEpisode}
               playing={playing}
               onTogglePlay={handleTogglePlay}
+              cameraKeys={cameraKeys}
+              datasetId={datasetId}
             />
           </div>
         ) : (
