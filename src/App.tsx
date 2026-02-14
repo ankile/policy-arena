@@ -1,3 +1,5 @@
+import EpisodeViewer from "./components/EpisodeViewer";
+
 type Policy = {
   name: string;
   elo: number;
@@ -202,10 +204,18 @@ function App() {
           ))}
         </div>
 
+        {/* Episode Viewer */}
+        <div
+          className="mt-12"
+          style={{ animation: "fade-up 0.6s ease-out 0.8s both" }}
+        >
+          <EpisodeViewer />
+        </div>
+
         {/* Footer */}
         <footer
           className="mt-8 text-center text-xs text-ink-muted/60"
-          style={{ animation: "fade-up 0.6s ease-out 0.8s both" }}
+          style={{ animation: "fade-up 0.6s ease-out 0.9s both" }}
         >
           ELO ratings computed from pairwise policy evaluations
         </footer>
