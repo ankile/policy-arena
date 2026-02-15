@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import type { Doc, Id } from "../convex/_generated/dataModel";
-import EpisodeViewer from "./components/EpisodeViewer";
 import EvalSessions from "./components/EvalSessions";
 import PolicyDetail from "./components/PolicyDetail";
 
@@ -75,7 +74,7 @@ function EnvironmentTag({ env }: { env: string }) {
   );
 }
 
-type Tab = "leaderboard" | "sessions" | "viewer";
+type Tab = "leaderboard" | "sessions";
 
 function App() {
   const policies = useQuery(api.policies.leaderboard);
@@ -94,7 +93,6 @@ function App() {
   const tabs: { id: Tab; label: string }[] = [
     { id: "leaderboard", label: "Leaderboard" },
     { id: "sessions", label: "Eval Sessions" },
-    { id: "viewer", label: "Episode Viewer" },
   ];
 
   return (
@@ -338,12 +336,6 @@ function App() {
         )}
 
         {activeTab === "sessions" && <EvalSessions />}
-
-        {activeTab === "viewer" && (
-          <div style={{ animation: "fade-up 0.6s ease-out 0.3s both" }}>
-            <EpisodeViewer />
-          </div>
-        )}
 
         {/* Footer */}
         <footer

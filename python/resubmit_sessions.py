@@ -7,7 +7,7 @@ Session 1: ankile/blind-eval-pick-cube-2026-02-14
   - Convert 1-indexed round_ids to 0-indexed round_index.
 
 Session 2: ankile/blind-eval-pick-cube-2026-02-14-round2
-  - Dataset has 0 bytes on HF (push didn't complete). Skip with warning.
+  - Clean data: 20 episodes, 10 rounds, 2 per round, no dedup needed.
 """
 
 import os
@@ -78,6 +78,54 @@ def deduplicate_episodes(
     return best
 
 
+SESSION2_EPISODES = [
+    (0, 1, 1, 1),
+    (1, 1, 0, 1),
+    (2, 1, 1, 2),
+    (3, 0, 0, 2),
+    (4, 1, 1, 3),
+    (5, 0, 0, 3),
+    (6, 1, 0, 4),
+    (7, 1, 1, 4),
+    (8, 0, 0, 5),
+    (9, 0, 1, 5),
+    (10, 1, 0, 6),
+    (11, 0, 1, 6),
+    (12, 0, 1, 7),
+    (13, 0, 0, 7),
+    (14, 1, 0, 8),
+    (15, 1, 1, 8),
+    (16, 0, 1, 9),
+    (17, 0, 0, 9),
+    (18, 0, 0, 10),
+    (19, 1, 1, 10),
+]
+
+
+def build_rounds(episodes: list[tuple[int, int, int, int]]) -> list[RoundInput]:
+    best = deduplicate_episodes(episodes)
+    round_ids = sorted({k[0] for k in best})
+
+    rounds = []
+    for round_id in round_ids:
+        results = []
+        for policy_id in sorted(POLICY_MAP.keys()):
+            ep_index, success, pid, rid = best[(round_id, policy_id)]
+            assert pid == policy_id
+            assert rid == round_id
+            artifact = POLICY_MAP[policy_id][0]
+            results.append(
+                RoundResultInput(
+                    wandb_artifact=artifact,
+                    success=bool(success),
+                    episode_index=ep_index,
+                )
+            )
+        rounds.append(RoundInput(round_index=round_id - 1, results=results))
+
+    return rounds
+
+
 def build_session1_rounds() -> list[RoundInput]:
     best = deduplicate_episodes(SESSION1_EPISODES)
 
@@ -141,8 +189,19 @@ def main():
     # --- Session 2 ---
     print()
     print("=== Session 2: ankile/blind-eval-pick-cube-2026-02-14-round2 ===")
-    print("  WARNING: Dataset has 0 bytes on HuggingFace (push didn't complete).")
-    print("  Cannot reconstruct episode data. Skipping.")
+    rounds2 = build_rounds(SESSION2_EPISODES)
+    print(f"  Policies: {len(policies)}")
+    print(f"  Rounds: {len(rounds2)}")
+    for r in rounds2:
+        print(f"    Round {r.round_index}: {[(res.wandb_artifact.split(':')[-1], res.success, res.episode_index) for res in r.results]}")
+
+    session_id2 = client.submit_eval_session(
+        dataset_repo="ankile/blind-eval-pick-cube-2026-02-14-round2",
+        policies=policies,
+        rounds=rounds2,
+        notes="Resubmitted from HF dataset.",
+    )
+    print(f"  Submitted! Session ID: {session_id2}")
 
 
 if __name__ == "__main__":
