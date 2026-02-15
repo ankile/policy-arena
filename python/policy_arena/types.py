@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from convex import ConvexInt64
+
 
 @dataclass
 class PolicyInput:
@@ -29,7 +31,7 @@ class RoundResultInput:
         return {
             "wandb_artifact": self.wandb_artifact,
             "success": self.success,
-            "episode_index": self.episode_index,
+            "episode_index": ConvexInt64(self.episode_index),
         }
 
 
@@ -40,6 +42,6 @@ class RoundInput:
 
     def to_dict(self) -> dict:
         return {
-            "round_index": self.round_index,
+            "round_index": ConvexInt64(self.round_index),
             "results": [r.to_dict() for r in self.results],
         }
