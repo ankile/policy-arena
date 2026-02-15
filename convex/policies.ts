@@ -5,7 +5,36 @@ export const leaderboard = query({
   args: {},
   handler: async (ctx) => {
     const policies = await ctx.db.query("policies").collect();
-    return policies.sort((a, b) => b.elo - a.elo);
+
+    const enriched = await Promise.all(
+      policies.map(async (policy) => {
+        const results = await ctx.db
+          .query("roundResults")
+          .withIndex("by_policy", (q) => q.eq("policy_id", policy._id))
+          .collect();
+
+        const total = results.length;
+        const successes = results.filter((r) => r.success).length;
+        const successRate = total > 0 ? successes / total : null;
+
+        const successfulWithFrames = results.filter(
+          (r) => r.success && r.num_frames != null
+        );
+        const avgSuccessSteps =
+          successfulWithFrames.length > 0
+            ? Math.round(
+                successfulWithFrames.reduce(
+                  (sum, r) => sum + Number(r.num_frames!),
+                  0
+                ) / successfulWithFrames.length
+              )
+            : null;
+
+        return { ...policy, successRate, avgSuccessSteps };
+      })
+    );
+
+    return enriched.sort((a, b) => b.elo - a.elo);
   },
 });
 

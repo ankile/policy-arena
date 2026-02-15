@@ -26,13 +26,17 @@ class RoundResultInput:
     wandb_artifact: str
     success: bool
     episode_index: int
+    num_frames: int | None = None
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "wandb_artifact": self.wandb_artifact,
             "success": self.success,
             "episode_index": ConvexInt64(self.episode_index),
         }
+        if self.num_frames is not None:
+            d["num_frames"] = ConvexInt64(self.num_frames)
+        return d
 
 
 @dataclass

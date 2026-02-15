@@ -89,7 +89,7 @@ function RoundVideos({
 
   return (
     <div className="mt-3 mb-1">
-      <div className="grid grid-cols-2 gap-3">
+      <div className={`grid gap-3 ${results.length === 2 ? "grid-cols-2" : results.length === 3 ? "grid-cols-3" : "grid-cols-4"}`}>
         {results.map((result, i) => {
           const episode = episodeMap.get(result.episode_index);
           if (!episode) {
@@ -135,6 +135,9 @@ function RoundVideos({
                   }`}
                 >
                   {result.success ? "PASS" : "FAIL"}
+                </span>
+                <span className="px-1.5 py-0.5 rounded bg-black/40 text-white/80 text-[10px] font-mono">
+                  {episode.numFrames} steps
                 </span>
               </div>
             </div>

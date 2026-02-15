@@ -23,6 +23,7 @@ export const submit = mutation({
             wandb_artifact: v.string(),
             success: v.boolean(),
             episode_index: v.int64(),
+            num_frames: v.optional(v.int64()),
           })
         ),
       })
@@ -97,6 +98,9 @@ export const submit = mutation({
           policy_id: policyId,
           success: result.success,
           episode_index: BigInt(Number(result.episode_index)),
+          ...(result.num_frames != null
+            ? { num_frames: BigInt(Number(result.num_frames)) }
+            : {}),
         });
       }
 
@@ -240,6 +244,16 @@ export const getDetail = query({
         return policy!;
       })
     );
+
+    // Sort each round's results to match session.policy_ids order
+    const policyIdOrder = session.policy_ids.map(String);
+    for (const [, roundResults] of roundsMap) {
+      roundResults.sort(
+        (a, b) =>
+          policyIdOrder.indexOf(a.policy_id) -
+          policyIdOrder.indexOf(b.policy_id)
+      );
+    }
 
     return {
       ...session,

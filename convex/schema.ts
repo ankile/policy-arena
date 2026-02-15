@@ -26,6 +26,7 @@ export default defineSchema({
     policy_id: v.id("policies"),
     success: v.boolean(),
     episode_index: v.int64(),
+    num_frames: v.optional(v.int64()),
   })
     .index("by_session", ["session_id"])
     .index("by_policy", ["policy_id"]),

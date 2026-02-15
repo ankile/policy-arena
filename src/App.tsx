@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
-import type { Doc, Id } from "../convex/_generated/dataModel";
+import type { Id } from "../convex/_generated/dataModel";
 import EvalSessions from "./components/EvalSessions";
 import PolicyDetail from "./components/PolicyDetail";
 
@@ -100,7 +100,7 @@ function App() {
       {/* Subtle top accent line */}
       <div className="h-1 bg-gradient-to-r from-teal via-gold to-coral" />
 
-      <div className="max-w-4xl mx-auto px-6 py-16">
+      <div className="max-w-6xl mx-auto px-6 py-16">
         {/* Header */}
         <header
           className="mb-14"
@@ -211,7 +211,7 @@ function App() {
                 style={{ animation: "fade-up 0.6s ease-out 0.3s both" }}
               >
                 {/* Table header */}
-                <div className="grid grid-cols-[56px_1fr_100px_140px_130px_140px] px-6 py-3.5 border-b border-warm-100 bg-warm-50">
+                <div className="grid grid-cols-[56px_1fr_100px_140px_130px_140px_90px_90px] px-6 py-3.5 border-b border-warm-100 bg-warm-50">
                   <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
                     #
                   </span>
@@ -230,14 +230,20 @@ function App() {
                   <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
                     Win Rate
                   </span>
+                  <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
+                    Success
+                  </span>
+                  <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
+                    Avg Steps
+                  </span>
                 </div>
 
                 {/* Rows */}
                 {sortedPolicies.map(
-                  (policy: Doc<"policies">, i: number) => (
+                  (policy, i) => (
                     <div key={policy._id}>
                       <div
-                        className={`grid grid-cols-[56px_1fr_100px_140px_130px_140px] items-center px-6 py-4 transition-colors duration-150 hover:bg-warm-50 cursor-pointer ${
+                        className={`grid grid-cols-[56px_1fr_100px_140px_130px_140px_90px_90px] items-center px-6 py-4 transition-colors duration-150 hover:bg-warm-50 cursor-pointer ${
                           i < sortedPolicies.length - 1 &&
                           expandedPolicy !== policy._id
                             ? "border-b border-warm-100"
@@ -319,6 +325,20 @@ function App() {
                           wins={Number(policy.wins)}
                           losses={Number(policy.losses)}
                         />
+
+                        {/* Success Rate */}
+                        <div className="font-mono text-sm text-ink-muted">
+                          {policy.successRate != null
+                            ? `${Math.round(policy.successRate * 100)}%`
+                            : "—"}
+                        </div>
+
+                        {/* Avg Steps */}
+                        <div className="font-mono text-sm text-ink-muted">
+                          {policy.avgSuccessSteps != null
+                            ? policy.avgSuccessSteps
+                            : "—"}
+                        </div>
                       </div>
 
                       {/* Expanded detail */}
