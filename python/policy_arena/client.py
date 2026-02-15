@@ -31,6 +31,12 @@ class PolicyArenaClient:
             {"num_opponents": num_opponents},
         )
 
+    def delete_session(self, session_id: str) -> dict:
+        """Delete an eval session and recompute ELO for all policies."""
+        return self.client.mutation(
+            "evalSessions:deleteSession", {"id": session_id}
+        )
+
     def get_leaderboard(self) -> list[dict]:
         """Get current leaderboard."""
         return self.client.query("policies:leaderboard")
