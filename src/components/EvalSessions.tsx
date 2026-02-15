@@ -238,20 +238,90 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
 
   return (
     <div className="px-6 pb-5">
-      {/* Policy legend */}
-      <div className="flex gap-3 mb-4">
-        {detail.policies.map((policy) => (
-          <span
-            key={policy._id}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-warm-50 border border-warm-200 text-xs font-medium text-ink"
-          >
-            {policy.name}
-            <span className="text-ink-muted font-mono">
-              ELO {Math.round(policy.elo)}
-            </span>
-          </span>
-        ))}
-      </div>
+      {/* Per-policy stats summary */}
+      {(() => {
+        const totalRounds = detail.rounds.length;
+        const policyStats = new Map<
+          string,
+          { successes: number; wins: number; draws: number; losses: number }
+        >();
+
+        for (const policy of detail.policies) {
+          policyStats.set(policy._id, {
+            successes: 0,
+            wins: 0,
+            draws: 0,
+            losses: 0,
+          });
+        }
+
+        for (const round of detail.rounds) {
+          for (const result of round.results) {
+            if (result.success) {
+              policyStats.get(result.policy_id)!.successes += 1;
+            }
+          }
+
+          // Pairwise comparisons
+          for (let i = 0; i < round.results.length; i++) {
+            for (let j = i + 1; j < round.results.length; j++) {
+              const a = round.results[i];
+              const b = round.results[j];
+              const statsA = policyStats.get(a.policy_id)!;
+              const statsB = policyStats.get(b.policy_id)!;
+
+              if (a.success && !b.success) {
+                statsA.wins += 1;
+                statsB.losses += 1;
+              } else if (!a.success && b.success) {
+                statsA.losses += 1;
+                statsB.wins += 1;
+              } else {
+                statsA.draws += 1;
+                statsB.draws += 1;
+              }
+            }
+          }
+        }
+
+        return (
+          <div className={`grid gap-3 mb-4 ${detail.policies.length === 2 ? "grid-cols-2" : detail.policies.length === 3 ? "grid-cols-3" : "grid-cols-4"}`}>
+            {detail.policies.map((policy) => {
+              const stats = policyStats.get(policy._id)!;
+              const successRate = totalRounds > 0 ? (stats.successes / totalRounds) * 100 : 0;
+
+              return (
+                <div
+                  key={policy._id}
+                  className="rounded-xl border border-warm-200 bg-warm-50/50 px-4 py-3 flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="font-body font-semibold text-ink text-sm truncate">
+                      {policy.name}
+                    </span>
+                    <span className="text-ink-muted font-mono text-xs shrink-0">
+                      ELO {Math.round(policy.elo)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4 shrink-0">
+                    <span className="font-mono text-sm text-ink">
+                      {successRate.toFixed(0)}%
+                      <span className="text-[11px] text-ink-muted font-body ml-1">
+                        success
+                      </span>
+                    </span>
+                    <div className="flex items-center gap-1.5 text-xs font-mono">
+                      <span className="text-teal font-medium">{stats.wins}W</span>
+                      <span className="text-ink-muted">{stats.draws}D</span>
+                      <span className="text-coral font-medium">{stats.losses}L</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Rounds */}
       <div className="space-y-2">
