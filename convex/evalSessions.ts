@@ -117,23 +117,28 @@ export const submit = mutation({
           const ratingA = policyA.elo + eloDeltas.get(a.policyId)!;
           const ratingB = policyB.elo + eloDeltas.get(b.policyId)!;
 
-          let scoreA: number;
           if (a.success && !b.success) {
-            scoreA = 1; // A wins
+            // A wins — update ELO
             winDeltas.set(a.policyId, winDeltas.get(a.policyId)! + BigInt(1));
             lossDeltas.set(
               b.policyId,
               lossDeltas.get(b.policyId)! + BigInt(1)
             );
+            const [newA, newB] = computeEloUpdate(ratingA, ratingB, 1);
+            eloDeltas.set(a.policyId, newA - policyA.elo);
+            eloDeltas.set(b.policyId, newB - policyB.elo);
           } else if (!a.success && b.success) {
-            scoreA = 0; // B wins
+            // B wins — update ELO
             lossDeltas.set(
               a.policyId,
               lossDeltas.get(a.policyId)! + BigInt(1)
             );
             winDeltas.set(b.policyId, winDeltas.get(b.policyId)! + BigInt(1));
+            const [newA, newB] = computeEloUpdate(ratingA, ratingB, 0);
+            eloDeltas.set(a.policyId, newA - policyA.elo);
+            eloDeltas.set(b.policyId, newB - policyB.elo);
           } else {
-            scoreA = 0.5; // Draw
+            // Draw (both succeed or both fail) — no ELO update, no info gained
             drawDeltas.set(
               a.policyId,
               drawDeltas.get(a.policyId)! + BigInt(1)
@@ -143,10 +148,6 @@ export const submit = mutation({
               drawDeltas.get(b.policyId)! + BigInt(1)
             );
           }
-
-          const [newA, newB] = computeEloUpdate(ratingA, ratingB, scoreA);
-          eloDeltas.set(a.policyId, newA - policyA.elo);
-          eloDeltas.set(b.policyId, newB - policyB.elo);
         }
       }
     }

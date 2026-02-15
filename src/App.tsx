@@ -171,14 +171,13 @@ function App() {
                 },
                 { label: "Top ELO", value: maxElo ? maxElo.toString() : "—" },
                 {
-                  label: "Total Matches",
-                  value: sortedPolicies
+                  label: "Comparisons",
+                  value: Math.round(sortedPolicies
                     .reduce(
                       (a, p) =>
                         a + Number(p.wins) + Number(p.losses) + Number(p.draws),
                       0
-                    )
-                    .toString(),
+                    ) / 2).toString(),
                 },
               ].map((stat) => (
                 <div
@@ -214,7 +213,7 @@ function App() {
                 style={{ animation: "fade-up 0.6s ease-out 0.3s both" }}
               >
                 {/* Table header */}
-                <div className="grid grid-cols-[56px_1fr_100px_140px_100px_140px] px-6 py-3.5 border-b border-warm-100 bg-warm-50">
+                <div className="grid grid-cols-[56px_1fr_100px_140px_130px_140px] px-6 py-3.5 border-b border-warm-100 bg-warm-50">
                   <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
                     #
                   </span>
@@ -228,7 +227,7 @@ function App() {
                     Rating
                   </span>
                   <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
-                    W / L
+                    W / D / L
                   </span>
                   <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
                     Win Rate
@@ -240,7 +239,7 @@ function App() {
                   (policy: Doc<"policies">, i: number) => (
                     <div key={policy._id}>
                       <div
-                        className={`grid grid-cols-[56px_1fr_100px_140px_100px_140px] items-center px-6 py-4 transition-colors duration-150 hover:bg-warm-50 cursor-pointer ${
+                        className={`grid grid-cols-[56px_1fr_100px_140px_130px_140px] items-center px-6 py-4 transition-colors duration-150 hover:bg-warm-50 cursor-pointer ${
                           i < sortedPolicies.length - 1 &&
                           expandedPolicy !== policy._id
                             ? "border-b border-warm-100"
@@ -302,10 +301,14 @@ function App() {
                           </div>
                         </div>
 
-                        {/* W / L */}
+                        {/* W / D / L */}
                         <div className="font-mono text-sm text-ink-muted">
                           <span className="text-emerald-bar">
                             {Number(policy.wins)}
+                          </span>
+                          <span className="text-warm-300 mx-1">/</span>
+                          <span className="text-ink-muted">
+                            {Number(policy.draws)}
                           </span>
                           <span className="text-warm-300 mx-1">/</span>
                           <span className="text-rose-bar">
