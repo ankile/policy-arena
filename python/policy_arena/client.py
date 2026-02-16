@@ -2,7 +2,7 @@ import random
 
 from convex import ConvexClient
 
-from policy_arena.types import PolicyInput, RoundInput
+from policy_arena.types import DatasetInput, PolicyInput, RoundInput
 
 
 class PolicyArenaClient:
@@ -66,6 +66,10 @@ class PolicyArenaClient:
         return self.client.mutation(
             "evalSessions:deleteSession", {"id": session_id}
         )
+
+    def register_dataset(self, dataset: DatasetInput) -> str:
+        """Register a dataset in the arena for browsing."""
+        return self.client.mutation("datasets:register", dataset.to_dict())
 
     def get_leaderboard(self) -> list[dict]:
         """Get current leaderboard."""

@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as datasets from "../datasets.js";
 import type * as elo from "../elo.js";
 import type * as eloHistory from "../eloHistory.js";
 import type * as evalSessions from "../evalSessions.js";
@@ -23,6 +24,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  datasets: typeof datasets;
   elo: typeof elo;
   eloHistory: typeof eloHistory;
   evalSessions: typeof evalSessions;

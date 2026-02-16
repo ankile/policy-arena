@@ -37,4 +37,18 @@ export default defineSchema({
     elo: v.float64(),
     session_id: v.id("evalSessions"),
   }).index("by_policy", ["policy_id"]),
+
+  datasets: defineTable({
+    repo_id: v.string(),
+    name: v.string(),
+    task: v.string(),
+    source_type: v.string(), // "teleop" | "rollout" | "dagger" | "eval"
+    environment: v.string(),
+    num_episodes: v.optional(v.int64()),
+    wandb_artifact: v.optional(v.string()),
+    notes: v.optional(v.string()),
+  })
+    .index("by_repo", ["repo_id"])
+    .index("by_task", ["task"])
+    .index("by_source_type", ["source_type"]),
 });

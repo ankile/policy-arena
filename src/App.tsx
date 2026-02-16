@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
+import DataExplorer from "./components/DataExplorer";
 import EvalSessions from "./components/EvalSessions";
 import PolicyDetail from "./components/PolicyDetail";
 
@@ -74,7 +75,7 @@ function EnvironmentTag({ env }: { env: string }) {
   );
 }
 
-type Tab = "leaderboard" | "sessions";
+type Tab = "leaderboard" | "sessions" | "explorer";
 
 function App() {
   const policies = useQuery(api.policies.leaderboard);
@@ -93,6 +94,7 @@ function App() {
   const tabs: { id: Tab; label: string }[] = [
     { id: "leaderboard", label: "Leaderboard" },
     { id: "sessions", label: "Eval Sessions" },
+    { id: "explorer", label: "Data Explorer" },
   ];
 
   return (
@@ -366,6 +368,8 @@ function App() {
         )}
 
         {activeTab === "sessions" && <EvalSessions />}
+
+        {activeTab === "explorer" && <DataExplorer />}
 
         {/* Footer */}
         <footer
