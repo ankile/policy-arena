@@ -458,7 +458,7 @@ export default function EvalSessions() {
   const filteredSessions =
     modeFilter === "all"
       ? sessions
-      : sessions.filter((s) => s.session_mode ?? "manual" === modeFilter);
+      : sessions.filter((s) => (s.session_mode ?? "manual") === modeFilter);
 
   // Count sessions per mode for the filter badges
   const modeCounts = new Map<string, number>();
