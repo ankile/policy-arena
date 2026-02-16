@@ -27,6 +27,20 @@ type EpisodeFilter = "all" | "success" | "failure";
 // Helpers
 // ---------------------------------------------------------------------------
 
+function cameraDisplayName(key: string): string {
+  if (key.toLowerCase().includes("wrist")) return "Wrist View";
+  return "Side View";
+}
+
+function sortCameraKeys(keys: string[]): string[] {
+  // Side view first, wrist view second
+  return [...keys].sort((a, b) => {
+    const aIsWrist = a.toLowerCase().includes("wrist") ? 1 : 0;
+    const bIsWrist = b.toLowerCase().includes("wrist") ? 1 : 0;
+    return aIsWrist - bIsWrist;
+  });
+}
+
 function formatDuration(seconds: number): string {
   const s = Math.round(seconds * 10) / 10;
   return `${s.toFixed(1)}s`;
@@ -155,7 +169,7 @@ function VideoGrid({
               }}
             />
             <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/60 text-white text-[11px] font-mono">
-              Camera {i + 1}
+              {cameraDisplayName(key)}
             </span>
           </div>
         ))}
@@ -285,7 +299,8 @@ function DatasetDetail({
       .then((info) => {
         setEpisodes(info.episodes);
         const leftCams = info.cameraKeys.filter((k) => k.includes("left"));
-        setCameraKeys(leftCams.length > 0 ? leftCams : info.cameraKeys);
+        const cams = leftCams.length > 0 ? leftCams : info.cameraKeys;
+        setCameraKeys(sortCameraKeys(cams));
         setLoading(false);
       })
       .catch((err) => {
