@@ -59,38 +59,7 @@ class PolicyArenaClient:
         if len(candidates) <= num_opponents:
             return candidates
 
-        # ELO-stratified sampling: pick from top, bottom, then middle thirds
-        third_size = max(1, len(candidates) // 3)
-        top_third = candidates[:third_size]
-        bottom_third = candidates[-third_size:]
-        middle_third = candidates[third_size:-third_size]
-
-        picks: list[dict] = []
-        picked_artifacts: set[str] = set()
-
-        def pick_from(pool: list[dict]) -> dict | None:
-            available = [p for p in pool if p["wandb_artifact"] not in picked_artifacts]
-            if not available:
-                return None
-            choice = random.choice(available)
-            picks.append(choice)
-            picked_artifacts.add(choice["wandb_artifact"])
-            return choice
-
-        pick_from(top_third)
-        if len(picks) < num_opponents:
-            pick_from(bottom_third)
-        while len(picks) < num_opponents and middle_third:
-            if pick_from(middle_third) is None:
-                break
-        # If still short (e.g. very few policies), fill from any remaining
-        while len(picks) < num_opponents:
-            remaining = [c for c in candidates if c["wandb_artifact"] not in picked_artifacts]
-            if not remaining:
-                break
-            pick_from(remaining)
-
-        return picks
+        return random.sample(candidates, num_opponents)
 
     def delete_session(self, session_id: str) -> dict:
         """Delete an eval session and recompute ELO for all policies."""
