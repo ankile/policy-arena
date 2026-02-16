@@ -302,12 +302,18 @@ function DatasetDetail({
   const [error, setError] = useState<string | null>(null);
   const [episodeFilter, setEpisodeFilter] = useSearchParam("outcome", "all");
 
+  const prevRepoId = useRef(repoId);
   useEffect(() => {
+    // Only reset episode/filter state when switching datasets, not on initial mount
+    if (prevRepoId.current !== repoId) {
+      prevRepoId.current = repoId;
+      setSelectedIndex(null);
+      setPlaying(false);
+      setEpisodeFilter("all");
+    }
+
     setLoading(true);
     setError(null);
-    setSelectedIndex(null);
-    setPlaying(false);
-    setEpisodeFilter("all");
 
     fetchDatasetInfo(repoId)
       .then((info) => {
