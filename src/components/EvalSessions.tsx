@@ -7,6 +7,7 @@ import {
   getVideoUrl,
   type EpisodeMetadata,
 } from "../lib/hf-api";
+import { useSearchParam, useSearchParamNullable, useSearchParamNumber, clearSearchParams } from "../lib/useSearchParam";
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString("en-US", {
@@ -213,7 +214,7 @@ function RoundVideos({
 
 function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
   const detail = useQuery(api.evalSessions.getDetail, { id: sessionId });
-  const [expandedRound, setExpandedRound] = useState<number | null>(null);
+  const [expandedRound, setExpandedRound] = useSearchParamNumber("round");
   const [datasetInfo, setDatasetInfo] = useState<{
     episodeMap: Map<number, EpisodeMetadata>;
     cameraKey: string;
@@ -426,9 +427,13 @@ const SESSION_MODE_FILTERS: { id: SessionModeFilter; label: string }[] = [
 
 export default function EvalSessions() {
   const sessions = useQuery(api.evalSessions.list);
-  const [expandedSession, setExpandedSession] =
-    useState<Id<"evalSessions"> | null>(null);
-  const [modeFilter, setModeFilter] = useState<SessionModeFilter>("all");
+  const [expandedSession, setExpandedSessionRaw] = useSearchParamNullable("session");
+  const [modeFilter, setModeFilter] = useSearchParam("mode", "all");
+
+  const setExpandedSession = (id: string | null) => {
+    if (id === null) clearSearchParams("round");
+    setExpandedSessionRaw(id);
+  };
 
   if (sessions === undefined) {
     return (
@@ -517,7 +522,7 @@ export default function EvalSessions() {
           <button
             onClick={() =>
               setExpandedSession(
-                expandedSession === session._id ? null : session._id
+                expandedSession === (session._id as string) ? null : (session._id as string)
               )
             }
             className="w-full px-6 py-4 flex items-center justify-between hover:bg-warm-50/50 transition-colors cursor-pointer text-left"
@@ -555,7 +560,7 @@ export default function EvalSessions() {
               stroke="currentColor"
               strokeWidth="2"
               className={`text-ink-muted transition-transform duration-200 ${
-                expandedSession === session._id ? "rotate-90" : ""
+                expandedSession === (session._id as string) ? "rotate-90" : ""
               }`}
             >
               <polyline points="9 18 15 12 9 6" />
@@ -563,14 +568,14 @@ export default function EvalSessions() {
           </button>
 
           {/* Notes */}
-          {session.notes && expandedSession === session._id && (
+          {session.notes && expandedSession === (session._id as string) && (
             <div className="px-6 pb-2">
               <p className="text-xs text-ink-muted italic">{session.notes}</p>
             </div>
           )}
 
           {/* Expanded detail */}
-          {expandedSession === session._id && (
+          {expandedSession === (session._id as string) && (
             <SessionDetail sessionId={session._id} />
           )}
         </div>

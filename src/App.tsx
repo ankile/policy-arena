@@ -1,10 +1,10 @@
-import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
-import type { Id } from "../convex/_generated/dataModel";
+
 import DataExplorer from "./components/DataExplorer";
 import EvalSessions from "./components/EvalSessions";
 import PolicyDetail from "./components/PolicyDetail";
+import { useSearchParam, useSearchParamNullable, clearSearchParams } from "./lib/useSearchParam";
 
 function eloBarWidth(elo: number, minElo: number, maxElo: number): number {
   if (maxElo === minElo) return 50;
@@ -77,12 +77,17 @@ function EnvironmentTag({ env }: { env: string }) {
 
 type Tab = "leaderboard" | "sessions" | "explorer";
 
+type TabConfig = { id: Tab; label: string };
+
 function App() {
   const policies = useQuery(api.policies.leaderboard);
-  const [activeTab, setActiveTab] = useState<Tab>("leaderboard");
-  const [expandedPolicy, setExpandedPolicy] = useState<Id<"policies"> | null>(
-    null
-  );
+  const [activeTab, setActiveTabRaw] = useSearchParam("tab", "leaderboard");
+  const [expandedPolicy, setExpandedPolicy] = useSearchParamNullable("policy");
+
+  const setActiveTab = (tab: string) => {
+    clearSearchParams("policy", "session", "mode", "round", "source", "task", "dataset", "episode", "outcome");
+    setActiveTabRaw(tab);
+  };
 
   const sortedPolicies = policies ?? [];
   const maxElo = sortedPolicies.length > 0 ? sortedPolicies[0].elo : 0;
@@ -91,7 +96,7 @@ function App() {
       ? sortedPolicies[sortedPolicies.length - 1].elo
       : 0;
 
-  const tabs: { id: Tab; label: string }[] = [
+  const tabs: TabConfig[] = [
     { id: "leaderboard", label: "Leaderboard" },
     { id: "sessions", label: "Eval Sessions" },
     { id: "explorer", label: "Data Explorer" },
@@ -250,7 +255,7 @@ function App() {
                       <div
                         className={`grid grid-cols-[56px_1fr_100px_140px_130px_140px_90px_90px_70px] items-center px-6 py-4 transition-colors duration-150 hover:bg-warm-50 cursor-pointer ${
                           i < sortedPolicies.length - 1 &&
-                          expandedPolicy !== policy._id
+                          expandedPolicy !== (policy._id as string)
                             ? "border-b border-warm-100"
                             : ""
                         }`}
@@ -259,9 +264,9 @@ function App() {
                         }}
                         onClick={() =>
                           setExpandedPolicy(
-                            expandedPolicy === policy._id
+                            expandedPolicy === (policy._id as string)
                               ? null
-                              : policy._id
+                              : (policy._id as string)
                           )
                         }
                       >
@@ -284,7 +289,7 @@ function App() {
                             stroke="currentColor"
                             strokeWidth="2"
                             className={`text-ink-muted/50 transition-transform duration-200 ${
-                              expandedPolicy === policy._id
+                              expandedPolicy === (policy._id as string)
                                 ? "rotate-90"
                                 : ""
                             }`}
@@ -354,7 +359,7 @@ function App() {
                       </div>
 
                       {/* Expanded detail */}
-                      {expandedPolicy === policy._id && (
+                      {expandedPolicy === (policy._id as string) && (
                         <div className="border-b border-warm-100">
                           <PolicyDetail policyId={policy._id} />
                         </div>

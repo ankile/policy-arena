@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { useSearchParam, useSearchParamNullable, useSearchParamNumber, clearSearchParams } from "../lib/useSearchParam";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import {
@@ -21,7 +22,6 @@ const SOURCE_TYPE_FILTERS: { id: SourceTypeFilter; label: string }[] = [
   { id: "eval", label: "Eval" },
 ];
 
-type EpisodeFilter = "all" | "success" | "failure";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -296,11 +296,11 @@ function DatasetDetail({
 }) {
   const [episodes, setEpisodes] = useState<EpisodeMetadata[]>([]);
   const [cameraKeys, setCameraKeys] = useState<string[]>([]);
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [selectedIndex, setSelectedIndex] = useSearchParamNumber("episode");
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [episodeFilter, setEpisodeFilter] = useState<EpisodeFilter>("all");
+  const [episodeFilter, setEpisodeFilter] = useSearchParam("outcome", "all");
 
   useEffect(() => {
     setLoading(true);
@@ -540,9 +540,14 @@ function DatasetDetail({
 // ---------------------------------------------------------------------------
 
 export default function DataExplorer() {
-  const [sourceFilter, setSourceFilter] = useState<SourceTypeFilter>("all");
-  const [taskFilter, setTaskFilter] = useState<string>("all");
-  const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
+  const [sourceFilter, setSourceFilter] = useSearchParam("source", "all");
+  const [taskFilter, setTaskFilter] = useSearchParam("task", "all");
+  const [selectedRepoId, setSelectedRepoIdRaw] = useSearchParamNullable("dataset");
+
+  const setSelectedRepoId = (id: string | null) => {
+    if (id === null) clearSearchParams("episode", "outcome");
+    setSelectedRepoIdRaw(id);
+  };
 
   const datasets = useQuery(
     api.datasets.list,
