@@ -13,6 +13,7 @@ class PolicyArenaClient:
         policies: list[PolicyInput],
         rounds: list[RoundInput],
         notes: str | None = None,
+        session_mode: str | None = None,
     ) -> str:
         """Submit evaluation results. Policies are auto-registered."""
         args = {
@@ -22,13 +23,31 @@ class PolicyArenaClient:
         }
         if notes is not None:
             args["notes"] = notes
+        if session_mode is not None:
+            args["session_mode"] = session_mode
         return self.client.mutation("evalSessions:submit", args)
 
-    def get_recommended_opponents(self, num_opponents: int = 2) -> list[dict]:
-        """Get W&B artifacts of recommended opponents."""
+    def get_recommended_opponents(
+        self,
+        num_opponents: int = 2,
+        environment: str | None = None,
+        exclude_artifacts: list[str] | None = None,
+    ) -> list[dict]:
+        """Get W&B artifacts of recommended opponents.
+
+        Args:
+            num_opponents: Number of opponents to recommend.
+            environment: Filter to policies in this environment.
+            exclude_artifacts: W&B artifact strings to exclude (e.g. the focus policy).
+        """
+        query_args: dict = {"num_opponents": num_opponents}
+        if environment is not None:
+            query_args["environment"] = environment
+        if exclude_artifacts is not None:
+            query_args["exclude_artifacts"] = exclude_artifacts
         return self.client.query(
             "recommendations:getOpponents",
-            {"num_opponents": num_opponents},
+            query_args,
         )
 
     def delete_session(self, session_id: str) -> dict:

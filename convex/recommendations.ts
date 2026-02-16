@@ -2,10 +2,26 @@ import { query } from "./_generated/server";
 import { v } from "convex/values";
 
 export const getOpponents = query({
-  args: { num_opponents: v.optional(v.number()) },
+  args: {
+    num_opponents: v.optional(v.number()),
+    environment: v.optional(v.string()),
+    exclude_artifacts: v.optional(v.array(v.string())),
+  },
   handler: async (ctx, args) => {
     const numOpponents = args.num_opponents ?? 2;
-    const policies = await ctx.db.query("policies").collect();
+    let policies = await ctx.db.query("policies").collect();
+
+    // Filter by environment if specified
+    if (args.environment) {
+      policies = policies.filter((p) => p.environment === args.environment);
+    }
+
+    // Exclude specific artifacts (e.g. the focus policy in calibrate mode)
+    if (args.exclude_artifacts) {
+      policies = policies.filter(
+        (p) => !args.exclude_artifacts!.includes(p.wandb_artifact)
+      );
+    }
 
     if (policies.length === 0) return [];
     if (policies.length <= numOpponents) {

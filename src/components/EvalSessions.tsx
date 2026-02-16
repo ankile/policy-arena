@@ -18,6 +18,21 @@ function formatDate(timestamp: number): string {
   });
 }
 
+function SessionModeTag({ mode }: { mode: string }) {
+  const styles: Record<string, string> = {
+    manual: "bg-warm-100 text-ink-muted",
+    "pool-sample": "bg-teal-light text-teal",
+    calibrate: "bg-gold-light text-gold",
+  };
+  return (
+    <span
+      className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${styles[mode] ?? "bg-warm-100 text-ink-muted"}`}
+    >
+      {mode}
+    </span>
+  );
+}
+
 interface RoundResult {
   policy_id: string;
   policyName: string;
@@ -400,10 +415,20 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
   );
 }
 
+type SessionModeFilter = "all" | "manual" | "pool-sample" | "calibrate";
+
+const SESSION_MODE_FILTERS: { id: SessionModeFilter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "manual", label: "Manual" },
+  { id: "pool-sample", label: "Pool Sample" },
+  { id: "calibrate", label: "Calibrate" },
+];
+
 export default function EvalSessions() {
   const sessions = useQuery(api.evalSessions.list);
   const [expandedSession, setExpandedSession] =
     useState<Id<"evalSessions"> | null>(null);
+  const [modeFilter, setModeFilter] = useState<SessionModeFilter>("all");
 
   if (sessions === undefined) {
     return (
@@ -430,12 +455,60 @@ export default function EvalSessions() {
     );
   }
 
+  const filteredSessions =
+    modeFilter === "all"
+      ? sessions
+      : sessions.filter((s) => s.session_mode ?? "manual" === modeFilter);
+
+  // Count sessions per mode for the filter badges
+  const modeCounts = new Map<string, number>();
+  for (const s of sessions) {
+    const mode = s.session_mode ?? "manual";
+    modeCounts.set(mode, (modeCounts.get(mode) ?? 0) + 1);
+  }
+
   return (
     <div
       className="space-y-4"
       style={{ animation: "fade-up 0.6s ease-out 0.3s both" }}
     >
-      {sessions.map((session) => (
+      {/* Filter bar */}
+      <div className="flex items-center gap-2">
+        {SESSION_MODE_FILTERS.map((filter) => {
+          const count =
+            filter.id === "all"
+              ? sessions.length
+              : modeCounts.get(filter.id) ?? 0;
+          const isActive = modeFilter === filter.id;
+          return (
+            <button
+              key={filter.id}
+              onClick={() => setModeFilter(filter.id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                isActive
+                  ? "bg-teal text-white shadow-sm"
+                  : "bg-white border border-warm-200 text-ink-muted hover:border-warm-300 hover:text-ink"
+              }`}
+            >
+              {filter.label}
+              <span
+                className={`font-mono text-[10px] ${
+                  isActive ? "text-white/70" : "text-ink-muted/60"
+                }`}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {filteredSessions.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8 text-center text-ink-muted">
+          No {modeFilter} sessions found.
+        </div>
+      ) : (
+        filteredSessions.map((session) => (
         <div
           key={session._id}
           className="bg-white rounded-2xl border border-warm-200 shadow-sm overflow-hidden"
@@ -458,6 +531,7 @@ export default function EvalSessions() {
                   <span className="inline-block px-2 py-0.5 rounded-full bg-warm-100 text-ink-muted text-[11px] font-mono">
                     {Number(session.num_rounds)} rounds
                   </span>
+                  <SessionModeTag mode={session.session_mode ?? "manual"} />
                 </div>
                 <div className="flex items-center gap-3 text-xs text-ink-muted">
                   <span>{formatDate(session._creationTime)}</span>
@@ -500,7 +574,8 @@ export default function EvalSessions() {
             <SessionDetail sessionId={session._id} />
           )}
         </div>
-      ))}
+      ))
+      )}
     </div>
   );
 }

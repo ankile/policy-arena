@@ -13,6 +13,7 @@ import type * as eloHistory from "../eloHistory.js";
 import type * as evalSessions from "../evalSessions.js";
 import type * as policies from "../policies.js";
 import type * as recommendations from "../recommendations.js";
+import type * as roundResults from "../roundResults.js";
 import type * as seed from "../seed.js";
 
 import type {
@@ -27,6 +28,7 @@ declare const fullApi: ApiFromModules<{
   evalSessions: typeof evalSessions;
   policies: typeof policies;
   recommendations: typeof recommendations;
+  roundResults: typeof roundResults;
   seed: typeof seed;
 }>;
 

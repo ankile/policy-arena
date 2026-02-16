@@ -1,6 +1,7 @@
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import FailureAnalysis from "./FailureAnalysis";
 
 export default function PolicyDetail({
   policyId,
@@ -95,9 +96,12 @@ export default function PolicyDetail({
                     <span className="font-mono text-ink-muted">
                       {new Date(session._creationTime).toLocaleDateString()}
                     </span>
-                    <span className="text-ink-muted font-mono">
-                      {Number(session.num_rounds)} rounds
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <SessionModeTag mode={session.session_mode ?? "manual"} />
+                      <span className="text-ink-muted font-mono">
+                        {Number(session.num_rounds)} rounds
+                      </span>
+                    </div>
                   </div>
                   <a
                     href={`https://huggingface.co/datasets/${session.dataset_repo}`}
@@ -113,6 +117,26 @@ export default function PolicyDetail({
           )}
         </div>
       </div>
+
+      {/* Failure Analysis */}
+      <div className="mt-5 pt-5 border-t border-warm-200">
+        <FailureAnalysis policyId={policyId} />
+      </div>
     </div>
+  );
+}
+
+function SessionModeTag({ mode }: { mode: string }) {
+  const styles: Record<string, string> = {
+    manual: "bg-warm-100 text-ink-muted",
+    "pool-sample": "bg-teal-light text-teal",
+    calibrate: "bg-gold-light text-gold",
+  };
+  return (
+    <span
+      className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${styles[mode] ?? "bg-warm-100 text-ink-muted"}`}
+    >
+      {mode}
+    </span>
   );
 }

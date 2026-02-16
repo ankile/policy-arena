@@ -211,7 +211,7 @@ function App() {
                 style={{ animation: "fade-up 0.6s ease-out 0.3s both" }}
               >
                 {/* Table header */}
-                <div className="grid grid-cols-[56px_1fr_100px_140px_130px_140px_90px_90px] px-6 py-3.5 border-b border-warm-100 bg-warm-50">
+                <div className="grid grid-cols-[56px_1fr_100px_140px_130px_140px_90px_90px_70px] px-6 py-3.5 border-b border-warm-100 bg-warm-50">
                   <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
                     #
                   </span>
@@ -236,6 +236,9 @@ function App() {
                   <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
                     Avg Steps
                   </span>
+                  <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
+                    Matches
+                  </span>
                 </div>
 
                 {/* Rows */}
@@ -243,7 +246,7 @@ function App() {
                   (policy, i) => (
                     <div key={policy._id}>
                       <div
-                        className={`grid grid-cols-[56px_1fr_100px_140px_130px_140px_90px_90px] items-center px-6 py-4 transition-colors duration-150 hover:bg-warm-50 cursor-pointer ${
+                        className={`grid grid-cols-[56px_1fr_100px_140px_130px_140px_90px_90px_70px] items-center px-6 py-4 transition-colors duration-150 hover:bg-warm-50 cursor-pointer ${
                           i < sortedPolicies.length - 1 &&
                           expandedPolicy !== policy._id
                             ? "border-b border-warm-100"
@@ -338,6 +341,13 @@ function App() {
                           {policy.avgSuccessSteps != null
                             ? policy.avgSuccessSteps
                             : "—"}
+                        </div>
+
+                        {/* Matches */}
+                        <div className="font-mono text-sm text-ink-muted">
+                          {Number(policy.wins) +
+                            Number(policy.losses) +
+                            Number(policy.draws)}
                         </div>
                       </div>
 

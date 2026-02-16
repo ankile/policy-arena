@@ -7,6 +7,7 @@ export const submit = mutation({
   args: {
     dataset_repo: v.string(),
     notes: v.optional(v.string()),
+    session_mode: v.optional(v.string()),
     policies: v.array(
       v.object({
         name: v.string(),
@@ -72,6 +73,7 @@ export const submit = mutation({
       num_rounds: BigInt(args.rounds.length),
       policy_ids: policyIds,
       notes: args.notes,
+      session_mode: args.session_mode,
     });
 
     // 3. Insert round results and compute ELO updates

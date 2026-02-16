@@ -18,6 +18,7 @@ export default defineSchema({
     num_rounds: v.int64(),
     policy_ids: v.array(v.id("policies")),
     notes: v.optional(v.string()),
+    session_mode: v.optional(v.string()),  // "manual" | "pool-sample" | "calibrate"
   }),
 
   roundResults: defineTable({
