@@ -284,7 +284,8 @@ function DatasetDetail({
     fetchDatasetInfo(repoId)
       .then((info) => {
         setEpisodes(info.episodes);
-        setCameraKeys(info.cameraKeys);
+        const leftCams = info.cameraKeys.filter((k) => k.includes("left"));
+        setCameraKeys(leftCams.length > 0 ? leftCams : info.cameraKeys);
         setLoading(false);
       })
       .catch((err) => {
