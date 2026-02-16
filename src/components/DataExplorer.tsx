@@ -27,16 +27,30 @@ type EpisodeFilter = "all" | "success" | "failure";
 // Helpers
 // ---------------------------------------------------------------------------
 
+// Camera serial number → role mapping (DROID ZED cameras)
+// 18650758: wrist-mounted camera
+// 25916956: side-mounted camera
+const CAMERA_ROLES: Record<string, string> = {
+  "18650758": "Wrist View",
+  "25916956": "Side View",
+};
+
 function cameraDisplayName(key: string): string {
-  if (key.toLowerCase().includes("wrist")) return "Wrist View";
-  return "Side View";
+  for (const [serial, name] of Object.entries(CAMERA_ROLES)) {
+    if (key.includes(serial)) return name;
+  }
+  return key; // fallback to raw key
+}
+
+function isWristCamera(key: string): boolean {
+  return key.includes("18650758");
 }
 
 function sortCameraKeys(keys: string[]): string[] {
   // Side view first, wrist view second
   return [...keys].sort((a, b) => {
-    const aIsWrist = a.toLowerCase().includes("wrist") ? 1 : 0;
-    const bIsWrist = b.toLowerCase().includes("wrist") ? 1 : 0;
+    const aIsWrist = isWristCamera(a) ? 1 : 0;
+    const bIsWrist = isWristCamera(b) ? 1 : 0;
     return aIsWrist - bIsWrist;
   });
 }
