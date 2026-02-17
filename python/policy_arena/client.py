@@ -71,6 +71,20 @@ class PolicyArenaClient:
         """Register a dataset in the arena for browsing."""
         return self.client.mutation("datasets:register", dataset.to_dict())
 
+    def list_datasets(
+        self,
+        task: str | None = None,
+        source_types: list[str] | None = None,
+    ) -> list[dict]:
+        """List registered datasets, optionally filtered by task and source types."""
+        args: dict = {}
+        if task is not None:
+            args["task"] = task
+        datasets = self.client.query("datasets:list", args)
+        if source_types:
+            datasets = [d for d in datasets if d["source_type"] in source_types]
+        return datasets
+
     def get_leaderboard(self) -> list[dict]:
         """Get current leaderboard."""
         return self.client.query("policies:leaderboard")
