@@ -92,7 +92,18 @@ export const listRounds = query({
           datasetRepo: session.dataset_repo,
           sessionMode: session.session_mode ?? "manual",
           roundIndex,
-          results: roundResults,
+          results: roundResults.sort((a, b) => {
+            // Policy A first, then policy B (if specified), then others
+            const aIsA = a.policyId === (args.policyIdA as string);
+            const bIsA = b.policyId === (args.policyIdA as string);
+            if (aIsA !== bIsA) return aIsA ? -1 : 1;
+            if (args.policyIdB) {
+              const aIsB = a.policyId === (args.policyIdB as string);
+              const bIsB = b.policyId === (args.policyIdB as string);
+              if (aIsB !== bIsB) return aIsB ? -1 : 1;
+            }
+            return 0;
+          }),
         });
       }
     }
