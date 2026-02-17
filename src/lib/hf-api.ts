@@ -60,7 +60,7 @@ export async function fetchDatasetInfo(
 ): Promise<DatasetInfo> {
   const [parquetResult, successMap] = await Promise.all([
     fetchParquetMetadata(datasetId),
-    fetchSuccessStatus(datasetId),
+    fetchSuccessStatus(datasetId).catch(() => new Map<number, boolean>()),
   ]);
 
   const episodes = parquetResult.episodes.map((ep) => ({

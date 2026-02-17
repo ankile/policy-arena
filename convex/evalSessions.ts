@@ -567,9 +567,11 @@ export const addRounds = mutation({
     }
 
     // 4. Update session metadata
+    const newNumRounds = session.num_rounds + BigInt(args.rounds.length);
     await ctx.db.patch(args.id, {
-      num_rounds: session.num_rounds + BigInt(args.rounds.length),
+      num_rounds: newNumRounds,
       policy_ids: updatedPolicyIds,
+      notes: `Eval: ${updatedPolicyIds.length} policies, ${newNumRounds} rounds`,
     });
 
     // 5. Apply ELO updates and update history
@@ -602,6 +604,19 @@ export const addRounds = mutation({
       }
     }
 
+    return args.id;
+  },
+});
+
+export const updateNotes = mutation({
+  args: {
+    id: v.id("evalSessions"),
+    notes: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.id);
+    if (!session) throw new Error("Session not found");
+    await ctx.db.patch(args.id, { notes: args.notes });
     return args.id;
   },
 });
