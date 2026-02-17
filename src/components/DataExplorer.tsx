@@ -560,6 +560,20 @@ export default function DataExplorer() {
     sourceFilter === "all" ? {} : { source_type: sourceFilter }
   );
 
+  // Check selectedRepoId FIRST — DatasetDetail fetches its own data from
+  // HuggingFace, so it doesn't need the Convex datasets list to be ready.
+  // This lets deep links render immediately without waiting for the unrelated query.
+  if (selectedRepoId) {
+    return (
+      <div style={{ animation: "fade-up 0.6s ease-out 0.1s both" }}>
+        <DatasetDetail
+          repoId={selectedRepoId}
+          onBack={() => setSelectedRepoId(null)}
+        />
+      </div>
+    );
+  }
+
   if (datasets === undefined) {
     return (
       <div
@@ -581,18 +595,6 @@ export default function DataExplorer() {
         style={{ animation: "fade-up 0.6s ease-out 0.3s both" }}
       >
         No datasets registered yet. Use <code className="font-mono text-xs bg-warm-100 px-1.5 py-0.5 rounded">--arena-url</code> when pushing datasets to register them.
-      </div>
-    );
-  }
-
-  // If a dataset is selected, show its detail view
-  if (selectedRepoId) {
-    return (
-      <div style={{ animation: "fade-up 0.6s ease-out 0.1s both" }}>
-        <DatasetDetail
-          repoId={selectedRepoId}
-          onBack={() => setSelectedRepoId(null)}
-        />
       </div>
     );
   }
