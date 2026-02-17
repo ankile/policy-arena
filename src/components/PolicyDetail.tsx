@@ -84,7 +84,14 @@ export default function PolicyDetail({
             <div className="flex gap-2">
               <dt className="text-ink-muted w-24 shrink-0">W&B Artifact</dt>
               <dd className="font-mono text-ink break-all">
-                {policy.wandb_artifact}
+                <a
+                  href={`https://wandb.ai/${policy.wandb_artifact.split("/").slice(0, 2).join("/")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-teal hover:underline"
+                >
+                  {policy.wandb_artifact}
+                </a>
               </dd>
             </div>
             {policy.wandb_run_url && (
@@ -144,9 +151,10 @@ export default function PolicyDetail({
           ) : (
             <div className="space-y-2">
               {sessions.slice(0, 5).map((session) => (
-                <div
+                <a
                   key={session._id}
-                  className="px-3 py-2 rounded-lg bg-white border border-warm-200 text-xs"
+                  href={`?tab=sessions&session=${session._id}`}
+                  className="block px-3 py-2 rounded-lg bg-white border border-warm-200 text-xs hover:border-teal/40 hover:shadow-sm transition-all"
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-mono text-ink-muted">
@@ -159,15 +167,10 @@ export default function PolicyDetail({
                       </span>
                     </div>
                   </div>
-                  <a
-                    href={`https://huggingface.co/datasets/${session.dataset_repo}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-teal hover:underline font-mono text-[11px]"
-                  >
+                  <span className="text-teal font-mono text-[11px]">
                     {session.dataset_repo}
-                  </a>
-                </div>
+                  </span>
+                </a>
               ))}
             </div>
           )}
