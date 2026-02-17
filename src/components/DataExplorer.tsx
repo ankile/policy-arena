@@ -115,6 +115,7 @@ function VideoGrid({
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
   const primaryRef = useRef<HTMLVideoElement | null>(null);
   const animFrameRef = useRef<number>(0);
+  const [videoReady, setVideoReady] = useState<Record<string, boolean>>({});
 
   const setVideoRef = useCallback(
     (index: number) => (el: HTMLVideoElement | null) => {
@@ -180,8 +181,14 @@ function VideoGrid({
               onLoadedMetadata={(e) => {
                 (e.target as HTMLVideoElement).currentTime =
                   episode.fromTimestamp;
+                setVideoReady((prev) => ({ ...prev, [key]: true }));
               }}
             />
+            {!videoReady[key] && (
+              <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-warm-100">
+                <div className="w-5 h-5 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
+              </div>
+            )}
             <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/60 text-white text-[11px] font-mono">
               {cameraDisplayName(key)}
             </span>
