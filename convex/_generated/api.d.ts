@@ -12,6 +12,7 @@ import type * as datasets from "../datasets.js";
 import type * as elo from "../elo.js";
 import type * as eloHistory from "../eloHistory.js";
 import type * as evalSessions from "../evalSessions.js";
+import type * as pairings from "../pairings.js";
 import type * as policies from "../policies.js";
 import type * as recommendations from "../recommendations.js";
 import type * as roundResults from "../roundResults.js";
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   elo: typeof elo;
   eloHistory: typeof eloHistory;
   evalSessions: typeof evalSessions;
+  pairings: typeof pairings;
   policies: typeof policies;
   recommendations: typeof recommendations;
   roundResults: typeof roundResults;

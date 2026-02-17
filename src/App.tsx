@@ -3,6 +3,7 @@ import { api } from "../convex/_generated/api";
 
 import DataExplorer from "./components/DataExplorer";
 import EvalSessions from "./components/EvalSessions";
+import Pairings from "./components/Pairings";
 import PolicyDetail from "./components/PolicyDetail";
 import { useSearchParam, useSearchParamNullable, clearSearchParams } from "./lib/useSearchParam";
 
@@ -75,7 +76,7 @@ function EnvironmentTag({ env }: { env: string }) {
   );
 }
 
-type Tab = "leaderboard" | "sessions" | "explorer";
+type Tab = "leaderboard" | "sessions" | "pairings" | "explorer";
 
 type TabConfig = { id: Tab; label: string };
 
@@ -91,7 +92,7 @@ function App() {
   );
 
   const setActiveTab = (tab: string) => {
-    clearSearchParams("policy", "session", "mode", "round", "source", "task", "dataset", "episode", "outcome", "env");
+    clearSearchParams("policy", "session", "mode", "round", "source", "task", "dataset", "episode", "outcome", "env", "policyFilter", "pairingA", "pairingB", "pSession", "pRound");
     setActiveTabRaw(tab);
   };
 
@@ -105,6 +106,7 @@ function App() {
   const tabs: TabConfig[] = [
     { id: "leaderboard", label: "Leaderboard" },
     { id: "sessions", label: "Eval Sessions" },
+    { id: "pairings", label: "Pairings" },
     { id: "explorer", label: "Data Explorer" },
   ];
 
@@ -401,6 +403,8 @@ function App() {
         )}
 
         {activeTab === "sessions" && <EvalSessions />}
+
+        {activeTab === "pairings" && <Pairings />}
 
         {activeTab === "explorer" && <DataExplorer />}
 

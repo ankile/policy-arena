@@ -53,6 +53,13 @@ export const leaderboard = query({
   },
 });
 
+export const listNames = query({
+  handler: async (ctx) => {
+    const policies = await ctx.db.query("policies").collect();
+    return policies.map((p) => ({ _id: p._id, name: p.name, environment: p.environment }));
+  },
+});
+
 export const get = query({
   args: { id: v.id("policies") },
   handler: async (ctx, args) => {
