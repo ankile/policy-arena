@@ -1,7 +1,54 @@
+import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
-import FailureAnalysis from "./FailureAnalysis";
+import RolloutSection from "./RolloutSection";
+
+function CollapsibleSection({
+  title,
+  count,
+  countColor,
+  isOpen,
+  onToggle,
+  children,
+}: {
+  title: string;
+  count: number | undefined;
+  countColor: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <button
+        onClick={onToggle}
+        className="flex items-center gap-2 w-full text-left cursor-pointer group"
+      >
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          className={`text-ink-muted transition-transform ${isOpen ? "rotate-90" : ""}`}
+        >
+          <polygon points="8,4 20,12 8,20" />
+        </svg>
+        <span className="text-sm font-medium text-ink group-hover:text-teal transition-colors">
+          {title}
+        </span>
+        {count !== undefined && (
+          <span
+            className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${countColor}`}
+          >
+            {count}
+          </span>
+        )}
+      </button>
+      {isOpen && children}
+    </div>
+  );
+}
 
 export default function PolicyDetail({
   policyId,
@@ -15,6 +62,15 @@ export default function PolicyDetail({
   const eloHistory = useQuery(api.eloHistory.getByPolicy, {
     policy_id: policyId,
   });
+  const recentResults = useQuery(api.roundResults.getRecentByPolicy, {
+    policy_id: policyId,
+  });
+  const failureResults = useQuery(api.roundResults.getFailuresByPolicy, {
+    policy_id: policyId,
+  });
+
+  const [rolloutsOpen, setRolloutsOpen] = useState(false);
+  const [failuresOpen, setFailuresOpen] = useState(false);
 
   if (!policy) return null;
 
@@ -118,9 +174,33 @@ export default function PolicyDetail({
         </div>
       </div>
 
-      {/* Failure Analysis */}
-      <div className="mt-5 pt-5 border-t border-warm-200">
-        <FailureAnalysis policyId={policyId} />
+      {/* Rollout sections */}
+      <div className="mt-5 pt-5 border-t border-warm-200 space-y-3">
+        <CollapsibleSection
+          title="Recent Rollouts"
+          count={recentResults?.length}
+          countColor="bg-teal-light text-teal"
+          isOpen={rolloutsOpen}
+          onToggle={() => setRolloutsOpen((o) => !o)}
+        >
+          <RolloutSection
+            results={recentResults ?? []}
+            isOpen={rolloutsOpen}
+          />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          title="Failures"
+          count={failureResults?.length}
+          countColor="bg-coral-light text-coral"
+          isOpen={failuresOpen}
+          onToggle={() => setFailuresOpen((o) => !o)}
+        >
+          <RolloutSection
+            results={failureResults ?? []}
+            isOpen={failuresOpen}
+          />
+        </CollapsibleSection>
       </div>
     </div>
   );

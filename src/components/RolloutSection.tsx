@@ -1,18 +1,17 @@
 import { useState, useEffect, useRef } from "react";
-import { useQuery } from "convex/react";
-import { api } from "../../convex/_generated/api";
-import type { Id } from "../../convex/_generated/dataModel";
 import {
   fetchDatasetInfo,
   getVideoUrl,
   type EpisodeMetadata,
 } from "../lib/hf-api";
+import type { Id } from "../../convex/_generated/dataModel";
 
-interface FailureResult {
+export interface RolloutResult {
   session_id: Id<"evalSessions">;
   dataset_repo: string;
   round_index: number;
   episode_index: number;
+  success: boolean;
   num_frames: number | null;
   session_creation_time: number;
 }
@@ -22,13 +21,13 @@ interface DatasetCache {
   cameraKey: string;
 }
 
-function FailureVideoCard({
-  failure,
+function RolloutVideoCard({
+  result,
   datasetCache,
   onClick,
   isExpanded,
 }: {
-  failure: FailureResult;
+  result: RolloutResult;
   datasetCache: DatasetCache | null;
   onClick: () => void;
   isExpanded: boolean;
@@ -37,7 +36,7 @@ function FailureVideoCard({
   const animFrameRef = useRef<number>(0);
   const [playing, setPlaying] = useState(false);
 
-  const episode = datasetCache?.episodeMap.get(failure.episode_index);
+  const episode = datasetCache?.episodeMap.get(result.episode_index);
 
   useEffect(() => {
     if (!playing || !videoRef.current || !episode) return;
@@ -87,7 +86,7 @@ function FailureVideoCard({
           src={getVideoUrl(
             datasetCache.cameraKey,
             episode.videoFileIndex,
-            failure.dataset_repo
+            result.dataset_repo
           )}
           className="w-full bg-warm-100"
           muted
@@ -99,21 +98,27 @@ function FailureVideoCard({
         />
         {/* Overlay badges */}
         <div className="absolute bottom-2 left-2 flex items-center gap-1.5">
-          <span className="px-1.5 py-0.5 rounded bg-red-500/80 text-white text-[10px] font-medium">
-            FAIL
-          </span>
+          {result.success ? (
+            <span className="px-1.5 py-0.5 rounded bg-emerald-500/80 text-white text-[10px] font-medium">
+              OK
+            </span>
+          ) : (
+            <span className="px-1.5 py-0.5 rounded bg-red-500/80 text-white text-[10px] font-medium">
+              FAIL
+            </span>
+          )}
           <span className="px-1.5 py-0.5 rounded bg-black/50 text-white/80 text-[10px] font-mono">
-            R{failure.round_index}
+            R{result.round_index}
           </span>
-          {failure.num_frames != null && (
+          {result.num_frames != null && (
             <span className="px-1.5 py-0.5 rounded bg-black/40 text-white/80 text-[10px] font-mono">
-              {failure.num_frames} steps
+              {result.num_frames} steps
             </span>
           )}
         </div>
         <div className="absolute top-2 right-2">
           <span className="px-1.5 py-0.5 rounded bg-black/40 text-white/70 text-[9px] font-mono">
-            Ep {failure.episode_index}
+            Ep {result.episode_index}
           </span>
         </div>
       </div>
@@ -123,16 +128,16 @@ function FailureVideoCard({
           <div className="flex items-center justify-between mb-2">
             <div className="text-xs text-ink-muted">
               <span className="font-mono">
-                {new Date(failure.session_creation_time).toLocaleDateString()}
+                {new Date(result.session_creation_time).toLocaleDateString()}
               </span>
               <span className="mx-1.5">&middot;</span>
               <a
-                href={`https://huggingface.co/datasets/${failure.dataset_repo}`}
+                href={`https://huggingface.co/datasets/${result.dataset_repo}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-teal hover:underline font-mono"
               >
-                {failure.dataset_repo}
+                {result.dataset_repo}
               </a>
             </div>
             <button
@@ -187,25 +192,24 @@ function FailureVideoCard({
   );
 }
 
-export default function FailureAnalysis({
-  policyId,
+export default function RolloutSection({
+  results,
+  isOpen,
 }: {
-  policyId: Id<"policies">;
+  results: RolloutResult[];
+  isOpen: boolean;
 }) {
-  const failures = useQuery(api.roundResults.getFailuresByPolicy, {
-    policy_id: policyId,
-  });
   const [datasetCaches, setDatasetCaches] = useState<
     Map<string, DatasetCache>
   >(new Map());
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Fetch dataset info for all unique datasets
+  // Fetch dataset info for all unique datasets — only when section is open
   useEffect(() => {
-    if (!failures || failures.length === 0) return;
+    if (!isOpen || results.length === 0) return;
 
-    const uniqueRepos = [...new Set(failures.map((f) => f.dataset_repo))];
+    const uniqueRepos = [...new Set(results.map((f) => f.dataset_repo))];
     const missing = uniqueRepos.filter((repo) => !datasetCaches.has(repo));
     if (missing.length === 0) return;
 
@@ -224,10 +228,10 @@ export default function FailureAnalysis({
         return [repo, { episodeMap, cameraKey }] as const;
       })
     )
-      .then((results) => {
+      .then((fetched) => {
         setDatasetCaches((prev) => {
           const next = new Map(prev);
-          for (const [repo, cache] of results) {
+          for (const [repo, cache] of fetched) {
             next.set(repo, cache);
           }
           return next;
@@ -237,49 +241,36 @@ export default function FailureAnalysis({
         // Dataset fetch failed — cards will show "Loading..."
       })
       .finally(() => setLoading(false));
-  }, [failures]);
+  }, [isOpen, results]);
 
-  if (failures === undefined) {
-    return (
-      <div className="text-xs text-ink-muted flex items-center gap-2">
-        <div className="w-3 h-3 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
-        Loading failure data...
-      </div>
-    );
-  }
+  if (!isOpen) return null;
 
-  if (failures.length === 0) {
+  if (results.length === 0) {
     return (
-      <div className="text-xs text-ink-muted">
-        No failure episodes recorded.
+      <div className="text-xs text-ink-muted py-2">
+        No episodes recorded.
       </div>
     );
   }
 
   // Group by dataset for display
-  const grouped = new Map<string, FailureResult[]>();
-  for (const f of failures) {
-    const key = f.dataset_repo;
+  const grouped = new Map<string, RolloutResult[]>();
+  for (const r of results) {
+    const key = r.dataset_repo;
     if (!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key)!.push(f);
+    grouped.get(key)!.push(r);
   }
 
-  // Flat list for indexing
-  const allFailures = failures;
-
   return (
-    <div>
-      <div className="flex items-center gap-2 mb-3">
-        <h3 className="text-sm font-medium text-ink">Failure Analysis</h3>
-        <span className="px-2 py-0.5 rounded-full bg-coral-light text-coral text-[11px] font-medium">
-          {failures.length} failure{failures.length !== 1 ? "s" : ""}
-        </span>
-        {loading && (
+    <div className="pt-3">
+      {loading && (
+        <div className="flex items-center gap-2 mb-3 text-xs text-ink-muted">
           <div className="w-3 h-3 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
-        )}
-      </div>
+          Loading video data...
+        </div>
+      )}
 
-      {Array.from(grouped.entries()).map(([repo, repoFailures]) => (
+      {Array.from(grouped.entries()).map(([repo, repoResults]) => (
         <div key={repo} className="mb-4">
           <div className="flex items-center gap-2 mb-2">
             <a
@@ -291,17 +282,17 @@ export default function FailureAnalysis({
               {repo}
             </a>
             <span className="text-[11px] text-ink-muted">
-              ({repoFailures.length} failure
-              {repoFailures.length !== 1 ? "s" : ""})
+              ({repoResults.length} episode
+              {repoResults.length !== 1 ? "s" : ""})
             </span>
           </div>
           <div className="grid grid-cols-3 gap-2">
-            {repoFailures.map((failure) => {
-              const globalIdx = allFailures.indexOf(failure);
+            {repoResults.map((result) => {
+              const globalIdx = results.indexOf(result);
               return (
-                <FailureVideoCard
-                  key={`${failure.session_id}-${failure.episode_index}`}
-                  failure={failure}
+                <RolloutVideoCard
+                  key={`${result.session_id}-${result.episode_index}`}
+                  result={result}
                   datasetCache={datasetCaches.get(repo) ?? null}
                   onClick={() =>
                     setExpandedIdx(
