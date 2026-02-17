@@ -11,7 +11,9 @@ export default defineSchema({
     wins: v.int64(),
     losses: v.int64(),
     draws: v.int64(),
-  }).index("by_artifact", ["wandb_artifact"]),
+  })
+    .index("by_artifact", ["wandb_artifact"])
+    .index("by_environment", ["environment"]),
 
   evalSessions: defineTable({
     dataset_repo: v.string(),

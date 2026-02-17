@@ -1,10 +1,25 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
-export const leaderboard = query({
-  args: {},
+export const environments = query({
   handler: async (ctx) => {
     const policies = await ctx.db.query("policies").collect();
+    return [...new Set(policies.map((p) => p.environment))].sort();
+  },
+});
+
+export const leaderboard = query({
+  args: { environment: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    let policies;
+    if (args.environment) {
+      policies = await ctx.db
+        .query("policies")
+        .withIndex("by_environment", (q) => q.eq("environment", args.environment!))
+        .collect();
+    } else {
+      policies = await ctx.db.query("policies").collect();
+    }
 
     const enriched = await Promise.all(
       policies.map(async (policy) => {

@@ -80,12 +80,18 @@ type Tab = "leaderboard" | "sessions" | "explorer";
 type TabConfig = { id: Tab; label: string };
 
 function App() {
-  const policies = useQuery(api.policies.leaderboard);
   const [activeTab, setActiveTabRaw] = useSearchParam("tab", "leaderboard");
+  const [selectedEnv, setSelectedEnv] = useSearchParam("env", "all");
   const [expandedPolicy, setExpandedPolicy] = useSearchParamNullable("policy");
 
+  const envList = useQuery(api.policies.environments);
+  const policies = useQuery(
+    api.policies.leaderboard,
+    selectedEnv === "all" ? {} : { environment: selectedEnv },
+  );
+
   const setActiveTab = (tab: string) => {
-    clearSearchParams("policy", "session", "mode", "round", "source", "task", "dataset", "episode", "outcome");
+    clearSearchParams("policy", "session", "mode", "round", "source", "task", "dataset", "episode", "outcome", "env");
     setActiveTabRaw(tab);
   };
 
@@ -164,6 +170,28 @@ function App() {
 
         {activeTab === "leaderboard" && (
           <>
+            {/* Environment filter */}
+            {envList && envList.length > 1 && (
+              <div
+                className="flex gap-2 mb-6 flex-wrap"
+                style={{ animation: "fade-up 0.6s ease-out 0.12s both" }}
+              >
+                {["all", ...envList].map((env) => (
+                  <button
+                    key={env}
+                    onClick={() => setSelectedEnv(env)}
+                    className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-150 cursor-pointer border ${
+                      selectedEnv === env
+                        ? "bg-teal text-white border-teal shadow-sm"
+                        : "bg-white text-ink-muted border-warm-200 hover:border-teal/40 hover:text-ink"
+                    }`}
+                  >
+                    {env === "all" ? "All Tasks" : env}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Stats summary */}
             <div
               className="grid grid-cols-3 gap-4 mb-10"
