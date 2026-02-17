@@ -85,7 +85,14 @@ export default function PolicyDetail({
               <dt className="text-ink-muted w-24 shrink-0">W&B Artifact</dt>
               <dd className="font-mono text-ink break-all">
                 <a
-                  href={`https://wandb.ai/${policy.wandb_artifact.split("/").slice(0, 2).join("/")}`}
+                  href={(() => {
+                    const [entity, project, rest] = [
+                      ...policy.wandb_artifact.split("/").slice(0, 2),
+                      policy.wandb_artifact.split("/").slice(2).join("/"),
+                    ];
+                    const [name, version] = rest.split(":");
+                    return `https://wandb.ai/${entity}/${project}/artifacts/policy/${name}/${version}`;
+                  })()}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-teal hover:underline"
