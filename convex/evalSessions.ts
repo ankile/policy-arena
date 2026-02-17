@@ -420,6 +420,192 @@ export const deleteSession = mutation({
   },
 });
 
+export const addRounds = mutation({
+  args: {
+    id: v.id("evalSessions"),
+    policies: v.array(
+      v.object({
+        name: v.string(),
+        wandb_artifact: v.string(),
+        wandb_run_url: v.optional(v.string()),
+        environment: v.string(),
+      })
+    ),
+    rounds: v.array(
+      v.object({
+        round_index: v.int64(),
+        results: v.array(
+          v.object({
+            wandb_artifact: v.string(),
+            success: v.boolean(),
+            episode_index: v.int64(),
+            num_frames: v.optional(v.int64()),
+          })
+        ),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.id);
+    if (!session) throw new Error("Session not found");
+
+    // 1. Register/upsert all policies
+    const artifactToId = new Map<string, Id<"policies">>();
+    for (const p of args.policies) {
+      const existing = await ctx.db
+        .query("policies")
+        .withIndex("by_artifact", (q) =>
+          q.eq("wandb_artifact", p.wandb_artifact)
+        )
+        .unique();
+
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          name: p.name,
+          wandb_run_url: p.wandb_run_url,
+          environment: p.environment,
+        });
+        artifactToId.set(p.wandb_artifact, existing._id);
+      } else {
+        const id = await ctx.db.insert("policies", {
+          name: p.name,
+          wandb_artifact: p.wandb_artifact,
+          wandb_run_url: p.wandb_run_url,
+          environment: p.environment,
+          elo: 1500,
+          wins: BigInt(0),
+          losses: BigInt(0),
+          draws: BigInt(0),
+        });
+        artifactToId.set(p.wandb_artifact, id);
+      }
+    }
+
+    // 2. Expand session's policy_ids if new policies appeared
+    const existingPolicyIds = new Set(session.policy_ids.map(String));
+    const updatedPolicyIds = [...session.policy_ids];
+    for (const [, id] of artifactToId) {
+      if (!existingPolicyIds.has(String(id))) {
+        updatedPolicyIds.push(id);
+      }
+    }
+
+    // 3. Insert round results and compute ELO updates for new rounds only
+    const eloDeltas = new Map<Id<"policies">, number>();
+    const winDeltas = new Map<Id<"policies">, bigint>();
+    const lossDeltas = new Map<Id<"policies">, bigint>();
+    const drawDeltas = new Map<Id<"policies">, bigint>();
+
+    for (const round of args.rounds) {
+      for (const result of round.results) {
+        const policyId = artifactToId.get(result.wandb_artifact)!;
+        if (!eloDeltas.has(policyId)) {
+          eloDeltas.set(policyId, 0);
+          winDeltas.set(policyId, BigInt(0));
+          lossDeltas.set(policyId, BigInt(0));
+          drawDeltas.set(policyId, BigInt(0));
+        }
+
+        await ctx.db.insert("roundResults", {
+          session_id: args.id,
+          round_index: BigInt(Number(round.round_index)),
+          policy_id: policyId,
+          success: result.success,
+          episode_index: BigInt(Number(result.episode_index)),
+          ...(result.num_frames != null
+            ? { num_frames: BigInt(Number(result.num_frames)) }
+            : {}),
+        });
+      }
+
+      // Compute pairwise ELO updates for this round
+      const roundResults = round.results.map((r) => ({
+        policyId: artifactToId.get(r.wandb_artifact)!,
+        success: r.success,
+      }));
+
+      for (let i = 0; i < roundResults.length; i++) {
+        for (let j = i + 1; j < roundResults.length; j++) {
+          const a = roundResults[i];
+          const b = roundResults[j];
+
+          const policyA = (await ctx.db.get(a.policyId))!;
+          const policyB = (await ctx.db.get(b.policyId))!;
+          const ratingA = policyA.elo + eloDeltas.get(a.policyId)!;
+          const ratingB = policyB.elo + eloDeltas.get(b.policyId)!;
+
+          if (a.success && !b.success) {
+            winDeltas.set(a.policyId, winDeltas.get(a.policyId)! + BigInt(1));
+            lossDeltas.set(
+              b.policyId,
+              lossDeltas.get(b.policyId)! + BigInt(1)
+            );
+            const [newA, newB] = computeEloUpdate(ratingA, ratingB, 1);
+            eloDeltas.set(a.policyId, newA - policyA.elo);
+            eloDeltas.set(b.policyId, newB - policyB.elo);
+          } else if (!a.success && b.success) {
+            lossDeltas.set(
+              a.policyId,
+              lossDeltas.get(a.policyId)! + BigInt(1)
+            );
+            winDeltas.set(b.policyId, winDeltas.get(b.policyId)! + BigInt(1));
+            const [newA, newB] = computeEloUpdate(ratingA, ratingB, 0);
+            eloDeltas.set(a.policyId, newA - policyA.elo);
+            eloDeltas.set(b.policyId, newB - policyB.elo);
+          } else {
+            drawDeltas.set(
+              a.policyId,
+              drawDeltas.get(a.policyId)! + BigInt(1)
+            );
+            drawDeltas.set(
+              b.policyId,
+              drawDeltas.get(b.policyId)! + BigInt(1)
+            );
+          }
+        }
+      }
+    }
+
+    // 4. Update session metadata
+    await ctx.db.patch(args.id, {
+      num_rounds: session.num_rounds + BigInt(args.rounds.length),
+      policy_ids: updatedPolicyIds,
+    });
+
+    // 5. Apply ELO updates and update history
+    for (const [id, delta] of eloDeltas) {
+      const policy = (await ctx.db.get(id))!;
+      const newElo =
+        Math.round((policy.elo + delta) * 100) / 100;
+      await ctx.db.patch(id, {
+        elo: newElo,
+        wins: policy.wins + winDeltas.get(id)!,
+        losses: policy.losses + lossDeltas.get(id)!,
+        draws: policy.draws + drawDeltas.get(id)!,
+      });
+
+      // Update or create eloHistory entry for this session
+      const historyEntries = await ctx.db
+        .query("eloHistory")
+        .withIndex("by_policy", (q) => q.eq("policy_id", id))
+        .collect();
+      const existing = historyEntries.find((e) => e.session_id === args.id);
+
+      if (existing) {
+        await ctx.db.patch(existing._id, { elo: newElo });
+      } else {
+        await ctx.db.insert("eloHistory", {
+          policy_id: id,
+          elo: newElo,
+          session_id: args.id,
+        });
+      }
+    }
+
+    return args.id;
+  },
+});
+
 export const getByPolicy = query({
   args: { policy_id: v.id("policies") },
   handler: async (ctx, args) => {

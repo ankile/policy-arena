@@ -61,6 +61,22 @@ class PolicyArenaClient:
 
         return random.sample(candidates, num_opponents)
 
+    def add_rounds(
+        self,
+        session_id: str,
+        policies: list[PolicyInput],
+        rounds: list[RoundInput],
+    ) -> str:
+        """Append rounds to an existing eval session and update ELO."""
+        return self.client.mutation(
+            "evalSessions:addRounds",
+            {
+                "id": session_id,
+                "policies": [p.to_dict() for p in policies],
+                "rounds": [r.to_dict() for r in rounds],
+            },
+        )
+
     def delete_session(self, session_id: str) -> dict:
         """Delete an eval session and recompute ELO for all policies."""
         return self.client.mutation(
