@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useSearchParam, useSearchParamNullable, useSearchParamNumber, clearSearchParams } from "../lib/useSearchParam";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import {
   fetchDatasetInfo,
@@ -308,6 +308,7 @@ function DatasetDetail({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [episodeFilter, setEpisodeFilter] = useSearchParam("outcome", "all");
+  const updateEpisodeCount = useMutation(api.datasets.updateEpisodeCount);
 
   const prevRepoId = useRef(repoId);
   useEffect(() => {
@@ -329,6 +330,8 @@ function DatasetDetail({
         const cams = leftCams.length > 0 ? leftCams : info.cameraKeys;
         setCameraKeys(sortCameraKeys(cams));
         setLoading(false);
+        // Sync episode count back to database so the list view stays up-to-date
+        updateEpisodeCount({ repo_id: repoId, num_episodes: BigInt(info.episodes.length) });
       })
       .catch((err) => {
         setError(err.message);
