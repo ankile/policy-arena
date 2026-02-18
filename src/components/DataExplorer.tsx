@@ -331,7 +331,7 @@ function DatasetDetail({
         setCameraKeys(sortCameraKeys(cams));
         setLoading(false);
         // Sync episode count back to database so the list view stays up-to-date
-        updateEpisodeCount({ repo_id: repoId, num_episodes: BigInt(info.episodes.length) });
+        updateEpisodeCount({ repo_id: repoId, num_episodes: info.episodes.length });
       })
       .catch((err) => {
         setError(err.message);

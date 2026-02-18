@@ -28,15 +28,17 @@ export const register = mutation({
 export const updateEpisodeCount = mutation({
   args: {
     repo_id: v.string(),
-    num_episodes: v.int64(),
+    num_episodes: v.number(),
   },
   handler: async (ctx, args) => {
     const dataset = await ctx.db
       .query("datasets")
       .withIndex("by_repo", (q) => q.eq("repo_id", args.repo_id))
       .unique();
-    if (dataset && dataset.num_episodes !== args.num_episodes) {
-      await ctx.db.patch(dataset._id, { num_episodes: args.num_episodes });
+    if (!dataset) return;
+    const count = BigInt(args.num_episodes);
+    if (dataset.num_episodes !== count) {
+      await ctx.db.patch(dataset._id, { num_episodes: count });
     }
   },
 });
