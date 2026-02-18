@@ -38,6 +38,12 @@ function RolloutVideoCard({
 
   const episode = datasetCache?.episodeMap.get(result.episode_index);
 
+  // Auto-play when expanded
+  useEffect(() => {
+    if (isExpanded && episode) setPlaying(true);
+    if (!isExpanded) setPlaying(false);
+  }, [isExpanded, episode]);
+
   useEffect(() => {
     if (!playing || !videoRef.current || !episode) return;
 
