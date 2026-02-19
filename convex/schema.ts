@@ -47,6 +47,7 @@ export default defineSchema({
     source_type: v.string(), // "teleop" | "rollout" | "dagger" | "eval"
     environment: v.string(),
     num_episodes: v.optional(v.int64()),
+    total_duration_seconds: v.optional(v.float64()),
     wandb_artifact: v.optional(v.string()),
     notes: v.optional(v.string()),
   })

@@ -60,6 +60,12 @@ function formatDuration(seconds: number): string {
   return `${s.toFixed(1)}s`;
 }
 
+function formatDurationLong(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  if (seconds < 3600) return `${(seconds / 60).toFixed(1)} min`;
+  return `${(seconds / 3600).toFixed(1)} hrs`;
+}
+
 function SourceTypeBadge({ type }: { type: string }) {
   const colors: Record<string, string> = {
     teleop: "bg-blue-100 text-blue-700",
@@ -308,7 +314,7 @@ function DatasetDetail({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [episodeFilter, setEpisodeFilter] = useSearchParam("outcome", "all");
-  const updateEpisodeCount = useMutation(api.datasets.updateEpisodeCount);
+  const updateStats = useMutation(api.datasets.updateStats);
 
   const prevRepoId = useRef(repoId);
   useEffect(() => {
@@ -330,8 +336,13 @@ function DatasetDetail({
         const cams = leftCams.length > 0 ? leftCams : info.cameraKeys;
         setCameraKeys(sortCameraKeys(cams));
         setLoading(false);
-        // Sync episode count back to database so the list view stays up-to-date
-        updateEpisodeCount({ repo_id: repoId, num_episodes: info.episodes.length });
+        // Sync episode count and duration back to database so the list view stays up-to-date
+        const totalDuration = info.episodes.reduce((sum, ep) => sum + ep.duration, 0);
+        updateStats({
+          repo_id: repoId,
+          num_episodes: info.episodes.length,
+          total_duration_seconds: totalDuration,
+        });
       })
       .catch((err) => {
         setError(err.message);
@@ -430,6 +441,10 @@ function DatasetDetail({
         <div className="flex gap-4 mb-6">
           {[
             { label: "Episodes", value: episodes.length.toString() },
+            {
+              label: "Duration",
+              value: formatDurationLong(episodes.reduce((s, e) => s + e.duration, 0)),
+            },
             {
               label: "Success Rate",
               value:
@@ -701,6 +716,24 @@ export default function DataExplorer() {
         )}
       </div>
 
+      {/* Aggregate summary */}
+      {filteredDatasets.length > 0 && (() => {
+        const totalEpisodes = filteredDatasets.reduce(
+          (sum, d) => sum + (d.num_episodes != null ? Number(d.num_episodes) : 0),
+          0
+        );
+        const totalDuration = filteredDatasets.reduce(
+          (sum, d) => sum + (d.total_duration_seconds ?? 0),
+          0
+        );
+        return (
+          <div className="text-xs text-ink-muted font-mono">
+            {filteredDatasets.length} datasets · {totalEpisodes} episodes
+            {totalDuration > 0 && ` · ${formatDurationLong(totalDuration)}`}
+          </div>
+        );
+      })()}
+
       {/* Dataset list */}
       {filteredDatasets.length === 0 ? (
         <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8 text-center text-ink-muted">
@@ -727,6 +760,8 @@ export default function DataExplorer() {
                     {dataset.num_episodes != null && Number(dataset.num_episodes) > 0 && (
                       <span className="font-mono">
                         {Number(dataset.num_episodes)} episodes
+                        {dataset.total_duration_seconds != null &&
+                          ` · ${formatDurationLong(dataset.total_duration_seconds)}`}
                       </span>
                     )}
                     {dataset.wandb_artifact && (

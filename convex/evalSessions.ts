@@ -197,9 +197,14 @@ export const list = query({
             return policy?.name ?? "Unknown";
           })
         );
+        const dataset = await ctx.db
+          .query("datasets")
+          .withIndex("by_repo", (q) => q.eq("repo_id", session.dataset_repo))
+          .unique();
         return {
           ...session,
           policyNames,
+          task: dataset?.task ?? null,
         };
       })
     );

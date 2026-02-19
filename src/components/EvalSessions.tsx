@@ -251,6 +251,7 @@ export default function EvalSessions() {
   const sessions = useQuery(api.evalSessions.list);
   const [expandedSession, setExpandedSessionRaw] = useSearchParamNullable("session");
   const [modeFilter, setModeFilter] = useSearchParam("mode", "all");
+  const [taskFilter, setTaskFilter] = useSearchParam("task", "all");
 
   const setExpandedSession = (id: string | null) => {
     if (id === null) clearSearchParams("round");
@@ -282,10 +283,15 @@ export default function EvalSessions() {
     );
   }
 
-  const filteredSessions =
+  const modeFiltered =
     modeFilter === "all"
       ? sessions
       : sessions.filter((s) => (s.session_mode ?? "manual") === modeFilter);
+
+  const filteredSessions =
+    taskFilter === "all"
+      ? modeFiltered
+      : modeFiltered.filter((s) => s.task === taskFilter);
 
   // Count sessions per mode for the filter badges
   const modeCounts = new Map<string, number>();
@@ -294,40 +300,84 @@ export default function EvalSessions() {
     modeCounts.set(mode, (modeCounts.get(mode) ?? 0) + 1);
   }
 
+  // Unique tasks for filter pills (from mode-filtered sessions)
+  const allTasks = [...new Set(modeFiltered.map((s) => s.task).filter(Boolean) as string[])].sort();
+
   return (
     <div
       className="space-y-4"
       style={{ animation: "fade-up 0.6s ease-out 0.3s both" }}
     >
-      {/* Filter bar */}
-      <div className="flex items-center gap-2">
-        {SESSION_MODE_FILTERS.map((filter) => {
-          const count =
-            filter.id === "all"
-              ? sessions.length
-              : modeCounts.get(filter.id) ?? 0;
-          const isActive = modeFilter === filter.id;
-          return (
+      {/* Filter bars */}
+      <div className="flex flex-wrap items-center gap-4">
+        {/* Mode filter */}
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium mr-1">
+            Mode
+          </span>
+          {SESSION_MODE_FILTERS.map((filter) => {
+            const count =
+              filter.id === "all"
+                ? sessions.length
+                : modeCounts.get(filter.id) ?? 0;
+            const isActive = modeFilter === filter.id;
+            return (
+              <button
+                key={filter.id}
+                onClick={() => setModeFilter(filter.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                  isActive
+                    ? "bg-teal text-white shadow-sm"
+                    : "bg-white border border-warm-200 text-ink-muted hover:border-warm-300 hover:text-ink"
+                }`}
+              >
+                {filter.label}
+                <span
+                  className={`font-mono text-[10px] ${
+                    isActive ? "text-white/70" : "text-ink-muted/60"
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Task filter */}
+        {allTasks.length > 1 && (
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium mr-1">
+              Task
+            </span>
             <button
-              key={filter.id}
-              onClick={() => setModeFilter(filter.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                isActive
+              onClick={() => setTaskFilter("all")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                taskFilter === "all"
                   ? "bg-teal text-white shadow-sm"
                   : "bg-white border border-warm-200 text-ink-muted hover:border-warm-300 hover:text-ink"
               }`}
             >
-              {filter.label}
-              <span
-                className={`font-mono text-[10px] ${
-                  isActive ? "text-white/70" : "text-ink-muted/60"
-                }`}
-              >
-                {count}
-              </span>
+              All
             </button>
-          );
-        })}
+            {allTasks.map((task) => {
+              const isActive = taskFilter === task;
+              return (
+                <button
+                  key={task}
+                  onClick={() => setTaskFilter(task)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                    isActive
+                      ? "bg-teal text-white shadow-sm"
+                      : "bg-white border border-warm-200 text-ink-muted hover:border-warm-300 hover:text-ink"
+                  }`}
+                >
+                  {task}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {filteredSessions.length === 0 ? (
