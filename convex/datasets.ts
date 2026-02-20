@@ -30,6 +30,11 @@ export const updateStats = mutation({
     repo_id: v.string(),
     num_episodes: v.number(),
     total_duration_seconds: v.number(),
+    num_success: v.optional(v.number()),
+    num_failure: v.optional(v.number()),
+    num_human_frames: v.optional(v.number()),
+    num_policy_frames: v.optional(v.number()),
+    num_autonomous_success: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const dataset = await ctx.db
@@ -37,11 +42,27 @@ export const updateStats = mutation({
       .withIndex("by_repo", (q) => q.eq("repo_id", args.repo_id))
       .unique();
     if (!dataset) return;
-    const count = BigInt(args.num_episodes);
     const patch: Record<string, unknown> = {};
+
+    const count = BigInt(args.num_episodes);
     if (dataset.num_episodes !== count) patch.num_episodes = count;
     if (dataset.total_duration_seconds !== args.total_duration_seconds)
       patch.total_duration_seconds = args.total_duration_seconds;
+
+    for (const field of [
+      "num_success",
+      "num_failure",
+      "num_human_frames",
+      "num_policy_frames",
+      "num_autonomous_success",
+    ] as const) {
+      const val = args[field];
+      if (val != null) {
+        const bigVal = BigInt(val);
+        if (dataset[field] !== bigVal) patch[field] = bigVal;
+      }
+    }
+
     if (Object.keys(patch).length > 0) {
       await ctx.db.patch(dataset._id, patch);
     }

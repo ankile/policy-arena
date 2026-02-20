@@ -66,6 +66,11 @@ function formatDurationLong(seconds: number): string {
   return `${(seconds / 3600).toFixed(1)} hrs`;
 }
 
+function formatFrameCount(count: number): string {
+  if (count >= 1000) return `${(count / 1000).toFixed(1)}k`;
+  return count.toString();
+}
+
 function SourceTypeBadge({ type }: { type: string }) {
   const colors: Record<string, string> = {
     teleop: "bg-blue-100 text-blue-700",
@@ -336,13 +341,30 @@ function DatasetDetail({
         const cams = leftCams.length > 0 ? leftCams : info.cameraKeys;
         setCameraKeys(sortCameraKeys(cams));
         setLoading(false);
-        // Sync episode count and duration back to database so the list view stays up-to-date
+        // Sync stats back to database so the list view stays up-to-date
         const totalDuration = info.episodes.reduce((sum, ep) => sum + ep.duration, 0);
-        updateStats({
+        const numSuccess = info.episodes.filter((e) => e.success).length;
+        const numFailure = info.episodes.length - numSuccess;
+
+        const statsUpdate: Parameters<typeof updateStats>[0] = {
           repo_id: repoId,
           num_episodes: info.episodes.length,
           total_duration_seconds: totalDuration,
-        });
+          num_success: numSuccess,
+          num_failure: numFailure,
+        };
+
+        if (info.sourceStats) {
+          statsUpdate.num_human_frames = info.sourceStats.humanFrames;
+          statsUpdate.num_policy_frames = info.sourceStats.policyFrames;
+          // Autonomous success = episodes with success AND no human frames
+          const autonomousSuccess = info.episodes.filter(
+            (e) => e.success && !info.sourceStats!.episodesWithHumanFrames.has(e.episodeIndex)
+          ).length;
+          statsUpdate.num_autonomous_success = autonomousSuccess;
+        }
+
+        updateStats(statsUpdate);
       })
       .catch((err) => {
         setError(err.message);
@@ -776,6 +798,27 @@ export default function DataExplorer() {
                       )}
                     </span>
                   </div>
+                  {dataset.num_success != null && (
+                    <div className="flex items-center gap-3 text-xs mt-1">
+                      <span className="font-mono">
+                        <span className="text-teal">{Number(dataset.num_success)} success</span>
+                        {" · "}
+                        <span className="text-coral">{Number(dataset.num_failure)} failed</span>
+                      </span>
+                      {dataset.num_human_frames != null && (
+                        <span className="font-mono text-ink-muted">
+                          {formatFrameCount(Number(dataset.num_human_frames))} human
+                          {" · "}
+                          {formatFrameCount(Number(dataset.num_policy_frames ?? 0))} policy frames
+                        </span>
+                      )}
+                      {dataset.num_autonomous_success != null && Number(dataset.num_autonomous_success) > 0 && (
+                        <span className="font-mono text-teal">
+                          {Number(dataset.num_autonomous_success)} autonomous
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <svg
                   width="16"

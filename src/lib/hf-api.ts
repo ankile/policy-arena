@@ -15,9 +15,16 @@ export interface EpisodeMetadata {
   toTimestamp: number;
 }
 
+export interface DatasetSourceStats {
+  humanFrames: number;
+  policyFrames: number;
+  episodesWithHumanFrames: Set<number>;
+}
+
 export interface DatasetInfo {
   episodes: EpisodeMetadata[];
   cameraKeys: string[];
+  sourceStats: DatasetSourceStats | null;
 }
 
 function hfBase(datasetId: string): string {
@@ -58,9 +65,10 @@ async function tryReadParquet(
 export async function fetchDatasetInfo(
   datasetId: string = DEFAULT_DATASET_ID
 ): Promise<DatasetInfo> {
-  const [parquetResult, successMap] = await Promise.all([
+  const [parquetResult, successMap, sourceStats] = await Promise.all([
     fetchParquetMetadata(datasetId),
     fetchSuccessStatus(datasetId).catch(() => new Map<number, boolean>()),
+    fetchSourceStats(datasetId).catch(() => null),
   ]);
 
   const episodes = parquetResult.episodes.map((ep) => ({
@@ -68,7 +76,7 @@ export async function fetchDatasetInfo(
     success: successMap.get(ep.episodeIndex) ?? false,
   }));
 
-  return { episodes, cameraKeys: parquetResult.cameraKeys };
+  return { episodes, cameraKeys: parquetResult.cameraKeys, sourceStats };
 }
 
 async function fetchParquetMetadata(
@@ -133,4 +141,49 @@ async function fetchSuccessStatus(
     map.set(row.episode_index, row.success === 1);
   }
   return map;
+}
+
+async function fetchSourceStats(
+  datasetId: string
+): Promise<DatasetSourceStats | null> {
+  // Try to get frame counts by source value. If the column doesn't exist, the
+  // HF Datasets server returns an error, so we treat any failure as "no source column".
+  const base = `${DATASETS_SERVER}/filter?dataset=${datasetId}&config=default&split=train`;
+
+  const [policyResp, humanResp] = await Promise.all([
+    fetch(`${base}&where=source=0&length=1`),
+    fetch(`${base}&where=source=1&length=1`),
+  ]);
+
+  if (!policyResp.ok || !humanResp.ok) return null;
+
+  const [policyData, humanData] = await Promise.all([
+    policyResp.json(),
+    humanResp.json(),
+  ]);
+
+  // The server returns num_rows_total for the filtered result
+  const policyFrames: number | undefined = policyData.num_rows_total;
+  const humanFrames: number | undefined = humanData.num_rows_total;
+  if (policyFrames == null || humanFrames == null) return null;
+
+  // Paginate through human-source rows to collect unique episode indices
+  const episodesWithHumanFrames = new Set<number>();
+  if (humanFrames > 0) {
+    let offset = 0;
+    const pageSize = 100;
+    while (offset < humanFrames) {
+      const pageResp = await fetch(
+        `${base}&where=source=1&offset=${offset}&length=${pageSize}`
+      );
+      if (!pageResp.ok) break;
+      const pageData = await pageResp.json();
+      for (const { row } of pageData.rows) {
+        episodesWithHumanFrames.add(row.episode_index);
+      }
+      offset += pageSize;
+    }
+  }
+
+  return { humanFrames, policyFrames, episodesWithHumanFrames };
 }

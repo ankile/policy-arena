@@ -48,6 +48,11 @@ export default defineSchema({
     environment: v.string(),
     num_episodes: v.optional(v.int64()),
     total_duration_seconds: v.optional(v.float64()),
+    num_success: v.optional(v.int64()),
+    num_failure: v.optional(v.int64()),
+    num_human_frames: v.optional(v.int64()),
+    num_policy_frames: v.optional(v.int64()),
+    num_autonomous_success: v.optional(v.int64()),
     wandb_artifact: v.optional(v.string()),
     notes: v.optional(v.string()),
   })
