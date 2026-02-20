@@ -7,11 +7,6 @@ import Pairings from "./components/Pairings";
 import PolicyDetail from "./components/PolicyDetail";
 import { useSearchParam, useSearchParamNullable, clearSearchParams } from "./lib/useSearchParam";
 
-function eloBarWidth(elo: number, minElo: number, maxElo: number): number {
-  if (maxElo === minElo) return 50;
-  return 20 + ((elo - minElo) / (maxElo - minElo)) * 80;
-}
-
 function winRate(wins: number, losses: number): number {
   const total = wins + losses;
   if (total === 0) return 0;
@@ -98,10 +93,6 @@ function App() {
 
   const sortedPolicies = policies ?? [];
   const maxElo = sortedPolicies.length > 0 ? sortedPolicies[0].elo : 0;
-  const minElo =
-    sortedPolicies.length > 0
-      ? sortedPolicies[sortedPolicies.length - 1].elo
-      : 0;
 
   const tabs: TabConfig[] = [
     { id: "leaderboard", label: "Leaderboard" },
@@ -146,7 +137,7 @@ function App() {
             </h1>
           </div>
           <p className="text-ink-muted font-body text-lg ml-[52px]">
-            Robot policies ranked by ELO from head-to-head evaluation
+            Track, compare, and rank robot learning policies and datasets
           </p>
         </header>
 
@@ -248,7 +239,7 @@ function App() {
                 style={{ animation: "fade-up 0.6s ease-out 0.3s both" }}
               >
                 {/* Table header */}
-                <div className="grid grid-cols-[56px_1fr_100px_140px_130px_140px_90px_90px_70px] px-6 py-3.5 border-b border-warm-100 bg-warm-50">
+                <div className="grid grid-cols-[56px_1fr_80px_130px_140px_80px_90px] px-6 py-3.5 border-b border-warm-100 bg-warm-50">
                   <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
                     #
                   </span>
@@ -257,9 +248,6 @@ function App() {
                   </span>
                   <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
                     ELO
-                  </span>
-                  <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
-                    Rating
                   </span>
                   <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
                     W / D / L
@@ -273,9 +261,6 @@ function App() {
                   <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
                     Avg Steps
                   </span>
-                  <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
-                    Matches
-                  </span>
                 </div>
 
                 {/* Rows */}
@@ -283,7 +268,7 @@ function App() {
                   (policy, i) => (
                     <div key={policy._id}>
                       <div
-                        className={`grid grid-cols-[56px_1fr_100px_140px_130px_140px_90px_90px_70px] items-center px-6 py-4 transition-colors duration-150 hover:bg-warm-50 cursor-pointer ${
+                        className={`grid grid-cols-[56px_1fr_80px_130px_140px_80px_90px] items-center px-6 py-4 transition-colors duration-150 hover:bg-warm-50 cursor-pointer ${
                           i < sortedPolicies.length - 1 &&
                           expandedPolicy !== (policy._id as string)
                             ? "border-b border-warm-100"
@@ -306,11 +291,15 @@ function App() {
                         </div>
 
                         {/* Name + Environment */}
-                        <div className="flex items-center gap-3">
-                          <span className="font-body font-semibold text-ink text-[15px]">
-                            {policy.name}
-                          </span>
-                          <EnvironmentTag env={policy.environment} />
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-body font-semibold text-ink text-[15px] truncate" title={policy.name}>
+                              {policy.name}
+                            </div>
+                            <div className="mt-1">
+                              <EnvironmentTag env={policy.environment} />
+                            </div>
+                          </div>
                           <svg
                             width="12"
                             height="12"
@@ -318,7 +307,7 @@ function App() {
                             fill="none"
                             stroke="currentColor"
                             strokeWidth="2"
-                            className={`text-ink-muted/50 transition-transform duration-200 ${
+                            className={`text-ink-muted/50 transition-transform duration-200 flex-shrink-0 ${
                               expandedPolicy === (policy._id as string)
                                 ? "rotate-90"
                                 : ""
@@ -328,21 +317,9 @@ function App() {
                           </svg>
                         </div>
 
-                        {/* ELO number */}
+                        {/* ELO */}
                         <div className="font-mono text-sm font-medium text-ink">
                           {Math.round(policy.elo)}
-                        </div>
-
-                        {/* ELO bar */}
-                        <div className="pr-4">
-                          <div className="w-full h-2 rounded-full bg-warm-100 overflow-hidden">
-                            <div
-                              className="h-full rounded-full bg-gradient-to-r from-teal to-teal/60 transition-all duration-700 ease-out"
-                              style={{
-                                width: `${eloBarWidth(policy.elo, minElo, maxElo)}%`,
-                              }}
-                            />
-                          </div>
                         </div>
 
                         {/* W / D / L */}
@@ -378,13 +355,6 @@ function App() {
                           {policy.avgSuccessSteps != null
                             ? policy.avgSuccessSteps
                             : "—"}
-                        </div>
-
-                        {/* Matches */}
-                        <div className="font-mono text-sm text-ink-muted">
-                          {Number(policy.wins) +
-                            Number(policy.losses) +
-                            Number(policy.draws)}
                         </div>
                       </div>
 
