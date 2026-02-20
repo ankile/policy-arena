@@ -123,7 +123,7 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
         }
 
         return (
-          <div className={`grid gap-3 mb-4 ${detail.policies.length === 2 ? "grid-cols-2" : detail.policies.length === 3 ? "grid-cols-3" : "grid-cols-4"}`}>
+          <div className={`grid gap-3 mb-4 ${detail.policies.length === 2 ? "grid-cols-2" : detail.policies.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
             {detail.policies.map((policy) => {
               const stats = policyStats.get(policy._id)!;
               const successRate = totalRounds > 0 ? (stats.successes / totalRounds) * 100 : 0;
@@ -131,24 +131,22 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
               return (
                 <div
                   key={policy._id}
-                  className="rounded-xl border border-warm-200 bg-warm-50/50 px-4 py-3 flex items-center justify-between"
+                  className="rounded-xl border border-warm-200 bg-warm-50/50 px-4 py-3"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="font-body font-semibold text-ink text-sm truncate">
-                      {policy.name}
-                    </span>
-                    <span className="text-ink-muted font-mono text-xs shrink-0">
+                  <div className="font-body font-semibold text-ink text-sm truncate mb-1.5" title={policy.name}>
+                    {policy.name}
+                  </div>
+                  <div className="flex items-center gap-3 text-xs">
+                    <span className="text-ink-muted font-mono shrink-0">
                       ELO {Math.round(policy.elo)}
                     </span>
-                  </div>
-                  <div className="flex items-center gap-4 shrink-0">
-                    <span className="font-mono text-sm text-ink">
+                    <span className="font-mono text-ink shrink-0">
                       {successRate.toFixed(0)}%
                       <span className="text-[11px] text-ink-muted font-body ml-1">
                         success
                       </span>
                     </span>
-                    <div className="flex items-center gap-1.5 text-xs font-mono">
+                    <div className="flex items-center gap-1.5 font-mono shrink-0">
                       <span className="text-teal font-medium">{stats.wins}W</span>
                       <span className="text-ink-muted">{stats.draws}D</span>
                       <span className="text-coral font-medium">{stats.losses}L</span>
@@ -399,29 +397,32 @@ export default function EvalSessions() {
             }
             className="w-full px-6 py-4 flex items-center justify-between hover:bg-warm-50/50 transition-colors cursor-pointer text-left"
           >
-            <div className="flex items-center gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-body font-semibold text-ink text-[15px]">
-                    {session.policyNames.join(" vs ")}
-                  </span>
-                  <span className="inline-block px-2 py-0.5 rounded-full bg-warm-100 text-ink-muted text-[11px] font-mono">
-                    {Number(session.num_rounds)} rounds
-                  </span>
-                  <SessionModeTag mode={session.session_mode ?? "manual"} />
-                </div>
-                <div className="flex items-center gap-3 text-xs text-ink-muted">
-                  <span>{formatDate(session._creationTime)}</span>
-                  <a
-                    href={`https://huggingface.co/datasets/${session.dataset_repo}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hover:text-teal transition-colors font-mono"
-                    onClick={(e) => e.stopPropagation()}
+            <div className="min-w-0">
+              <div className="flex flex-wrap gap-1.5 mb-1.5">
+                {session.policyNames.map((name, i) => (
+                  <span
+                    key={i}
+                    className="rounded bg-warm-100 px-2 py-0.5 text-xs font-mono text-ink-light"
                   >
-                    {session.dataset_repo} &rarr;
-                  </a>
-                </div>
+                    {name}
+                  </span>
+                ))}
+              </div>
+              <div className="flex items-center gap-3 text-xs text-ink-muted">
+                <span>{formatDate(session._creationTime)}</span>
+                <span className="inline-block px-2 py-0.5 rounded-full bg-warm-100 text-ink-muted text-[11px] font-mono">
+                  {Number(session.num_rounds)} rounds
+                </span>
+                <SessionModeTag mode={session.session_mode ?? "manual"} />
+                <a
+                  href={`https://huggingface.co/datasets/${session.dataset_repo}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-teal transition-colors font-mono"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {session.dataset_repo} &rarr;
+                </a>
               </div>
             </div>
             <svg
