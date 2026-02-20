@@ -71,6 +71,7 @@ function EnvironmentTag({ env }: { env: string }) {
   );
 }
 
+type SortKey = "elo" | "success";
 type Tab = "leaderboard" | "sessions" | "pairings" | "explorer";
 
 type TabConfig = { id: Tab; label: string };
@@ -79,6 +80,7 @@ function App() {
   const [activeTab, setActiveTabRaw] = useSearchParam("tab", "leaderboard");
   const [selectedEnv, setSelectedEnv] = useSearchParam("env", "all");
   const [expandedPolicy, setExpandedPolicy] = useSearchParamNullable("policy");
+  const [sortBy, setSortBy] = useSearchParam("sort", "elo") as [SortKey, (v: string) => void];
 
   const envList = useQuery(api.policies.environments);
   const policies = useQuery(
@@ -87,11 +89,16 @@ function App() {
   );
 
   const setActiveTab = (tab: string) => {
-    clearSearchParams("policy", "session", "mode", "round", "source", "task", "dataset", "episode", "outcome", "env", "policyA", "policyB", "pRound");
+    clearSearchParams("policy", "session", "mode", "round", "source", "task", "dataset", "episode", "outcome", "env", "sort", "policyA", "policyB", "pRound");
     setActiveTabRaw(tab);
   };
 
-  const sortedPolicies = policies ?? [];
+  const sortedPolicies = [...(policies ?? [])].sort((a, b) => {
+    if (sortBy === "success") {
+      return (b.successRate ?? -1) - (a.successRate ?? -1);
+    }
+    return b.elo - a.elo;
+  });
   const maxElo = sortedPolicies.length > 0 ? sortedPolicies[0].elo : 0;
 
   const tabs: TabConfig[] = [
@@ -246,18 +253,24 @@ function App() {
                   <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
                     Policy
                   </span>
-                  <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
-                    ELO
-                  </span>
+                  <button
+                    onClick={() => setSortBy("elo")}
+                    className={`text-[11px] uppercase tracking-widest font-medium cursor-pointer ${sortBy === "elo" ? "text-teal" : "text-ink-muted hover:text-ink"}`}
+                  >
+                    ELO {sortBy === "elo" && "▼"}
+                  </button>
                   <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
                     W / D / L
                   </span>
                   <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
                     Win Rate
                   </span>
-                  <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
-                    Success
-                  </span>
+                  <button
+                    onClick={() => setSortBy("success")}
+                    className={`text-[11px] uppercase tracking-widest font-medium cursor-pointer ${sortBy === "success" ? "text-teal" : "text-ink-muted hover:text-ink"}`}
+                  >
+                    Success {sortBy === "success" && "▼"}
+                  </button>
                   <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
                     Avg Steps
                   </span>
