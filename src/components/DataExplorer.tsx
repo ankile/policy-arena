@@ -394,6 +394,12 @@ function DatasetDetail({
   if (loading) {
     return (
       <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8">
+        <button
+          onClick={onBack}
+          className="text-xs text-ink-muted hover:text-teal mb-4 cursor-pointer"
+        >
+          &larr; Back to datasets
+        </button>
         <div className="flex items-center justify-center gap-3 text-ink-muted">
           <div className="w-5 h-5 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
           <span className="font-body">Loading episodes from HuggingFace...</span>
@@ -675,10 +681,13 @@ export default function DataExplorer() {
   // Compute unique tasks for filter pills
   const allTasks = [...new Set(datasets.map((d) => d.task))].sort();
 
-  // Compute source type counts (from all datasets before task filter)
+  // Compute source type counts and episode counts (from all datasets before task filter)
   const sourceTypeCounts = new Map<string, number>();
+  const sourceTypeEpisodeCounts = new Map<string, number>();
   for (const d of datasets) {
     sourceTypeCounts.set(d.source_type, (sourceTypeCounts.get(d.source_type) ?? 0) + 1);
+    const eps = d.num_episodes != null ? Number(d.num_episodes) : 0;
+    sourceTypeEpisodeCounts.set(d.source_type, (sourceTypeEpisodeCounts.get(d.source_type) ?? 0) + eps);
   }
 
   // Apply task filter
@@ -704,6 +713,10 @@ export default function DataExplorer() {
               filter.id === "all"
                 ? datasets.length
                 : sourceTypeCounts.get(filter.id) ?? 0;
+            const epCount =
+              filter.id === "all"
+                ? datasets.reduce((s, d) => s + (d.num_episodes != null ? Number(d.num_episodes) : 0), 0)
+                : sourceTypeEpisodeCounts.get(filter.id) ?? 0;
             const isActive = sourceFilter === filter.id;
             return (
               <button
@@ -721,7 +734,7 @@ export default function DataExplorer() {
                     isActive ? "text-white/70" : "text-ink-muted/60"
                   }`}
                 >
-                  {count}
+                  {count} · {epCount} ep
                 </span>
               </button>
             );
