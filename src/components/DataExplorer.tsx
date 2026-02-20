@@ -6,6 +6,7 @@ import {
   fetchDatasetInfo,
   getVideoUrl,
   type EpisodeMetadata,
+  type DatasetSourceStats,
 } from "../lib/hf-api";
 
 // ---------------------------------------------------------------------------
@@ -314,6 +315,7 @@ function DatasetDetail({
 }) {
   const [episodes, setEpisodes] = useState<EpisodeMetadata[]>([]);
   const [cameraKeys, setCameraKeys] = useState<string[]>([]);
+  const [sourceStats, setSourceStats] = useState<DatasetSourceStats | null>(null);
   const [selectedIndex, setSelectedIndex] = useSearchParamNumber("episode");
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -337,6 +339,7 @@ function DatasetDetail({
     fetchDatasetInfo(repoId)
       .then((info) => {
         setEpisodes(info.episodes);
+        setSourceStats(info.sourceStats);
         const leftCams = info.cameraKeys.filter((k) => k.includes("left"));
         const cams = leftCams.length > 0 ? leftCams : info.cameraKeys;
         setCameraKeys(sortCameraKeys(cams));
@@ -460,35 +463,58 @@ function DatasetDetail({
 
       <div className="p-6">
         {/* Summary stats */}
-        <div className="flex gap-4 mb-6">
-          {[
-            { label: "Episodes", value: episodes.length.toString() },
-            {
-              label: "Duration",
-              value: formatDurationLong(episodes.reduce((s, e) => s + e.duration, 0)),
-            },
-            {
-              label: "Success Rate",
-              value:
-                episodes.length > 0
-                  ? `${Math.round((successCount / episodes.length) * 100)}%`
-                  : "-",
-            },
-            { label: "Cameras", value: cameraKeys.length.toString() },
-          ].map((stat) => (
-            <div
-              key={stat.label}
-              className="bg-warm-50 rounded-lg px-4 py-2.5 border border-warm-100"
-            >
-              <div className="text-[10px] uppercase tracking-widest text-ink-muted font-medium mb-0.5">
-                {stat.label}
-              </div>
-              <div className="font-mono text-lg font-medium text-ink">
-                {stat.value}
-              </div>
+        {(() => {
+          const total = episodes.length;
+          const successPct = total > 0 ? Math.round((successCount / total) * 100) : 0;
+          const autonomousCount = sourceStats
+            ? episodes.filter((e) => e.success && !sourceStats.episodesWithHumanFrames.has(e.episodeIndex)).length
+            : null;
+          const autonomousPct = autonomousCount != null && total > 0
+            ? Math.round((autonomousCount / total) * 100)
+            : null;
+          const totalFrames = sourceStats ? sourceStats.humanFrames + sourceStats.policyFrames : null;
+          const humanPct = totalFrames != null && totalFrames > 0
+            ? Math.round((sourceStats!.humanFrames / totalFrames) * 100)
+            : null;
+
+          const stats: { label: string; value: string; color?: string }[] = [
+            { label: "Episodes", value: total.toString() },
+            { label: "Duration", value: formatDurationLong(episodes.reduce((s, e) => s + e.duration, 0)) },
+            { label: "Success Rate", value: `${successCount}/${total} (${successPct}%)`, color: "text-teal" },
+          ];
+          if (autonomousCount != null) {
+            stats.push({ label: "Autonomous Success", value: `${autonomousCount}/${total} (${autonomousPct}%)`, color: "text-teal" });
+          }
+          if (sourceStats) {
+            stats.push({
+              label: "Human Frames",
+              value: `${formatFrameCount(sourceStats.humanFrames)} (${humanPct}%)`,
+            });
+            stats.push({
+              label: "Policy Frames",
+              value: `${formatFrameCount(sourceStats.policyFrames)} (${100 - (humanPct ?? 0)}%)`,
+            });
+          }
+          stats.push({ label: "Cameras", value: cameraKeys.length.toString() });
+
+          return (
+            <div className="flex flex-wrap gap-4 mb-6">
+              {stats.map((stat) => (
+                <div
+                  key={stat.label}
+                  className="bg-warm-50 rounded-lg px-4 py-2.5 border border-warm-100"
+                >
+                  <div className="text-[10px] uppercase tracking-widest text-ink-muted font-medium mb-0.5">
+                    {stat.label}
+                  </div>
+                  <div className={`font-mono text-lg font-medium ${stat.color ?? "text-ink"}`}>
+                    {stat.value}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          );
+        })()}
 
         {/* Episode filter pills */}
         <div className="flex items-center gap-2 mb-4">
@@ -748,10 +774,51 @@ export default function DataExplorer() {
           (sum, d) => sum + (d.total_duration_seconds ?? 0),
           0
         );
+        const totalSuccess = filteredDatasets.reduce(
+          (sum, d) => sum + (d.num_success != null ? Number(d.num_success) : 0),
+          0
+        );
+        const totalFailure = filteredDatasets.reduce(
+          (sum, d) => sum + (d.num_failure != null ? Number(d.num_failure) : 0),
+          0
+        );
+        const totalOutcomes = totalSuccess + totalFailure;
+        const totalAutonomous = filteredDatasets.reduce(
+          (sum, d) => sum + (d.num_autonomous_success != null ? Number(d.num_autonomous_success) : 0),
+          0
+        );
+        const totalHuman = filteredDatasets.reduce(
+          (sum, d) => sum + (d.num_human_frames != null ? Number(d.num_human_frames) : 0),
+          0
+        );
+        const totalPolicy = filteredDatasets.reduce(
+          (sum, d) => sum + (d.num_policy_frames != null ? Number(d.num_policy_frames) : 0),
+          0
+        );
+        const hasFrameStats = filteredDatasets.some((d) => d.num_human_frames != null);
+        const totalFrames = totalHuman + totalPolicy;
         return (
-          <div className="text-xs text-ink-muted font-mono">
-            {filteredDatasets.length} datasets · {totalEpisodes} episodes
-            {totalDuration > 0 && ` · ${formatDurationLong(totalDuration)}`}
+          <div className="text-xs font-mono flex items-center gap-3 flex-wrap">
+            <span className="text-ink-muted">
+              {filteredDatasets.length} datasets · {totalEpisodes} episodes
+              {totalDuration > 0 && ` · ${formatDurationLong(totalDuration)}`}
+            </span>
+            {totalOutcomes > 0 && (
+              <span className="text-teal">
+                {totalSuccess}/{totalOutcomes} success ({Math.round((totalSuccess / totalOutcomes) * 100)}%)
+              </span>
+            )}
+            {totalAutonomous > 0 && totalOutcomes > 0 && (
+              <span className="text-teal/60">
+                {totalAutonomous} autonomous ({Math.round((totalAutonomous / totalOutcomes) * 100)}%)
+              </span>
+            )}
+            {hasFrameStats && totalFrames > 0 && (<>
+              <span className="w-px h-3 bg-warm-200" />
+              <span className="text-ink-muted">
+                {formatFrameCount(totalHuman)} human · {formatFrameCount(totalPolicy)} policy frames ({Math.round((totalHuman / totalFrames) * 100)}% human)
+              </span>
+            </>)}
           </div>
         );
       })()}
@@ -798,27 +865,35 @@ export default function DataExplorer() {
                       )}
                     </span>
                   </div>
-                  {dataset.num_success != null && (
-                    <div className="flex items-center gap-3 text-xs mt-1">
-                      <span className="font-mono">
-                        <span className="text-teal">{Number(dataset.num_success)} success</span>
-                        {" · "}
-                        <span className="text-coral">{Number(dataset.num_failure)} failed</span>
-                      </span>
-                      {dataset.num_human_frames != null && (
-                        <span className="font-mono text-ink-muted">
-                          {formatFrameCount(Number(dataset.num_human_frames))} human
-                          {" · "}
-                          {formatFrameCount(Number(dataset.num_policy_frames ?? 0))} policy frames
+                  {dataset.num_success != null && (() => {
+                    const nSuccess = Number(dataset.num_success);
+                    const total = nSuccess + Number(dataset.num_failure);
+                    const successPct = total > 0 ? Math.round((nSuccess / total) * 100) : 0;
+                    const nAutonomous = dataset.num_autonomous_success != null ? Number(dataset.num_autonomous_success) : 0;
+                    const autonomousPct = total > 0 ? Math.round((nAutonomous / total) * 100) : 0;
+                    const nHuman = dataset.num_human_frames != null ? Number(dataset.num_human_frames) : null;
+                    const nPolicy = dataset.num_policy_frames != null ? Number(dataset.num_policy_frames) : null;
+                    const humanPct = nHuman != null && nPolicy != null && (nHuman + nPolicy) > 0
+                      ? Math.round((nHuman / (nHuman + nPolicy)) * 100) : null;
+                    return (
+                      <div className="flex items-center gap-3 text-xs mt-1 font-mono">
+                        <span className="text-teal">
+                          {nSuccess}/{total} success ({successPct}%)
                         </span>
-                      )}
-                      {dataset.num_autonomous_success != null && Number(dataset.num_autonomous_success) > 0 && (
-                        <span className="font-mono text-teal">
-                          {Number(dataset.num_autonomous_success)} autonomous
-                        </span>
-                      )}
-                    </div>
-                  )}
+                        {nAutonomous > 0 && (
+                          <span className="text-teal/60">
+                            {nAutonomous} autonomous ({autonomousPct}%)
+                          </span>
+                        )}
+                        {nHuman != null && nPolicy != null && (<>
+                          <span className="w-px h-3 bg-warm-200" />
+                          <span className="text-ink-muted">
+                            {formatFrameCount(nHuman)} human · {formatFrameCount(nPolicy)} policy frames ({humanPct}% human)
+                          </span>
+                        </>)}
+                      </div>
+                    );
+                  })()}
                 </div>
                 <svg
                   width="16"
