@@ -48,6 +48,19 @@ export const updateStats = mutation({
   },
 });
 
+export const deleteByRepo = mutation({
+  args: { repo_id: v.string() },
+  handler: async (ctx, args) => {
+    const dataset = await ctx.db
+      .query("datasets")
+      .withIndex("by_repo", (q) => q.eq("repo_id", args.repo_id))
+      .unique();
+    if (!dataset) return null;
+    await ctx.db.delete(dataset._id);
+    return dataset._id;
+  },
+});
+
 export const list = query({
   args: {
     source_type: v.optional(v.string()),
