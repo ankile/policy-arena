@@ -212,6 +212,22 @@ class PolicyArenaClient:
             datasets = [d for d in datasets if d["source_type"] in source_types]
         return datasets
 
+    def update_dataset_task(
+        self, repo_id: str, task: str, environment: str
+    ) -> str:
+        """Re-categorize a dataset to a different task/environment."""
+        return self.client.mutation(
+            "datasets:updateTask",
+            {"repo_id": repo_id, "task": task, "environment": environment},
+        )
+
+    def update_policy_environment(self, model_id: str, environment: str) -> str:
+        """Re-categorize a policy to a different environment."""
+        return self.client.mutation(
+            "policies:updateEnvironment",
+            {"model_id": model_id, "environment": environment},
+        )
+
     def get_leaderboard(self) -> list[dict]:
         """Get current leaderboard."""
         return self.client.query("policies:leaderboard")

@@ -77,6 +77,24 @@ export const getByModelId = query({
   },
 });
 
+export const updateEnvironment = mutation({
+  args: {
+    model_id: v.string(),
+    environment: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const policy = await ctx.db
+      .query("policies")
+      .withIndex("by_model_id", (q) => q.eq("model_id", args.model_id))
+      .unique();
+    if (!policy) {
+      throw new Error(`Policy not found: ${args.model_id}`);
+    }
+    await ctx.db.patch(policy._id, { environment: args.environment });
+    return policy._id;
+  },
+});
+
 export const register = mutation({
   args: {
     name: v.string(),

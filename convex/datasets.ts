@@ -93,6 +93,28 @@ export const getByRepo = query({
   },
 });
 
+export const updateTask = mutation({
+  args: {
+    repo_id: v.string(),
+    task: v.string(),
+    environment: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const dataset = await ctx.db
+      .query("datasets")
+      .withIndex("by_repo", (q) => q.eq("repo_id", args.repo_id))
+      .unique();
+    if (!dataset) {
+      throw new Error(`Dataset not found: ${args.repo_id}`);
+    }
+    await ctx.db.patch(dataset._id, {
+      task: args.task,
+      environment: args.environment,
+    });
+    return dataset._id;
+  },
+});
+
 export const list = query({
   args: {
     source_type: v.optional(v.string()),
