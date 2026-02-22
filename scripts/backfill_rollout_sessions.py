@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
-Create rollout eval sessions from existing rollout/dagger datasets that have
+Create rollout eval sessions from existing rollout datasets that have
 a model_id set. This populates the Eval Sessions tab and makes rollout
 success rates count in the leaderboard.
+
+NOTE: Only "rollout" datasets are included — NOT "dagger" datasets.
+DAgger data involves human intervention and would skew success rates.
 
 Usage:
     python -m scripts.backfill_rollout_sessions
@@ -76,10 +79,10 @@ def fetch_episode_successes(repo_id: str) -> list[tuple[int, bool, int | None]]:
 def main():
     arena = PolicyArenaClient(ARENA_URL)
 
-    # Get all datasets with rollout/dagger source types that have a model_id
-    datasets = arena.list_datasets(source_types=["rollout", "dagger"])
+    # Get rollout datasets that have a model_id (exclude dagger — human intervention skews success rates)
+    datasets = arena.list_datasets(source_types=["rollout"])
 
-    print(f"Found {len(datasets)} rollout/dagger datasets")
+    print(f"Found {len(datasets)} rollout datasets")
 
     for ds in datasets:
         model_id = ds.get("model_id")
