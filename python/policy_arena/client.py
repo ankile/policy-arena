@@ -181,6 +181,13 @@ class PolicyArenaClient:
             },
         )
 
+    def get_rollout_session(self, dataset_repo: str) -> dict | None:
+        """Look up an existing rollout session by dataset repo ID."""
+        return self.client.query(
+            "evalSessions:getByDatasetRepo",
+            {"dataset_repo": dataset_repo, "session_mode": "rollout"},
+        )
+
     def delete_session(self, session_id: str) -> dict:
         """Delete an eval session and recompute ELO for all policies."""
         return self.client.mutation(

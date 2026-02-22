@@ -637,6 +637,27 @@ export const updateNotes = mutation({
   },
 });
 
+export const getByDatasetRepo = query({
+  args: {
+    dataset_repo: v.string(),
+    session_mode: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const sessions = await ctx.db
+      .query("evalSessions")
+      .order("desc")
+      .collect();
+
+    const matches = sessions.filter(
+      (s) =>
+        s.dataset_repo === args.dataset_repo &&
+        (args.session_mode == null || s.session_mode === args.session_mode)
+    );
+
+    return matches.length > 0 ? matches[0] : null;
+  },
+});
+
 export const getByPolicy = query({
   args: { policy_id: v.id("policies") },
   handler: async (ctx, args) => {
