@@ -42,7 +42,7 @@ DATASETS = [
         task="franka_pick_cube",
         source_type="rollout",
         environment="franka_pick_cube",
-        wandb_artifact="self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_25000:v0",
+        model_id="wandb://self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_25000:v0",
     ),
     DatasetInput(
         repo_id="ankile/dp-franka-pick-cube-2026-02-13-75k-w-auto-v1",
@@ -50,7 +50,7 @@ DATASETS = [
         task="franka_pick_cube",
         source_type="rollout",
         environment="franka_pick_cube",
-        wandb_artifact="self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_75000:v0",
+        model_id="wandb://self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_75000:v0",
     ),
     DatasetInput(
         repo_id="ankile/dp-franka-pick-cube-2026-02-13-25k-no-auto-v1",
@@ -58,7 +58,7 @@ DATASETS = [
         task="franka_pick_cube",
         source_type="rollout",
         environment="franka_pick_cube",
-        wandb_artifact="self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_25000:v1",
+        model_id="wandb://self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_25000:v1",
     ),
     DatasetInput(
         repo_id="ankile/dp-franka-pick-cube-2026-02-13-75k-no-auto-v1",
@@ -66,7 +66,7 @@ DATASETS = [
         task="franka_pick_cube",
         source_type="rollout",
         environment="franka_pick_cube",
-        wandb_artifact="self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_75000:v0",
+        model_id="wandb://self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_75000:v0",
     ),
     DatasetInput(
         repo_id="ankile/dp-franka-pick-cube-2026-02-13-25k-demos-v1",
@@ -74,7 +74,7 @@ DATASETS = [
         task="franka_pick_cube",
         source_type="rollout",
         environment="franka_pick_cube",
-        wandb_artifact="self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_25000:v3",
+        model_id="wandb://self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_25000:v3",
     ),
     DatasetInput(
         repo_id="ankile/dp-franka-pick-cube-2026-02-13-75k-demos-v1",
@@ -82,7 +82,7 @@ DATASETS = [
         task="franka_pick_cube",
         source_type="rollout",
         environment="franka_pick_cube",
-        wandb_artifact="self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_75000:v2",
+        model_id="wandb://self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_75000:v2",
     ),
     DatasetInput(
         repo_id="ankile/rollout-dp-nut-assembly-square-v2-2026-02-15",
@@ -90,7 +90,7 @@ DATASETS = [
         task="franka_nut_assembly_square",
         source_type="rollout",
         environment="franka_nut_assembly_square",
-        wandb_artifact="self-improving/franka-nut-assembly-square/dp-bc-nut-assembly-square-v2-hi3he6ii-final:v0",
+        model_id="wandb://self-improving/franka-nut-assembly-square/dp-bc-nut-assembly-square-v2-hi3he6ii-final:v0",
     ),
     DatasetInput(
         repo_id="ankile/rollout-dp-stack-two-blocks-v1-2026-02-15",
@@ -98,7 +98,7 @@ DATASETS = [
         task="franka_stack_two_blocks",
         source_type="rollout",
         environment="franka_stack_two_blocks",
-        wandb_artifact="self-improving/franka-stack-two-blocks/dp-bc-stack-two-blocks-v1-zh5uj4dr-final:v0",
+        model_id="wandb://self-improving/franka-stack-two-blocks/dp-bc-stack-two-blocks-v1-zh5uj4dr-final:v0",
     ),
     # --- DAgger (5) ---
     DatasetInput(
@@ -107,7 +107,7 @@ DATASETS = [
         task="franka_pick_cube",
         source_type="dagger",
         environment="franka_pick_cube",
-        wandb_artifact="self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_25000:v0",
+        model_id="wandb://self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_25000:v0",
     ),
     DatasetInput(
         repo_id="ankile/dagger-dp-franka-pick-cube-2026-02-13-25k-w-auto",
@@ -115,7 +115,7 @@ DATASETS = [
         task="franka_pick_cube",
         source_type="dagger",
         environment="franka_pick_cube",
-        wandb_artifact="self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_25000:v2",
+        model_id="wandb://self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_25000:v2",
     ),
     DatasetInput(
         repo_id="ankile/dagger-dp-franka-pick-cube-2026-02-13-25k-dagger-w-auto-v1",
@@ -123,7 +123,7 @@ DATASETS = [
         task="franka_pick_cube",
         source_type="dagger",
         environment="franka_pick_cube",
-        wandb_artifact="self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_25000:v2",
+        model_id="wandb://self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_25000:v2",
     ),
     DatasetInput(
         repo_id="ankile/dagger-dp-nut-assembly-square-v2-2026-02-15",
@@ -131,7 +131,7 @@ DATASETS = [
         task="franka_nut_assembly_square",
         source_type="dagger",
         environment="franka_nut_assembly_square",
-        wandb_artifact="self-improving/franka-nut-assembly-square/dp-bc-nut-assembly-square-v2-hi3he6ii-final:v0",
+        model_id="wandb://self-improving/franka-nut-assembly-square/dp-bc-nut-assembly-square-v2-hi3he6ii-final:v0",
     ),
     DatasetInput(
         repo_id="ankile/dagger-dp-stack-two-blocks-v1-2026-02-15",
@@ -139,7 +139,7 @@ DATASETS = [
         task="franka_stack_two_blocks",
         source_type="dagger",
         environment="franka_stack_two_blocks",
-        wandb_artifact="self-improving/franka-stack-two-blocks/dp-bc-stack-two-blocks-v1-zh5uj4dr-final:v0",
+        model_id="wandb://self-improving/franka-stack-two-blocks/dp-bc-stack-two-blocks-v1-zh5uj4dr-final:v0",
     ),
     # --- Eval (6) ---
     DatasetInput(

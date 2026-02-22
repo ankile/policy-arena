@@ -82,31 +82,28 @@ export default function PolicyDetail({
           <h3 className="text-sm font-medium text-ink mb-3">Details</h3>
           <dl className="space-y-2 text-xs">
             <div className="flex gap-2">
-              <dt className="text-ink-muted w-24 shrink-0">W&B Artifact</dt>
+              <dt className="text-ink-muted w-24 shrink-0">Model ID</dt>
               <dd className="font-mono text-ink break-all">
-                <a
-                  href={(() => {
-                    const [entity, project, rest] = [
-                      ...policy.wandb_artifact.split("/").slice(0, 2),
-                      policy.wandb_artifact.split("/").slice(2).join("/"),
-                    ];
-                    const [name, version] = rest.split(":");
-                    return `https://wandb.ai/${entity}/${project}/artifacts/policy/${name}/${version}`;
-                  })()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-teal hover:underline"
-                >
-                  {policy.wandb_artifact}
-                </a>
+                {policy.model_url ? (
+                  <a
+                    href={policy.model_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-teal hover:underline"
+                  >
+                    {policy.model_id}
+                  </a>
+                ) : (
+                  policy.model_id
+                )}
               </dd>
             </div>
-            {policy.wandb_run_url && (
+            {policy.training_url && (
               <div className="flex gap-2">
-                <dt className="text-ink-muted w-24 shrink-0">W&B Run</dt>
+                <dt className="text-ink-muted w-24 shrink-0">Training Run</dt>
                 <dd>
                   <a
-                    href={policy.wandb_run_url}
+                    href={policy.training_url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-teal hover:underline font-mono"

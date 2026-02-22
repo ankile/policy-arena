@@ -21,14 +21,14 @@ from policy_arena import PolicyArenaClient, PolicyInput, RoundInput, RoundResult
 CONVEX_URL = os.environ.get("CONVEX_URL", "https://grandiose-rook-292.convex.cloud")
 ENVIRONMENT = "franka_pick_cube"
 
-# Per-session artifact mappings: policy_id -> (wandb_artifact, name)
+# Per-session artifact mappings: policy_id -> (model_id, name)
 SESSION1_POLICY_MAP = {
     0: (
-        "self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_20000:v0",
+        "wandb://self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_20000:v0",
         "dp-dagger-pick-cube-v3-with-auto (jqxhpam8)",
     ),
     1: (
-        "self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_20000:v1",
+        "wandb://self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_20000:v1",
         "dp-dagger-pick-cube-v3-aggressive-aug (1p5lsm3q)",
     ),
 }
@@ -37,15 +37,15 @@ SESSION2_POLICY_MAP = SESSION1_POLICY_MAP
 
 SESSION3_POLICY_MAP = {
     0: (
-        "self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_25000:v3",
+        "wandb://self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_25000:v3",
         "dp-bc-pick-cube-v2 (1hsp1oul)",
     ),
     1: (
-        "self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_25000:v2",
+        "wandb://self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_25000:v2",
         "dp-dagger-pick-cube-v2-with-auto (qj1yepvc)",
     ),
     2: (
-        "self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_20000:v0",
+        "wandb://self-improving/franka-pick-cube/diffusion-franka-pick-cube-v2-checkpoint_20000:v0",
         "dp-dagger-pick-cube-v3-with-auto (jqxhpam8)",
     ),
 }
@@ -194,10 +194,10 @@ def build_rounds(
             ep_index, success, pid, rid = best[(round_id, policy_id)]
             assert pid == policy_id
             assert rid == round_id
-            artifact = policy_map[policy_id][0]
+            model_id = policy_map[policy_id][0]
             results.append(
                 RoundResultInput(
-                    wandb_artifact=artifact,
+                    model_id=model_id,
                     success=bool(success),
                     episode_index=ep_index,
                     num_frames=num_frames_map.get(ep_index),
@@ -212,10 +212,10 @@ def build_policies(policy_map: dict[int, tuple[str, str]]) -> list[PolicyInput]:
     return [
         PolicyInput(
             name=name,
-            wandb_artifact=artifact,
+            model_id=model_id,
             environment=ENVIRONMENT,
         )
-        for artifact, name in policy_map.values()
+        for model_id, name in policy_map.values()
     ]
 
 
@@ -240,7 +240,7 @@ def submit_session(
     for r in rounds:
         print(
             f"    Round {r.round_index}: "
-            f"{[(res.wandb_artifact.split(':')[-1], res.success, res.episode_index, res.num_frames) for res in r.results]}"
+            f"{[(res.model_id.split(':')[-1], res.success, res.episode_index, res.num_frames) for res in r.results]}"
         )
 
     session_id = client.submit_eval_session(

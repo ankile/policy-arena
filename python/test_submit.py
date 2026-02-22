@@ -14,12 +14,12 @@ def main():
     policies = [
         PolicyInput(
             name="smoke-test-policy-A",
-            wandb_artifact="test/smoke/policy-a:v0",
+            model_id="wandb://test/smoke/policy-a:v0",
             environment="smoke_test",
         ),
         PolicyInput(
             name="smoke-test-policy-B",
-            wandb_artifact="test/smoke/policy-b:v0",
+            model_id="wandb://test/smoke/policy-b:v0",
             environment="smoke_test",
         ),
     ]
@@ -28,15 +28,15 @@ def main():
         RoundInput(
             round_index=0,
             results=[
-                RoundResultInput(wandb_artifact="test/smoke/policy-a:v0", success=True, episode_index=0),
-                RoundResultInput(wandb_artifact="test/smoke/policy-b:v0", success=False, episode_index=1),
+                RoundResultInput(model_id="wandb://test/smoke/policy-a:v0", success=True, episode_index=0),
+                RoundResultInput(model_id="wandb://test/smoke/policy-b:v0", success=False, episode_index=1),
             ],
         ),
         RoundInput(
             round_index=1,
             results=[
-                RoundResultInput(wandb_artifact="test/smoke/policy-a:v0", success=True, episode_index=2),
-                RoundResultInput(wandb_artifact="test/smoke/policy-b:v0", success=True, episode_index=3),
+                RoundResultInput(model_id="wandb://test/smoke/policy-a:v0", success=True, episode_index=2),
+                RoundResultInput(model_id="wandb://test/smoke/policy-b:v0", success=True, episode_index=3),
             ],
         ),
     ]

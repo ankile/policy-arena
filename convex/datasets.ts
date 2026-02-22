@@ -9,7 +9,8 @@ export const register = mutation({
     source_type: v.string(),
     environment: v.string(),
     num_episodes: v.optional(v.int64()),
-    wandb_artifact: v.optional(v.string()),
+    model_id: v.optional(v.string()),
+    model_url: v.optional(v.string()),
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -79,6 +80,16 @@ export const deleteByRepo = mutation({
     if (!dataset) return null;
     await ctx.db.delete(dataset._id);
     return dataset._id;
+  },
+});
+
+export const getByRepo = query({
+  args: { repo_id: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("datasets")
+      .withIndex("by_repo", (q) => q.eq("repo_id", args.repo_id))
+      .unique();
   },
 });
 

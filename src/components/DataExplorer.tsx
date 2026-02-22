@@ -306,6 +306,18 @@ function EpisodeCard({
 // Dataset Detail Panel
 // ---------------------------------------------------------------------------
 
+/** Resolve the model link from explicit model_url. */
+function resolveModelLink(dataset: { model_url?: string }): {
+  url: string;
+  label: string;
+} | null {
+  if (!dataset.model_url) return null;
+  const url = dataset.model_url;
+  if (url.includes("wandb.ai")) return { url, label: "W&B" };
+  if (url.includes("huggingface.co")) return { url, label: "HF Model" };
+  return { url, label: "Model" };
+}
+
 function DatasetDetail({
   repoId,
   onBack,
@@ -313,6 +325,7 @@ function DatasetDetail({
   repoId: string;
   onBack: () => void;
 }) {
+  const dataset = useQuery(api.datasets.getByRepo, { repo_id: repoId });
   const [episodes, setEpisodes] = useState<EpisodeMetadata[]>([]);
   const [cameraKeys, setCameraKeys] = useState<string[]>([]);
   const [sourceStats, setSourceStats] = useState<DatasetSourceStats | null>(null);
@@ -456,14 +469,29 @@ function DatasetDetail({
               </p>
             </div>
           </div>
-          <a
-            href={`https://huggingface.co/datasets/${repoId}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-ink-muted hover:text-teal transition-colors font-mono"
-          >
-            HuggingFace &rarr;
-          </a>
+          <div className="flex items-center gap-3">
+            {dataset && (() => {
+              const link = resolveModelLink(dataset);
+              return link ? (
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-ink-muted hover:text-teal transition-colors font-mono"
+                >
+                  {link.label} &rarr;
+                </a>
+              ) : null;
+            })()}
+            <a
+              href={`https://huggingface.co/datasets/${repoId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-ink-muted hover:text-teal transition-colors font-mono"
+            >
+              HuggingFace &rarr;
+            </a>
+          </div>
         </div>
       </div>
 
@@ -866,11 +894,21 @@ export default function DataExplorer() {
                           ` · ${formatDurationLong(dataset.total_duration_seconds)}`}
                       </span>
                     )}
-                    {dataset.wandb_artifact && (
-                      <span className="font-mono truncate max-w-[300px]">
-                        {dataset.wandb_artifact}
-                      </span>
-                    )}
+                    {(() => {
+                      const link = resolveModelLink(dataset);
+                      return link ? (
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-mono truncate max-w-[300px] hover:text-teal transition-colors"
+                          onClick={(e) => e.stopPropagation()}
+                          title={dataset.model_url}
+                        >
+                          {link.label} &rarr;
+                        </a>
+                      ) : null;
+                    })()}
                     <span>
                       {new Date(dataset._creationTime).toLocaleDateString(
                         "en-US",

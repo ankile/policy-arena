@@ -24,6 +24,7 @@ function SessionModeTag({ mode }: { mode: string }) {
     manual: "bg-warm-100 text-ink-muted",
     "pool-sample": "bg-teal-light text-teal",
     calibrate: "bg-gold-light text-gold",
+    rollout: "bg-purple-100 text-purple-700",
   };
   return (
     <span
@@ -236,13 +237,14 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
   );
 }
 
-type SessionModeFilter = "all" | "manual" | "pool-sample" | "calibrate";
+type SessionModeFilter = "all" | "manual" | "pool-sample" | "calibrate" | "rollout";
 
 const SESSION_MODE_FILTERS: { id: SessionModeFilter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "manual", label: "Manual" },
   { id: "pool-sample", label: "Pool Sample" },
   { id: "calibrate", label: "Calibrate" },
+  { id: "rollout", label: "Rollout" },
 ];
 
 export default function EvalSessions() {

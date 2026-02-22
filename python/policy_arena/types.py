@@ -6,31 +6,34 @@ from convex import ConvexInt64
 @dataclass
 class PolicyInput:
     name: str
-    wandb_artifact: str
+    model_id: str
     environment: str
-    wandb_run_url: str | None = None
+    model_url: str | None = None
+    training_url: str | None = None
 
     def to_dict(self) -> dict:
         d = {
             "name": self.name,
-            "wandb_artifact": self.wandb_artifact,
+            "model_id": self.model_id,
             "environment": self.environment,
         }
-        if self.wandb_run_url is not None:
-            d["wandb_run_url"] = self.wandb_run_url
+        if self.model_url is not None:
+            d["model_url"] = self.model_url
+        if self.training_url is not None:
+            d["training_url"] = self.training_url
         return d
 
 
 @dataclass
 class RoundResultInput:
-    wandb_artifact: str
+    model_id: str
     success: bool
     episode_index: int
     num_frames: int | None = None
 
     def to_dict(self) -> dict:
         d = {
-            "wandb_artifact": self.wandb_artifact,
+            "model_id": self.model_id,
             "success": self.success,
             "episode_index": ConvexInt64(self.episode_index),
         }
@@ -59,7 +62,8 @@ class DatasetInput:
     source_type: str  # "teleop" | "rollout" | "dagger" | "eval"
     environment: str
     num_episodes: int | None = None
-    wandb_artifact: str | None = None
+    model_id: str | None = None
+    model_url: str | None = None
     notes: str | None = None
 
     def to_dict(self) -> dict:
@@ -72,8 +76,10 @@ class DatasetInput:
         }
         if self.num_episodes is not None:
             d["num_episodes"] = ConvexInt64(self.num_episodes)
-        if self.wandb_artifact is not None:
-            d["wandb_artifact"] = self.wandb_artifact
+        if self.model_id is not None:
+            d["model_id"] = self.model_id
+        if self.model_url is not None:
+            d["model_url"] = self.model_url
         if self.notes is not None:
             d["notes"] = self.notes
         return d

@@ -2,7 +2,7 @@ import random
 
 from convex import ConvexClient
 
-from policy_arena.types import DatasetInput, PolicyInput, RoundInput
+from policy_arena.types import DatasetInput, PolicyInput, RoundInput, RoundResultInput
 
 
 class PolicyArenaClient:
@@ -29,11 +29,48 @@ class PolicyArenaClient:
             args["session_mode"] = session_mode
         return self.client.mutation("evalSessions:submit", args)
 
+    def submit_rollout_session(
+        self,
+        dataset_repo: str,
+        policy: PolicyInput,
+        episodes: list[tuple[int, bool, int | None]],
+        notes: str | None = None,
+    ) -> str:
+        """Submit a rollout session (single policy, no ELO changes).
+
+        Args:
+            dataset_repo: HuggingFace dataset repo ID.
+            policy: The policy that was rolled out.
+            episodes: List of (episode_index, success, num_frames) tuples.
+            notes: Optional session notes.
+        """
+        rounds = [
+            RoundInput(
+                round_index=i,
+                results=[
+                    RoundResultInput(
+                        model_id=policy.model_id,
+                        success=success,
+                        episode_index=episode_index,
+                        num_frames=num_frames,
+                    )
+                ],
+            )
+            for i, (episode_index, success, num_frames) in enumerate(episodes)
+        ]
+        return self.submit_eval_session(
+            dataset_repo=dataset_repo,
+            policies=[policy],
+            rounds=rounds,
+            notes=notes,
+            session_mode="rollout",
+        )
+
     def get_pair_counts(self, environment: str | None = None) -> dict[str, dict[str, int]]:
         """Get pairwise co-occurrence counts across all arena sessions.
 
-        Returns ``{artifact_a: {artifact_b: count, ...}, ...}`` where count
-        is how many rounds the two artifacts appeared together.
+        Returns ``{model_id_a: {model_id_b: count, ...}, ...}`` where count
+        is how many rounds the two model IDs appeared together.
         """
         args: dict = {}
         if environment is not None:
@@ -45,15 +82,15 @@ class PolicyArenaClient:
         candidates: list[dict],
         k: int,
         pair_counts: dict[str, dict[str, int]],
-        seed_artifacts: list[str] | None = None,
+        seed_model_ids: list[str] | None = None,
     ) -> list[dict]:
         """Iterative weighted sampling: prefer under-tested pairings.
 
         Each pick is weighted by ``1 / (1 + sum_of_pair_counts_with_selected)``.
-        *seed_artifacts* are pre-seeded as "already selected" (e.g. focus
+        *seed_model_ids* are pre-seeded as "already selected" (e.g. focus
         policies in calibrate mode) but are NOT added to the result.
         """
-        selected_artifacts: list[str] = list(seed_artifacts) if seed_artifacts else []
+        selected_model_ids: list[str] = list(seed_model_ids) if seed_model_ids else []
         selected: list[dict] = []
         remaining = list(candidates)
 
@@ -64,10 +101,10 @@ class PolicyArenaClient:
             # Compute weights
             weights: list[float] = []
             for c in remaining:
-                art = c["wandb_artifact"]
+                mid = c["model_id"]
                 total = sum(
-                    pair_counts.get(art, {}).get(sel, 0)
-                    for sel in selected_artifacts
+                    pair_counts.get(mid, {}).get(sel, 0)
+                    for sel in selected_model_ids
                 )
                 weights.append(1.0 / (1.0 + total))
 
@@ -76,11 +113,11 @@ class PolicyArenaClient:
                 print(f"  [diverse_sample] pick {pick_num + 1}/{k}, "
                       f"pool={len(remaining)} candidates:")
                 for c, w in zip(remaining, weights):
-                    print(f"    {c['wandb_artifact'].split('/')[-1]}: weight={w:.3f}")
+                    print(f"    {c['model_id'].split('/')[-1]}: weight={w:.3f}")
 
             chosen = random.choices(remaining, weights=weights, k=1)[0]
             selected.append(chosen)
-            selected_artifacts.append(chosen["wandb_artifact"])
+            selected_model_ids.append(chosen["model_id"])
             remaining.remove(chosen)
 
         return selected
@@ -89,11 +126,11 @@ class PolicyArenaClient:
         self,
         num_opponents: int = 2,
         environment: str | None = None,
-        exclude_artifacts: list[str] | None = None,
+        exclude_model_ids: list[str] | None = None,
         pair_counts: dict[str, dict[str, int]] | None = None,
-        seed_artifacts: list[str] | None = None,
+        seed_model_ids: list[str] | None = None,
     ) -> list[dict]:
-        """Get W&B artifacts of recommended opponents via diversity-weighted sampling.
+        """Get model IDs of recommended opponents via diversity-weighted sampling.
 
         Fetches all candidates from the backend (sorted by ELO descending)
         and samples client-side to avoid deterministic Math.random() in
@@ -102,17 +139,17 @@ class PolicyArenaClient:
         Args:
             num_opponents: Number of opponents to recommend.
             environment: Filter to policies in this environment.
-            exclude_artifacts: W&B artifact strings to exclude (e.g. the focus policy).
+            exclude_model_ids: Model ID strings to exclude (e.g. the focus policy).
             pair_counts: Pairwise co-occurrence counts. If provided, uses
                 diversity-aware weighted sampling instead of uniform random.
-            seed_artifacts: Artifacts pre-seeded as "already selected" for
+            seed_model_ids: Model IDs pre-seeded as "already selected" for
                 weighting (e.g. focus policies in calibrate mode).
         """
         query_args: dict = {}
         if environment is not None:
             query_args["environment"] = environment
-        if exclude_artifacts is not None:
-            query_args["exclude_artifacts"] = exclude_artifacts
+        if exclude_model_ids is not None:
+            query_args["exclude_model_ids"] = exclude_model_ids
         candidates = self.client.query(
             "recommendations:getOpponents",
             query_args,
@@ -123,7 +160,7 @@ class PolicyArenaClient:
 
         if pair_counts is not None:
             return self._diverse_sample(
-                candidates, num_opponents, pair_counts, seed_artifacts,
+                candidates, num_opponents, pair_counts, seed_model_ids,
             )
 
         return random.sample(candidates, num_opponents)

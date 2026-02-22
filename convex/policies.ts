@@ -67,12 +67,12 @@ export const get = query({
   },
 });
 
-export const getByArtifact = query({
-  args: { wandb_artifact: v.string() },
+export const getByModelId = query({
+  args: { model_id: v.string() },
   handler: async (ctx, args) => {
     return await ctx.db
       .query("policies")
-      .withIndex("by_artifact", (q) => q.eq("wandb_artifact", args.wandb_artifact))
+      .withIndex("by_model_id", (q) => q.eq("model_id", args.model_id))
       .unique();
   },
 });
@@ -80,20 +80,22 @@ export const getByArtifact = query({
 export const register = mutation({
   args: {
     name: v.string(),
-    wandb_artifact: v.string(),
-    wandb_run_url: v.optional(v.string()),
+    model_id: v.string(),
+    model_url: v.optional(v.string()),
+    training_url: v.optional(v.string()),
     environment: v.string(),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("policies")
-      .withIndex("by_artifact", (q) => q.eq("wandb_artifact", args.wandb_artifact))
+      .withIndex("by_model_id", (q) => q.eq("model_id", args.model_id))
       .unique();
 
     if (existing) {
       await ctx.db.patch(existing._id, {
         name: args.name,
-        wandb_run_url: args.wandb_run_url,
+        model_url: args.model_url,
+        training_url: args.training_url,
         environment: args.environment,
       });
       return existing._id;
@@ -101,8 +103,9 @@ export const register = mutation({
 
     return await ctx.db.insert("policies", {
       name: args.name,
-      wandb_artifact: args.wandb_artifact,
-      wandb_run_url: args.wandb_run_url,
+      model_id: args.model_id,
+      model_url: args.model_url,
+      training_url: args.training_url,
       environment: args.environment,
       elo: 1500,
       wins: BigInt(0),

@@ -17,16 +17,16 @@ export const getPairCounts = query({
       policies = await ctx.db.query("policies").collect();
     }
 
-    // Build policy_id -> wandb_artifact map
-    const idToArtifact = new Map<string, string>();
+    // Build policy_id -> model_id map
+    const idToModelId = new Map<string, string>();
     const policyIds = new Set<string>();
     for (const p of policies) {
-      idToArtifact.set(p._id as string, p.wandb_artifact);
+      idToModelId.set(p._id as string, p.model_id);
       policyIds.add(p._id as string);
     }
 
     // Collect all round results for these policies, grouped by (session_id, round_index)
-    const roundGroups = new Map<string, string[]>(); // "session_id|round_index" -> [artifact, ...]
+    const roundGroups = new Map<string, string[]>(); // "session_id|round_index" -> [model_id, ...]
     for (const p of policies) {
       const results = await ctx.db
         .query("roundResults")
@@ -34,23 +34,23 @@ export const getPairCounts = query({
         .collect();
       for (const r of results) {
         const key = `${r.session_id}|${r.round_index}`;
-        const artifact = idToArtifact.get(r.policy_id as string);
-        if (!artifact) continue;
+        const modelId = idToModelId.get(r.policy_id as string);
+        if (!modelId) continue;
         if (!roundGroups.has(key)) {
           roundGroups.set(key, []);
         }
-        roundGroups.get(key)!.push(artifact);
+        roundGroups.get(key)!.push(modelId);
       }
     }
 
     // Count pairwise co-occurrences
     const counts: Record<string, Record<string, number>> = {};
-    for (const artifacts of roundGroups.values()) {
+    for (const modelIds of roundGroups.values()) {
       // All pairs within this round group
-      for (let i = 0; i < artifacts.length; i++) {
-        for (let j = i + 1; j < artifacts.length; j++) {
-          const a = artifacts[i];
-          const b = artifacts[j];
+      for (let i = 0; i < modelIds.length; i++) {
+        for (let j = i + 1; j < modelIds.length; j++) {
+          const a = modelIds[i];
+          const b = modelIds[j];
           if (!counts[a]) counts[a] = {};
           if (!counts[b]) counts[b] = {};
           counts[a][b] = (counts[a][b] || 0) + 1;
@@ -66,7 +66,7 @@ export const getPairCounts = query({
 export const getOpponents = query({
   args: {
     environment: v.optional(v.string()),
-    exclude_artifacts: v.optional(v.array(v.string())),
+    exclude_model_ids: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     let policies = await ctx.db.query("policies").collect();
@@ -76,10 +76,10 @@ export const getOpponents = query({
       policies = policies.filter((p) => p.environment === args.environment);
     }
 
-    // Exclude specific artifacts (e.g. the focus policy in calibrate mode)
-    if (args.exclude_artifacts) {
+    // Exclude specific model_ids (e.g. the focus policy in calibrate mode)
+    if (args.exclude_model_ids) {
       policies = policies.filter(
-        (p) => !args.exclude_artifacts!.includes(p.wandb_artifact)
+        (p) => !args.exclude_model_ids!.includes(p.model_id)
       );
     }
 
@@ -88,7 +88,7 @@ export const getOpponents = query({
     // Math.random() in Convex queries.
     const sorted = [...policies].sort((a, b) => b.elo - a.elo);
     return sorted.map((p) => ({
-      wandb_artifact: p.wandb_artifact,
+      model_id: p.model_id,
       name: p.name,
       elo: p.elo,
     }));
