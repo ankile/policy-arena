@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import {
-  fetchDatasetInfo,
+  fetchEpisodeSubset,
+  getParquetCache,
   getVideoUrl,
   type EpisodeMetadata,
 } from "../lib/hf-api";
@@ -205,15 +206,30 @@ export default function RolloutSection({
   results: RolloutResult[];
   isOpen: boolean;
 }) {
+  // Initialize component state from module-level cache (survives unmount/remount)
   const [datasetCaches, setDatasetCaches] = useState<
     Map<string, DatasetCache>
-  >(new Map());
+  >(() => {
+    const initial = new Map<string, DatasetCache>();
+    for (const [repo, cached] of getParquetCache()) {
+      const episodeMap = new Map<number, EpisodeMetadata>();
+      for (const ep of cached.episodes) {
+        episodeMap.set(ep.episodeIndex, { ...ep, success: false });
+      }
+      const cameraKey =
+        cached.cameraKeys.length > 1
+          ? cached.cameraKeys[cached.cameraKeys.length - 1]
+          : cached.cameraKeys[0];
+      initial.set(repo, { episodeMap, cameraKey });
+    }
+    return initial;
+  });
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Fetch dataset info for all unique datasets — only when section is open
+  // Prefetch dataset info on mount (no isOpen guard — starts immediately)
   useEffect(() => {
-    if (!isOpen || results.length === 0) return;
+    if (results.length === 0) return;
 
     const uniqueRepos = [...new Set(results.map((f) => f.dataset_repo))];
     const missing = uniqueRepos.filter((repo) => !datasetCaches.has(repo));
@@ -222,10 +238,16 @@ export default function RolloutSection({
     setLoading(true);
     Promise.all(
       missing.map(async (repo) => {
-        const info = await fetchDatasetInfo(repo);
+        // Collect episode indices needed for this repo
+        const neededIndices = new Set(
+          results
+            .filter((r) => r.dataset_repo === repo)
+            .map((r) => r.episode_index)
+        );
+        const info = await fetchEpisodeSubset(repo, neededIndices);
         const episodeMap = new Map<number, EpisodeMetadata>();
         for (const ep of info.episodes) {
-          episodeMap.set(ep.episodeIndex, ep);
+          episodeMap.set(ep.episodeIndex, { ...ep, success: false });
         }
         const cameraKey =
           info.cameraKeys.length > 1
@@ -247,7 +269,7 @@ export default function RolloutSection({
         // Dataset fetch failed — cards will show "Loading..."
       })
       .finally(() => setLoading(false));
-  }, [isOpen, results]);
+  }, [results]);
 
   if (!isOpen) return null;
 

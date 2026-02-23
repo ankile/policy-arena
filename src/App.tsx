@@ -358,9 +358,19 @@ function App() {
                         />
 
                         {/* Success Rate */}
-                        <div className="font-mono text-sm text-ink-muted">
+                        <div
+                          className="font-mono text-sm text-ink-muted"
+                          title={policy.successRate != null
+                            ? `${policy.totalSuccesses} of ${policy.totalRollouts} rollouts succeeded`
+                            : undefined}
+                        >
                           {policy.successRate != null
-                            ? `${Math.round(policy.successRate * 100)}%`
+                            ? <>
+                                {Math.round(policy.successRate * 100)}%
+                                <span className="text-xs text-ink-muted/60 ml-1">
+                                  ({policy.totalRollouts})
+                                </span>
+                              </>
                             : "—"}
                         </div>
 

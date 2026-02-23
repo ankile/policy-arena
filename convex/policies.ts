@@ -45,7 +45,7 @@ export const leaderboard = query({
               )
             : null;
 
-        return { ...policy, successRate, avgSuccessSteps };
+        return { ...policy, successRate, avgSuccessSteps, totalRollouts: total, totalSuccesses: successes };
       })
     );
 

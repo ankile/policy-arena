@@ -46,7 +46,7 @@ function CollapsibleSection({
           </span>
         )}
       </button>
-      {isOpen && children}
+      {children}
     </div>
   );
 }

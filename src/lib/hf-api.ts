@@ -62,6 +62,104 @@ async function tryReadParquet(
   }
 }
 
+// ── Module-level cache for parquet metadata ──
+const parquetCache = new Map<
+  string,
+  { episodes: Omit<EpisodeMetadata, "success">[]; cameraKeys: string[] }
+>();
+
+/**
+ * Fetch only the parquet metadata needed for a specific set of episode indices.
+ * Returns cached results instantly on hit. Fetches parquet files in batches of 4
+ * with early termination once all needed episodes are found.
+ */
+export async function fetchEpisodeSubset(
+  datasetId: string,
+  neededIndices: Set<number>
+): Promise<{ episodes: Omit<EpisodeMetadata, "success">[]; cameraKeys: string[] }> {
+  // Return full cache hit
+  const cached = parquetCache.get(datasetId);
+  if (cached) return cached;
+
+  // Read the first parquet file to discover camera keys and column schema
+  const firstUrl = `${hfBase(datasetId)}/meta/episodes/chunk-000/file-000.parquet`;
+  const firstFile = await asyncBufferFromUrl({ url: firstUrl });
+  const firstRows = (await parquetReadObjects({ file: firstFile })).map(
+    (raw) => toJson(raw) as Record<string, unknown>
+  );
+
+  const cameraKeys =
+    firstRows.length > 0 ? discoverCameraKeys(Object.keys(firstRows[0])) : [];
+  const videoColPrefix =
+    cameraKeys.length > 0 ? `videos/${cameraKeys[0]}` : null;
+
+  const parseRows = (rows: Record<string, unknown>[]) =>
+    rows.map((row) => ({
+      episodeIndex: row["episode_index"] as number,
+      numFrames: row["length"] as number,
+      duration: (row["length"] as number) / FPS,
+      videoFileIndex: videoColPrefix
+        ? (row[`${videoColPrefix}/file_index`] as number)
+        : 0,
+      fromTimestamp: videoColPrefix
+        ? (row[`${videoColPrefix}/from_timestamp`] as number)
+        : 0,
+      toTimestamp: videoColPrefix
+        ? (row[`${videoColPrefix}/to_timestamp`] as number)
+        : 0,
+    }));
+
+  const allEpisodes = parseRows(firstRows);
+  const found = new Set(allEpisodes.map((e) => e.episodeIndex));
+
+  // Check if we already have all needed episodes
+  const allFound = () => [...neededIndices].every((idx) => found.has(idx));
+
+  if (!allFound()) {
+    // Fetch additional parquet files in batches of 4, with early termination
+    const BATCH_SIZE = 4;
+    const MAX_FILES = 19; // files 001-019
+    for (let batchStart = 0; batchStart < MAX_FILES; batchStart += BATCH_SIZE) {
+      const batchEnd = Math.min(batchStart + BATCH_SIZE, MAX_FILES);
+      const batchResults = await Promise.all(
+        Array.from({ length: batchEnd - batchStart }, (_, i) => {
+          const fileIdx = batchStart + i + 1; // 1-based
+          const url = `${hfBase(datasetId)}/meta/episodes/chunk-000/file-${String(fileIdx).padStart(3, "0")}.parquet`;
+          return tryReadParquet(url);
+        })
+      );
+
+      for (const rows of batchResults) {
+        if (rows !== null) {
+          const parsed = parseRows(rows);
+          allEpisodes.push(...parsed);
+          for (const ep of parsed) found.add(ep.episodeIndex);
+        }
+      }
+
+      if (allFound()) break;
+    }
+  }
+
+  const result = {
+    episodes: allEpisodes.sort((a, b) => a.episodeIndex - b.episodeIndex),
+    cameraKeys,
+  };
+
+  // Store in module-level cache
+  parquetCache.set(datasetId, result);
+
+  return result;
+}
+
+/** Get the module-level parquet cache (for initializing component state). */
+export function getParquetCache(): ReadonlyMap<
+  string,
+  { episodes: Omit<EpisodeMetadata, "success">[]; cameraKeys: string[] }
+> {
+  return parquetCache;
+}
+
 export async function fetchDatasetInfo(
   datasetId: string = DEFAULT_DATASET_ID
 ): Promise<DatasetInfo> {
