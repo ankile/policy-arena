@@ -16,7 +16,7 @@ export function RoundVideos({
 }: {
   results: RoundResult[];
   datasetRepo: string;
-  episodeMap: Map<number, EpisodeMetadata>;
+  episodeMap: Map<number, Omit<EpisodeMetadata, "success">>;
   cameraKey: string;
 }) {
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);

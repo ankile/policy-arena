@@ -180,6 +180,10 @@ export async function fetchDatasetInfo(
 async function fetchParquetMetadata(
   datasetId: string
 ): Promise<{ episodes: Omit<EpisodeMetadata, "success">[]; cameraKeys: string[] }> {
+  // Return from module-level cache if available
+  const cached = parquetCache.get(datasetId);
+  if (cached) return cached;
+
   // Read the first parquet file to discover camera keys and column schema
   const firstUrl = `${hfBase(datasetId)}/meta/episodes/chunk-000/file-000.parquet`;
   const firstFile = await asyncBufferFromUrl({ url: firstUrl });
@@ -222,13 +226,18 @@ async function fetchParquetMetadata(
       : 0,
   }));
 
-  return {
+  const result = {
     episodes: episodes.sort((a, b) => a.episodeIndex - b.episodeIndex),
     cameraKeys,
   };
+
+  // Store in module-level cache
+  parquetCache.set(datasetId, result);
+
+  return result;
 }
 
-async function fetchSuccessStatus(
+export async function fetchSuccessStatus(
   datasetId: string
 ): Promise<Map<number, boolean>> {
   const url = `${DATASETS_SERVER}/filter?dataset=${datasetId}&config=default&split=train&where=frame_index=0&length=100`;

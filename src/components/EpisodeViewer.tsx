@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
-  fetchDatasetInfo,
+  fetchEpisodeSubset,
+  fetchSuccessStatus,
   getVideoUrl,
   type EpisodeMetadata,
 } from "../lib/hf-api";
@@ -231,13 +232,21 @@ export default function EpisodeViewer({
     setSelectedIndex(null);
     setPlaying(false);
 
-    fetchDatasetInfo(datasetId)
-      .then((info) => {
-        setEpisodes(info.episodes);
-        setCameraKeys(info.cameraKeys);
+    const resolvedId = datasetId ?? "ankile/dp-franka-pick-cube-2026-02-12";
+    Promise.all([
+      fetchEpisodeSubset(resolvedId, new Set()),
+      fetchSuccessStatus(resolvedId).catch(() => new Map<number, boolean>()),
+    ])
+      .then(([parquetInfo, successMap]) => {
+        const episodes = parquetInfo.episodes.map((ep) => ({
+          ...ep,
+          success: successMap.get(ep.episodeIndex) ?? false,
+        }));
+        setEpisodes(episodes);
+        setCameraKeys(parquetInfo.cameraKeys);
         // If an episodeIndex was provided, select it
         if (episodeIndex !== undefined) {
-          const idx = info.episodes.findIndex(
+          const idx = episodes.findIndex(
             (e) => e.episodeIndex === episodeIndex
           );
           if (idx >= 0) setSelectedIndex(idx);

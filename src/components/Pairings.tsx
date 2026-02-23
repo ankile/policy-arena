@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
-import { fetchDatasetInfo, type EpisodeMetadata } from "../lib/hf-api";
+import { fetchEpisodeSubset, getParquetCache, type EpisodeMetadata } from "../lib/hf-api";
 import {
   useSearchParam,
   useSearchParamNullable,
@@ -73,14 +73,24 @@ export default function Pairings() {
   );
 
   // Cache dataset info by repo
-  const [datasetCache, setDatasetCache] = useState<
-    Map<
-      string,
-      | { status: "loading" }
-      | { status: "loaded"; episodeMap: Map<number, EpisodeMetadata>; cameraKey: string }
-      | { status: "error" }
-    >
-  >(new Map());
+  type DsCacheEntry =
+    | { status: "loading" }
+    | { status: "loaded"; episodeMap: Map<number, Omit<EpisodeMetadata, "success">>; cameraKey: string }
+    | { status: "error" };
+  const [datasetCache, setDatasetCache] = useState<Map<string, DsCacheEntry>>(() => {
+    // Initialize from module-level parquet cache
+    const initial = new Map<string, DsCacheEntry>();
+    for (const [repo, cached] of getParquetCache()) {
+      const episodeMap = new Map<number, Omit<EpisodeMetadata, "success">>();
+      for (const ep of cached.episodes) episodeMap.set(ep.episodeIndex, ep);
+      const cameraKey =
+        cached.cameraKeys.length > 1
+          ? cached.cameraKeys[cached.cameraKeys.length - 1]
+          : cached.cameraKeys[0];
+      initial.set(repo, { status: "loaded", episodeMap, cameraKey });
+    }
+    return initial;
+  });
 
   // Load dataset info for all unique repos in the current rounds
   const uniqueRepos = rounds
@@ -88,12 +98,17 @@ export default function Pairings() {
     : [];
 
   useEffect(() => {
+    if (!rounds) return;
     for (const repo of uniqueRepos) {
       if (datasetCache.has(repo)) continue;
       setDatasetCache((prev) => new Map(prev).set(repo, { status: "loading" }));
-      fetchDatasetInfo(repo)
+      const neededIndices = new Set(
+        rounds.filter((r) => r.datasetRepo === repo)
+          .flatMap((r) => r.results.map((res) => res.episodeIndex))
+      );
+      fetchEpisodeSubset(repo, neededIndices)
         .then((info) => {
-          const episodeMap = new Map<number, EpisodeMetadata>();
+          const episodeMap = new Map<number, Omit<EpisodeMetadata, "success">>();
           for (const ep of info.episodes) {
             episodeMap.set(ep.episodeIndex, ep);
           }

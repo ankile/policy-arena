@@ -3,7 +3,8 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import {
-  fetchDatasetInfo,
+  fetchEpisodeSubset,
+  getParquetCache,
   type EpisodeMetadata,
 } from "../lib/hf-api";
 import { useSearchParam, useSearchParamNullable, useSearchParamNumber, clearSearchParams } from "../lib/useSearchParam";
@@ -39,20 +40,34 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
   const detail = useQuery(api.evalSessions.getDetail, { id: sessionId });
   const [expandedRound, setExpandedRound] = useSearchParamNumber("round");
   const [datasetInfo, setDatasetInfo] = useState<{
-    episodeMap: Map<number, EpisodeMetadata>;
+    episodeMap: Map<number, Omit<EpisodeMetadata, "success">>;
     cameraKey: string;
-  } | null>(null);
+  } | null>(() => {
+    // Initialize from module-level cache if available
+    if (!detail) return null;
+    const cached = getParquetCache().get(detail.dataset_repo);
+    if (!cached) return null;
+    const episodeMap = new Map<number, Omit<EpisodeMetadata, "success">>();
+    for (const ep of cached.episodes) episodeMap.set(ep.episodeIndex, ep);
+    const cameraKey =
+      cached.cameraKeys.length > 1
+        ? cached.cameraKeys[cached.cameraKeys.length - 1]
+        : cached.cameraKeys[0];
+    return { episodeMap, cameraKey };
+  });
   const [datasetError, setDatasetError] = useState(false);
 
   useEffect(() => {
-    if (!detail) return;
-    fetchDatasetInfo(detail.dataset_repo)
+    if (!detail || datasetInfo) return;
+    const neededIndices = new Set(
+      detail.rounds.flatMap((r) => r.results.map((res) => res.episode_index))
+    );
+    fetchEpisodeSubset(detail.dataset_repo, neededIndices)
       .then((info) => {
-        const episodeMap = new Map<number, EpisodeMetadata>();
+        const episodeMap = new Map<number, Omit<EpisodeMetadata, "success">>();
         for (const ep of info.episodes) {
           episodeMap.set(ep.episodeIndex, ep);
         }
-        // Use last camera key (typically the better angle)
         const cameraKey =
           info.cameraKeys.length > 1
             ? info.cameraKeys[info.cameraKeys.length - 1]
@@ -62,7 +77,7 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
       .catch(() => {
         setDatasetError(true);
       });
-  }, [detail?.dataset_repo]);
+  }, [detail?.dataset_repo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!detail) {
     return (
