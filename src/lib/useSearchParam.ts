@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 
 function getParam(key: string): string | null {
   return new URLSearchParams(window.location.search).get(key);
@@ -15,12 +15,27 @@ function setParams(updates: Record<string, string | null>) {
   }
   const qs = params.toString();
   const url = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
-  window.history.replaceState(null, "", url);
+  window.history.pushState(null, "", url);
+}
+
+/** Re-read a param from the URL on popstate (browser back/forward). */
+function useSyncOnPopState(key: string, setValue: (v: string | null) => void) {
+  useEffect(() => {
+    const handler = () => setValue(getParam(key));
+    window.addEventListener("popstate", handler);
+    return () => window.removeEventListener("popstate", handler);
+  }, [key, setValue]);
 }
 
 /** Sync a required string param with the URL. Falls back to `defaultValue` when absent. */
 export function useSearchParam(key: string, defaultValue: string): [string, (v: string) => void] {
   const [value, setValue] = useState(() => getParam(key) ?? defaultValue);
+
+  const setRaw = useCallback(
+    (v: string | null) => setValue(v ?? defaultValue),
+    [defaultValue],
+  );
+  useSyncOnPopState(key, setRaw);
 
   const set = useCallback(
     (v: string) => {
@@ -36,6 +51,8 @@ export function useSearchParam(key: string, defaultValue: string): [string, (v: 
 /** Sync an optional string param with the URL. Returns `null` when absent. */
 export function useSearchParamNullable(key: string): [string | null, (v: string | null) => void] {
   const [value, setValue] = useState(() => getParam(key));
+
+  useSyncOnPopState(key, setValue);
 
   const set = useCallback(
     (v: string | null) => {
@@ -56,6 +73,13 @@ export function useSearchParamNumber(key: string): [number | null, (v: number | 
     const n = Number(raw);
     return Number.isNaN(n) ? null : n;
   });
+
+  const setFromUrl = useCallback((raw: string | null) => {
+    if (raw === null) { setValue(null); return; }
+    const n = Number(raw);
+    setValue(Number.isNaN(n) ? null : n);
+  }, []);
+  useSyncOnPopState(key, setFromUrl);
 
   const set = useCallback(
     (v: number | null) => {
