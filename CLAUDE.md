@@ -33,17 +33,42 @@ npx vercel --prod
 
 ## Project Structure
 
-- `src/App.tsx` — Main app with tabs: Leaderboard, Eval Sessions, Data Explorer
-- `src/components/DataExplorer.tsx` — Browse registered datasets and view episodes
-- `src/components/EvalSessions.tsx` — Eval session list and detail views
-- `src/components/EpisodeViewer.tsx` — HuggingFace episode video viewer
-- `src/components/PolicyDetail.tsx` — Expanded policy info and ELO history
-- `src/lib/hf-api.ts` — HuggingFace Datasets API client
-- `convex/schema.ts` — Database schema (policies, evalSessions, roundResults, eloHistory, datasets)
-- `convex/datasets.ts` — Dataset register mutation and list query
-- `convex/evalSessions.ts` — Eval session submission and ELO computation
-- `python/policy_arena/` — Python client for submitting eval results and registering datasets
-- `scripts/backfill_datasets.py` — One-off script to register existing datasets
+### Frontend (`src/`)
+
+- `App.tsx` — Main app with 4 tabs: Leaderboard, Eval Sessions, Pairings, Data Explorer
+- `components/DataExplorer.tsx` — Browse registered datasets and view episodes
+- `components/EvalSessions.tsx` — Eval session list and detail views
+- `components/Pairings.tsx` — Head-to-head policy pairing comparisons
+- `components/EpisodeViewer.tsx` — HuggingFace episode video viewer
+- `components/PolicyDetail.tsx` — Expanded policy info and ELO history
+- `components/RolloutSection.tsx` — Rollout display within eval sessions
+- `components/RoundVideos.tsx` — Video display for evaluation rounds
+- `lib/hf-api.ts` — HuggingFace Datasets API client
+
+### Convex Backend (`convex/`)
+
+- `schema.ts` — Database schema (policies, evalSessions, roundResults, eloHistory, datasets)
+- `evalSessions.ts` — Eval session submission and ELO computation
+- `policies.ts` — Policy CRUD operations
+- `recommendations.ts` — Opponent recommendation logic
+- `pairings.ts` — Policy pairing queries
+- `roundResults.ts` — Round result queries
+- `eloHistory.ts` — ELO history tracking
+- `elo.ts` — ELO rating computation
+- `datasets.ts` — Dataset register mutation and list query
+
+### Python Client (`python/policy_arena/`)
+
+- `client.py` — Main client for submitting eval results, managing eval/rollout sessions, getting opponent recommendations, and registering datasets
+- `types.py` — Shared type definitions
+- `get_datasets.py` — Dataset listing utility
+
+### Scripts (`scripts/`)
+
+- `backfill_datasets.py` — Register existing datasets
+- `backfill_rollout_sessions.py` — Backfill rollout session data
+- `backfill_pi05_rollout_sessions.py` — Backfill Pi0.5 rollout sessions
+- `backfill_stats.py` — Backfill computed statistics
 
 ## Design
 
