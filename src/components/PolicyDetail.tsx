@@ -3,6 +3,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import RolloutSection from "./RolloutSection";
+import { useSearchParamNullable } from "../lib/useSearchParam";
 
 function CollapsibleSection({
   title,
@@ -69,7 +70,8 @@ export default function PolicyDetail({
     policy_id: policyId,
   });
 
-  const [rolloutsOpen, setRolloutsOpen] = useState(false);
+  const [rolloutsParam, setRolloutsParam] = useSearchParamNullable("rollouts");
+  const rolloutsOpen = rolloutsParam !== null;
   const [failuresOpen, setFailuresOpen] = useState(false);
 
   if (!policy) return null;
@@ -188,7 +190,7 @@ export default function PolicyDetail({
           count={recentResults?.length}
           countColor="bg-teal-light text-teal"
           isOpen={rolloutsOpen}
-          onToggle={() => setRolloutsOpen((o) => !o)}
+          onToggle={() => setRolloutsParam(rolloutsOpen ? null : "1")}
         >
           <RolloutSection
             results={recentResults ?? []}

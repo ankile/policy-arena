@@ -89,7 +89,7 @@ function App() {
   );
 
   const setActiveTab = (tab: string) => {
-    clearSearchParams("policy", "session", "mode", "round", "source", "task", "dataset", "episode", "outcome", "env", "sort", "policyA", "policyB", "pRound");
+    clearSearchParams("policy", "session", "mode", "round", "source", "task", "dataset", "episode", "outcome", "env", "sort", "policyA", "policyB", "pRound", "rollouts");
     setActiveTabRaw(tab);
   };
 
@@ -290,13 +290,14 @@ function App() {
                         style={{
                           animation: `slide-in-right 0.4s ease-out ${0.35 + i * 0.04}s both`,
                         }}
-                        onClick={() =>
+                        onClick={() => {
+                          clearSearchParams("rollouts");
                           setExpandedPolicy(
                             expandedPolicy === (policy._id as string)
                               ? null
                               : (policy._id as string)
-                          )
-                        }
+                          );
+                        }}
                       >
                         {/* Rank */}
                         <div>
