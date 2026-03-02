@@ -177,7 +177,7 @@ export async function fetchDatasetInfo(
   return { episodes, cameraKeys: parquetResult.cameraKeys, sourceStats };
 }
 
-async function fetchParquetMetadata(
+export async function fetchParquetMetadata(
   datasetId: string
 ): Promise<{ episodes: Omit<EpisodeMetadata, "success">[]; cameraKeys: string[] }> {
   // Return from module-level cache if available
@@ -250,7 +250,7 @@ export async function fetchSuccessStatus(
   return map;
 }
 
-async function fetchSourceStats(
+export async function fetchSourceStats(
   datasetId: string
 ): Promise<DatasetSourceStats | null> {
   // Try to get frame counts by source value. If the column doesn't exist, the

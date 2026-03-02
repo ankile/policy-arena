@@ -1,9 +1,12 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useSearchParam, useSearchParamNullable, useSearchParamNumber, clearSearchParams } from "../lib/useSearchParam";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import {
-  fetchDatasetInfo,
+  fetchParquetMetadata,
+  fetchSuccessStatus,
+  fetchSourceStats,
+  getParquetCache,
   getVideoUrl,
   type EpisodeMetadata,
   type DatasetSourceStats,
@@ -14,6 +17,8 @@ import {
 // ---------------------------------------------------------------------------
 
 type SourceTypeFilter = "all" | "teleop" | "rollout" | "dagger" | "eval";
+
+type EpisodeWithOptionalSuccess = Omit<EpisodeMetadata, "success"> & { success: boolean | null };
 
 const SOURCE_TYPE_FILTERS: { id: SourceTypeFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -118,7 +123,7 @@ function VideoGrid({
   cameraKeys,
   datasetId,
 }: {
-  episode: EpisodeMetadata;
+  episode: EpisodeWithOptionalSuccess;
   playing: boolean;
   onTogglePlay: () => void;
   cameraKeys: string[];
@@ -268,7 +273,7 @@ function EpisodeCard({
   selected,
   onClick,
 }: {
-  episode: EpisodeMetadata;
+  episode: EpisodeWithOptionalSuccess;
   selected: boolean;
   onClick: () => void;
 }) {
@@ -285,15 +290,21 @@ function EpisodeCard({
         <span className="font-mono text-sm font-medium text-ink">
           Ep {episode.episodeIndex}
         </span>
-        <span
-          className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide ${
-            episode.success
-              ? "bg-teal-light text-teal"
-              : "bg-coral-light text-coral"
-          }`}
-        >
-          {episode.success ? "Success" : "Fail"}
-        </span>
+        {episode.success === null ? (
+          <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-warm-100 text-ink-muted animate-pulse">
+            ...
+          </span>
+        ) : (
+          <span
+            className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide ${
+              episode.success
+                ? "bg-teal-light text-teal"
+                : "bg-coral-light text-coral"
+            }`}
+          >
+            {episode.success ? "Success" : "Fail"}
+          </span>
+        )}
       </div>
       <div className="text-xs text-ink-muted font-mono">
         {formatDuration(episode.duration)} &middot; {episode.numFrames}f
@@ -326,19 +337,34 @@ function DatasetDetail({
   onBack: () => void;
 }) {
   const dataset = useQuery(api.datasets.getByRepo, { repo_id: repoId });
-  const [episodes, setEpisodes] = useState<EpisodeMetadata[]>([]);
-  const [cameraKeys, setCameraKeys] = useState<string[]>([]);
-  const [sourceStats, setSourceStats] = useState<DatasetSourceStats | null>(null);
   const [selectedIndex, setSelectedIndex] = useSearchParamNumber("episode");
   const [playing, setPlaying] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [episodeFilter, setEpisodeFilter] = useSearchParam("outcome", "all");
   const updateStats = useMutation(api.datasets.updateStats);
 
+  // -- Staged state --
+  const [baseEpisodes, setBaseEpisodes] = useState<Omit<EpisodeMetadata, "success">[]>([]);
+  const [cameraKeys, setCameraKeys] = useState<string[]>([]);
+  const [successMap, setSuccessMap] = useState<Map<number, boolean> | null>(null);
+  const [sourceStats, setSourceStats] = useState<DatasetSourceStats | null>(null);
+  const [episodesLoading, setEpisodesLoading] = useState(true);
+  const [successLoading, setSuccessLoading] = useState(true);
+  const [sourceStatsLoading, setSourceStatsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Derive episodes with optional success
+  const episodes: EpisodeWithOptionalSuccess[] = useMemo(
+    () =>
+      baseEpisodes.map((ep) => ({
+        ...ep,
+        success: successMap ? (successMap.get(ep.episodeIndex) ?? false) : null,
+      })),
+    [baseEpisodes, successMap]
+  );
+
+  // Initialize from cache on mount / dataset switch
   const prevRepoId = useRef(repoId);
   useEffect(() => {
-    // Only reset episode/filter state when switching datasets, not on initial mount
     if (prevRepoId.current !== repoId) {
       prevRepoId.current = repoId;
       setSelectedIndex(null);
@@ -346,47 +372,119 @@ function DatasetDetail({
       setEpisodeFilter("all");
     }
 
-    setLoading(true);
+    // Pre-populate from cache
+    const cached = getParquetCache().get(repoId);
+    if (cached) {
+      setBaseEpisodes(cached.episodes);
+      const leftCams = cached.cameraKeys.filter((k) => k.includes("left"));
+      setCameraKeys(sortCameraKeys(leftCams.length > 0 ? leftCams : cached.cameraKeys));
+      setEpisodesLoading(false);
+    } else {
+      setBaseEpisodes([]);
+      setCameraKeys([]);
+      setEpisodesLoading(true);
+    }
+    setSuccessMap(null);
+    setSuccessLoading(true);
+    setSourceStats(null);
+    setSourceStatsLoading(true);
     setError(null);
+  }, [repoId]);
 
-    fetchDatasetInfo(repoId)
-      .then((info) => {
-        setEpisodes(info.episodes);
-        setSourceStats(info.sourceStats);
-        const leftCams = info.cameraKeys.filter((k) => k.includes("left"));
-        const cams = leftCams.length > 0 ? leftCams : info.cameraKeys;
-        setCameraKeys(sortCameraKeys(cams));
-        setLoading(false);
-        // Sync stats back to database so the list view stays up-to-date
-        const totalDuration = info.episodes.reduce((sum, ep) => sum + ep.duration, 0);
-        const numSuccess = info.episodes.filter((e) => e.success).length;
-        const numFailure = info.episodes.length - numSuccess;
+  // Effect 1: Parquet fetch
+  useEffect(() => {
+    let cancelled = false;
+    // Skip fetch if already populated from cache
+    if (getParquetCache().has(repoId) && baseEpisodes.length > 0) return;
 
-        const statsUpdate: Parameters<typeof updateStats>[0] = {
-          repo_id: repoId,
-          num_episodes: info.episodes.length,
-          total_duration_seconds: totalDuration,
-          num_success: numSuccess,
-          num_failure: numFailure,
-        };
-
-        if (info.sourceStats) {
-          statsUpdate.num_human_frames = info.sourceStats.humanFrames;
-          statsUpdate.num_policy_frames = info.sourceStats.policyFrames;
-          // Autonomous success = episodes with success AND no human frames
-          const autonomousSuccess = info.episodes.filter(
-            (e) => e.success && !info.sourceStats!.episodesWithHumanFrames.has(e.episodeIndex)
-          ).length;
-          statsUpdate.num_autonomous_success = autonomousSuccess;
-        }
-
-        updateStats(statsUpdate);
+    fetchParquetMetadata(repoId)
+      .then((result) => {
+        if (cancelled) return;
+        setBaseEpisodes(result.episodes);
+        const leftCams = result.cameraKeys.filter((k) => k.includes("left"));
+        setCameraKeys(sortCameraKeys(leftCams.length > 0 ? leftCams : result.cameraKeys));
+        setEpisodesLoading(false);
       })
       .catch((err) => {
+        if (cancelled) return;
         setError(err.message);
-        setLoading(false);
+        setEpisodesLoading(false);
       });
+
+    return () => { cancelled = true; };
   }, [repoId]);
+
+  // Effect 2: Success status
+  useEffect(() => {
+    let cancelled = false;
+    fetchSuccessStatus(repoId)
+      .then((map) => {
+        if (cancelled) return;
+        setSuccessMap(map);
+        setSuccessLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSuccessMap(new Map());
+        setSuccessLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [repoId]);
+
+  // Effect 3: Source stats
+  useEffect(() => {
+    let cancelled = false;
+    fetchSourceStats(repoId)
+      .then((stats) => {
+        if (cancelled) return;
+        setSourceStats(stats);
+        setSourceStatsLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSourceStats(null);
+        setSourceStatsLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [repoId]);
+
+  // Effect 4: Sync stats to Convex once all data is ready
+  const statsSynced = useRef(false);
+  useEffect(() => {
+    // Reset sync flag on dataset switch
+    statsSynced.current = false;
+  }, [repoId]);
+  useEffect(() => {
+    if (episodesLoading || successLoading || sourceStatsLoading) return;
+    if (statsSynced.current) return;
+    if (baseEpisodes.length === 0) return;
+    statsSynced.current = true;
+
+    const totalDuration = baseEpisodes.reduce((sum, ep) => sum + ep.duration, 0);
+    const numSuccess = baseEpisodes.filter((e) => successMap?.get(e.episodeIndex) === true).length;
+    const numFailure = baseEpisodes.length - numSuccess;
+
+    const statsUpdate: Parameters<typeof updateStats>[0] = {
+      repo_id: repoId,
+      num_episodes: baseEpisodes.length,
+      total_duration_seconds: totalDuration,
+      num_success: numSuccess,
+      num_failure: numFailure,
+    };
+
+    if (sourceStats) {
+      statsUpdate.num_human_frames = sourceStats.humanFrames;
+      statsUpdate.num_policy_frames = sourceStats.policyFrames;
+      const autonomousSuccess = baseEpisodes.filter(
+        (e) => successMap?.get(e.episodeIndex) === true && !sourceStats.episodesWithHumanFrames.has(e.episodeIndex)
+      ).length;
+      statsUpdate.num_autonomous_success = autonomousSuccess;
+    }
+
+    updateStats(statsUpdate);
+  }, [episodesLoading, successLoading, sourceStatsLoading, baseEpisodes, successMap, sourceStats, repoId, updateStats]);
 
   const handleTogglePlay = useCallback(() => {
     setPlaying((p) => !p);
@@ -396,15 +494,16 @@ function DatasetDetail({
     episodeFilter === "all"
       ? episodes
       : episodeFilter === "success"
-        ? episodes.filter((e) => e.success)
-        : episodes.filter((e) => !e.success);
+        ? episodes.filter((e) => e.success === true)
+        : episodes.filter((e) => e.success === false);
 
   const selectedEpisode =
     selectedIndex !== null ? episodes[selectedIndex] : null;
 
-  const successCount = episodes.filter((e) => e.success).length;
+  const successCount = successMap ? [...successMap.values()].filter(Boolean).length : null;
 
-  if (loading) {
+  // Only show full-page spinner on cache miss with no data
+  if (episodesLoading && baseEpisodes.length === 0) {
     return (
       <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8">
         <button
@@ -421,7 +520,7 @@ function DatasetDetail({
     );
   }
 
-  if (error) {
+  if (error && baseEpisodes.length === 0) {
     return (
       <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8">
         <button
@@ -499,9 +598,9 @@ function DatasetDetail({
         {/* Summary stats */}
         {(() => {
           const total = episodes.length;
-          const successPct = total > 0 ? Math.round((successCount / total) * 100) : 0;
-          const autonomousCount = sourceStats
-            ? episodes.filter((e) => e.success && !sourceStats.episodesWithHumanFrames.has(e.episodeIndex)).length
+          const successPct = successCount != null && total > 0 ? Math.round((successCount / total) * 100) : null;
+          const autonomousCount = sourceStats && successMap
+            ? baseEpisodes.filter((e) => successMap.get(e.episodeIndex) === true && !sourceStats.episodesWithHumanFrames.has(e.episodeIndex)).length
             : null;
           const autonomousPct = autonomousCount != null && total > 0
             ? Math.round((autonomousCount / total) * 100)
@@ -511,13 +610,20 @@ function DatasetDetail({
             ? Math.round((sourceStats!.humanFrames / totalFrames) * 100)
             : null;
 
-          const stats: { label: string; value: string; color?: string }[] = [
+          const stats: { label: string; value: string; color?: string; loading?: boolean }[] = [
             { label: "Episodes", value: total.toString() },
             { label: "Duration", value: formatDurationLong(episodes.reduce((s, e) => s + e.duration, 0)) },
-            { label: "Success Rate", value: `${successCount}/${total} (${successPct}%)`, color: "text-teal" },
+            {
+              label: "Success Rate",
+              value: successCount != null ? `${successCount}/${total} (${successPct}%)` : "...",
+              color: successCount != null ? "text-teal" : undefined,
+              loading: successLoading,
+            },
           ];
           if (autonomousCount != null) {
             stats.push({ label: "Autonomous Success", value: `${autonomousCount}/${total} (${autonomousPct}%)`, color: "text-teal" });
+          } else if (sourceStatsLoading) {
+            stats.push({ label: "Autonomous Success", value: "...", loading: true });
           }
           if (sourceStats) {
             stats.push({
@@ -528,6 +634,9 @@ function DatasetDetail({
               label: "Policy Frames",
               value: `${formatFrameCount(sourceStats.policyFrames)} (${100 - (humanPct ?? 0)}%)`,
             });
+          } else if (sourceStatsLoading) {
+            stats.push({ label: "Human Frames", value: "...", loading: true });
+            stats.push({ label: "Policy Frames", value: "...", loading: true });
           }
           stats.push({ label: "Cameras", value: cameraKeys.length.toString() });
 
@@ -541,7 +650,7 @@ function DatasetDetail({
                   <div className="text-[10px] uppercase tracking-widest text-ink-muted font-medium mb-0.5">
                     {stat.label}
                   </div>
-                  <div className={`font-mono text-lg font-medium ${stat.color ?? "text-ink"}`}>
+                  <div className={`font-mono text-lg font-medium ${stat.color ?? "text-ink"} ${stat.loading ? "animate-pulse" : ""}`}>
                     {stat.value}
                   </div>
                 </div>
@@ -563,28 +672,34 @@ function DatasetDetail({
               {
                 id: "failure" as const,
                 label: "Failure",
-                count: episodes.length - successCount,
+                count: successCount != null ? episodes.length - successCount : null,
               },
             ] as const
           ).map((filter) => {
             const isActive = episodeFilter === filter.id;
+            const isDisabled = filter.id !== "all" && successLoading;
             return (
               <button
                 key={filter.id}
-                onClick={() => setEpisodeFilter(filter.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                  isActive
-                    ? "bg-teal text-white shadow-sm"
-                    : "bg-white border border-warm-200 text-ink-muted hover:border-warm-300 hover:text-ink"
+                onClick={() => !isDisabled && setEpisodeFilter(filter.id)}
+                disabled={isDisabled}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  isDisabled
+                    ? "bg-white border border-warm-200 text-ink-muted/40 cursor-not-allowed"
+                    : isActive
+                      ? "bg-teal text-white shadow-sm cursor-pointer"
+                      : "bg-white border border-warm-200 text-ink-muted hover:border-warm-300 hover:text-ink cursor-pointer"
                 }`}
               >
                 {filter.label}
                 <span
                   className={`font-mono text-[10px] ${
-                    isActive ? "text-white/70" : "text-ink-muted/60"
+                    isDisabled
+                      ? "text-ink-muted/30 animate-pulse"
+                      : isActive ? "text-white/70" : "text-ink-muted/60"
                   }`}
                 >
-                  {filter.count}
+                  {filter.count != null ? filter.count : "..."}
                 </span>
               </button>
             );
@@ -616,15 +731,21 @@ function DatasetDetail({
               <span className="font-display text-lg text-ink">
                 Episode {selectedEpisode.episodeIndex}
               </span>
-              <span
-                className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                  selectedEpisode.success
-                    ? "bg-teal-light text-teal"
-                    : "bg-coral-light text-coral"
-                }`}
-              >
-                {selectedEpisode.success ? "Success" : "Failure"}
-              </span>
+              {selectedEpisode.success === null ? (
+                <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-warm-100 text-ink-muted animate-pulse">
+                  ...
+                </span>
+              ) : (
+                <span
+                  className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                    selectedEpisode.success
+                      ? "bg-teal-light text-teal"
+                      : "bg-coral-light text-coral"
+                  }`}
+                >
+                  {selectedEpisode.success ? "Success" : "Failure"}
+                </span>
+              )}
               <span className="text-xs text-ink-muted font-mono">
                 {selectedEpisode.numFrames} frames &middot;{" "}
                 {formatDuration(selectedEpisode.duration)} &middot; 15 FPS
