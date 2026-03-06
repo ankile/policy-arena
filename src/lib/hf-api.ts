@@ -242,6 +242,7 @@ export async function fetchSuccessStatus(
 ): Promise<Map<number, boolean>> {
   const url = `${DATASETS_SERVER}/filter?dataset=${datasetId}&config=default&split=train&where=frame_index=0&length=100`;
   const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`HF datasets server returned ${resp.status}`);
   const data = await resp.json();
   const map = new Map<number, boolean>();
   for (const { row } of data.rows) {

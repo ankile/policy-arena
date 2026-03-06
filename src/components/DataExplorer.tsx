@@ -414,20 +414,27 @@ function DatasetDetail({
     return () => { cancelled = true; };
   }, [repoId]);
 
-  // Effect 2: Success status
+  // Effect 2: Success status (retry once on transient HF server errors)
   useEffect(() => {
     let cancelled = false;
-    fetchSuccessStatus(repoId)
-      .then((map) => {
-        if (cancelled) return;
-        setSuccessMap(map);
-        setSuccessLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setSuccessMap(new Map());
-        setSuccessLoading(false);
-      });
+    const attempt = (retriesLeft: number) => {
+      fetchSuccessStatus(repoId)
+        .then((map) => {
+          if (cancelled) return;
+          setSuccessMap(map);
+          setSuccessLoading(false);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          if (retriesLeft > 0) {
+            setTimeout(() => attempt(retriesLeft - 1), 1500);
+          } else {
+            setSuccessMap(new Map());
+            setSuccessLoading(false);
+          }
+        });
+    };
+    attempt(1);
 
     return () => { cancelled = true; };
   }, [repoId]);
