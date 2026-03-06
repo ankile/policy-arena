@@ -69,6 +69,10 @@ export default function PolicyDetail({
   const failureResults = useQuery(api.roundResults.getFailuresByPolicy, {
     policy_id: policyId,
   });
+  const successRateHistory = useQuery(
+    api.roundResults.getSuccessRateHistory,
+    { policy_id: policyId }
+  );
 
   const [rolloutsParam, setRolloutsParam] = useSearchParamNullable("rollouts");
   const rolloutsOpen = rolloutsParam !== null;
@@ -137,6 +141,34 @@ export default function PolicyDetail({
                       className="flex-1 bg-teal/30 rounded-t hover:bg-teal/50 transition-colors"
                       style={{ height: `${height}%` }}
                       title={`ELO: ${Math.round(entry.elo)}`}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Success Rate History */}
+          {successRateHistory && successRateHistory.length > 0 && (
+            <div className="mt-4">
+              <h3 className="text-sm font-medium text-ink mb-2">
+                Success Rate History
+              </h3>
+              <div className="flex items-end gap-1 h-12">
+                {successRateHistory.map((entry, i) => {
+                  const pct = Math.round(entry.successRate * 100);
+                  const height = 20 + entry.successRate * 80;
+                  const repo = entry.datasetRepo.split("/").pop() ?? entry.datasetRepo;
+                  return (
+                    <div
+                      key={i}
+                      className={`flex-1 rounded-t transition-colors ${
+                        entry.successRate >= 0.5
+                          ? "bg-emerald-bar/30 hover:bg-emerald-bar/50"
+                          : "bg-rose-bar/30 hover:bg-rose-bar/50"
+                      }`}
+                      style={{ height: `${height}%` }}
+                      title={`${pct}% (${entry.successes}/${entry.total}) — ${repo}`}
                     />
                   );
                 })}
