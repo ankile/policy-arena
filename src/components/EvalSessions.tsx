@@ -432,13 +432,20 @@ export default function EvalSessions() {
                 </span>
                 <SessionModeTag mode={session.session_mode ?? "manual"} />
                 <a
+                  href={`?tab=data&dataset=${encodeURIComponent(session.dataset_repo)}`}
+                  className="hover:text-teal transition-colors font-mono"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Data Explorer &rarr;
+                </a>
+                <a
                   href={`https://huggingface.co/datasets/${session.dataset_repo}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:text-teal transition-colors font-mono"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {session.dataset_repo} &rarr;
+                  HuggingFace &rarr;
                 </a>
               </div>
             </div>
