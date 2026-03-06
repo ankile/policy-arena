@@ -194,6 +194,13 @@ class PolicyArenaClient:
             "evalSessions:deleteSession", {"id": session_id}
         )
 
+    def remove_policy_from_session(self, session_id: str, model_id: str) -> dict:
+        """Remove a policy from an eval session and recompute ELO."""
+        return self.client.mutation(
+            "evalSessions:removePolicyFromSession",
+            {"id": session_id, "model_id": model_id},
+        )
+
     def register_dataset(self, dataset: DatasetInput) -> str:
         """Register a dataset in the arena for browsing."""
         return self.client.mutation("datasets:register", dataset.to_dict())

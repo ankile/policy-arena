@@ -429,6 +429,183 @@ export const deleteSession = mutation({
   },
 });
 
+export const removePolicyFromSession = mutation({
+  args: {
+    id: v.id("evalSessions"),
+    model_id: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.id);
+    if (!session) throw new Error("Session not found");
+
+    // 1. Look up the policy by model_id
+    const policy = await ctx.db
+      .query("policies")
+      .withIndex("by_model_id", (q) => q.eq("model_id", args.model_id))
+      .unique();
+    if (!policy) throw new Error(`Policy not found: ${args.model_id}`);
+
+    if (!session.policy_ids.some((id) => id === policy._id)) {
+      throw new Error(`Policy ${args.model_id} is not in session ${args.id}`);
+    }
+
+    // 2. Delete round results for this policy in this session
+    const results = await ctx.db
+      .query("roundResults")
+      .withIndex("by_session", (q) => q.eq("session_id", args.id))
+      .collect();
+    let deletedCount = 0;
+    for (const r of results) {
+      if (r.policy_id === policy._id) {
+        await ctx.db.delete(r._id);
+        deletedCount++;
+      }
+    }
+
+    // 3. Remove policy from session's policy_ids
+    const updatedPolicyIds = session.policy_ids.filter((id) => id !== policy._id);
+    await ctx.db.patch(args.id, { policy_ids: updatedPolicyIds });
+
+    // 4. Delete ALL eloHistory entries (will be recomputed)
+    const allEloHistory = await ctx.db.query("eloHistory").collect();
+    for (const e of allEloHistory) {
+      await ctx.db.delete(e._id);
+    }
+
+    // 5. Reset ALL policies to initial ELO
+    const allPolicies = await ctx.db.query("policies").collect();
+    for (const p of allPolicies) {
+      await ctx.db.patch(p._id, {
+        elo: 1500,
+        wins: BigInt(0),
+        losses: BigInt(0),
+        draws: BigInt(0),
+      });
+    }
+
+    // 6. Replay all sessions chronologically to recompute ELO
+    const allSessions = await ctx.db
+      .query("evalSessions")
+      .order("asc")
+      .collect();
+
+    for (const sess of allSessions) {
+      if (sess.session_mode === "rollout") continue;
+
+      const sessResults = await ctx.db
+        .query("roundResults")
+        .withIndex("by_session", (q) => q.eq("session_id", sess._id))
+        .collect();
+
+      const roundsMap = new Map<
+        number,
+        Array<{ policyId: Id<"policies">; success: boolean }>
+      >();
+      for (const r of sessResults) {
+        const roundIdx = Number(r.round_index);
+        if (!roundsMap.has(roundIdx)) roundsMap.set(roundIdx, []);
+        roundsMap.get(roundIdx)!.push({
+          policyId: r.policy_id,
+          success: r.success,
+        });
+      }
+
+      const eloDeltas = new Map<Id<"policies">, number>();
+      const winDeltas = new Map<Id<"policies">, bigint>();
+      const lossDeltas = new Map<Id<"policies">, bigint>();
+      const drawDeltas = new Map<Id<"policies">, bigint>();
+
+      for (const id of sess.policy_ids) {
+        eloDeltas.set(id, 0);
+        winDeltas.set(id, BigInt(0));
+        lossDeltas.set(id, BigInt(0));
+        drawDeltas.set(id, BigInt(0));
+      }
+
+      const sortedRounds = Array.from(roundsMap.entries()).sort(
+        ([a], [b]) => a - b
+      );
+
+      for (const [, roundResults] of sortedRounds) {
+        for (let i = 0; i < roundResults.length; i++) {
+          for (let j = i + 1; j < roundResults.length; j++) {
+            const a = roundResults[i];
+            const b = roundResults[j];
+
+            const policyA = (await ctx.db.get(a.policyId))!;
+            const policyB = (await ctx.db.get(b.policyId))!;
+            const ratingA = policyA.elo + eloDeltas.get(a.policyId)!;
+            const ratingB = policyB.elo + eloDeltas.get(b.policyId)!;
+
+            let scoreA: number;
+            if (a.success && !b.success) {
+              scoreA = 1;
+              winDeltas.set(
+                a.policyId,
+                winDeltas.get(a.policyId)! + BigInt(1)
+              );
+              lossDeltas.set(
+                b.policyId,
+                lossDeltas.get(b.policyId)! + BigInt(1)
+              );
+            } else if (!a.success && b.success) {
+              scoreA = 0;
+              lossDeltas.set(
+                a.policyId,
+                lossDeltas.get(a.policyId)! + BigInt(1)
+              );
+              winDeltas.set(
+                b.policyId,
+                winDeltas.get(b.policyId)! + BigInt(1)
+              );
+            } else {
+              scoreA = 0.5;
+              drawDeltas.set(
+                a.policyId,
+                drawDeltas.get(a.policyId)! + BigInt(1)
+              );
+              drawDeltas.set(
+                b.policyId,
+                drawDeltas.get(b.policyId)! + BigInt(1)
+              );
+            }
+
+            const [newA, newB] = computeEloUpdate(ratingA, ratingB, scoreA);
+            eloDeltas.set(a.policyId, newA - policyA.elo);
+            eloDeltas.set(b.policyId, newB - policyB.elo);
+          }
+        }
+      }
+
+      for (const id of sess.policy_ids) {
+        const pol = (await ctx.db.get(id))!;
+        const newElo =
+          Math.round((pol.elo + eloDeltas.get(id)!) * 100) / 100;
+        await ctx.db.patch(id, {
+          elo: newElo,
+          wins: pol.wins + winDeltas.get(id)!,
+          losses: pol.losses + lossDeltas.get(id)!,
+          draws: pol.draws + drawDeltas.get(id)!,
+        });
+
+        await ctx.db.insert("eloHistory", {
+          policy_id: id,
+          elo: newElo,
+          session_id: sess._id,
+        });
+      }
+    }
+
+    return {
+      session_id: args.id,
+      removed_model_id: args.model_id,
+      removed_policy_id: policy._id,
+      deleted_results: deletedCount,
+      remaining_policies: updatedPolicyIds.length,
+    };
+  },
+});
+
 export const addRounds = mutation({
   args: {
     id: v.id("evalSessions"),

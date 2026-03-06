@@ -95,6 +95,41 @@ export const updateEnvironment = mutation({
   },
 });
 
+export const deletePolicy = mutation({
+  args: { model_id: v.string() },
+  handler: async (ctx, args) => {
+    const policy = await ctx.db
+      .query("policies")
+      .withIndex("by_model_id", (q) => q.eq("model_id", args.model_id))
+      .unique();
+    if (!policy) throw new Error(`Policy not found: ${args.model_id}`);
+
+    // Verify no round results reference this policy
+    const results = await ctx.db
+      .query("roundResults")
+      .withIndex("by_policy", (q) => q.eq("policy_id", policy._id))
+      .collect();
+    if (results.length > 0) {
+      throw new Error(
+        `Cannot delete policy with ${results.length} round results. ` +
+        `Remove it from all sessions first.`
+      );
+    }
+
+    // Delete any ELO history entries
+    const eloHistory = await ctx.db
+      .query("eloHistory")
+      .withIndex("by_policy", (q) => q.eq("policy_id", policy._id))
+      .collect();
+    for (const e of eloHistory) {
+      await ctx.db.delete(e._id);
+    }
+
+    await ctx.db.delete(policy._id);
+    return { deleted: policy._id, model_id: args.model_id };
+  },
+});
+
 export const register = mutation({
   args: {
     name: v.string(),
