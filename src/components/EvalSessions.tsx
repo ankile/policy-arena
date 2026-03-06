@@ -432,7 +432,7 @@ export default function EvalSessions() {
                 </span>
                 <SessionModeTag mode={session.session_mode ?? "manual"} />
                 <a
-                  href={`?tab=data&dataset=${encodeURIComponent(session.dataset_repo)}`}
+                  href={`?tab=explorer&dataset=${encodeURIComponent(session.dataset_repo)}`}
                   className="hover:text-teal transition-colors font-mono"
                   onClick={(e) => e.stopPropagation()}
                 >
