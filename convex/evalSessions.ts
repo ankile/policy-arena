@@ -3,6 +3,18 @@ import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { computeEloUpdate } from "./elo";
 
+function uniqueRoundIndexes(rounds: Array<{ round_index: bigint }>): Set<number> {
+  const indexes = new Set<number>();
+  for (const round of rounds) {
+    const index = Number(round.round_index);
+    if (indexes.has(index)) {
+      throw new Error(`Duplicate round_index ${index} in submitted rounds`);
+    }
+    indexes.add(index);
+  }
+  return indexes;
+}
+
 export const submit = mutation({
   args: {
     dataset_repo: v.string(),
@@ -70,10 +82,12 @@ export const submit = mutation({
       (p) => modelIdToPolicy.get(p.model_id)!
     );
 
+    const roundIndexes = uniqueRoundIndexes(args.rounds);
+
     // 2. Create eval session
     const sessionId = await ctx.db.insert("evalSessions", {
       dataset_repo: args.dataset_repo,
-      num_rounds: BigInt(args.rounds.length),
+      num_rounds: BigInt(roundIndexes.size),
       policy_ids: policyIds,
       notes: args.notes,
       session_mode: args.session_mode,
@@ -635,6 +649,23 @@ export const addRounds = mutation({
   handler: async (ctx, args) => {
     const session = await ctx.db.get(args.id);
     if (!session) throw new Error("Session not found");
+    const incomingRoundIndexes = uniqueRoundIndexes(args.rounds);
+
+    const existingResults = await ctx.db
+      .query("roundResults")
+      .withIndex("by_session", (q) => q.eq("session_id", args.id))
+      .collect();
+    const existingRoundIndexes = new Set(
+      existingResults.map((r) => Number(r.round_index))
+    );
+    const duplicateRoundIndexes = [...incomingRoundIndexes].filter((index) =>
+      existingRoundIndexes.has(index)
+    );
+    if (duplicateRoundIndexes.length > 0) {
+      throw new Error(
+        `Round index already exists in session ${args.id}: ${duplicateRoundIndexes.join(", ")}`
+      );
+    }
 
     // 1. Register/upsert all policies
     const modelIdToPolicy = new Map<string, Id<"policies">>();
@@ -697,7 +728,9 @@ export const addRounds = mutation({
     }
 
     // 4. Update session metadata
-    const newNumRounds = session.num_rounds + BigInt(args.rounds.length);
+    const newNumRounds = BigInt(
+      existingRoundIndexes.size + incomingRoundIndexes.size
+    );
     await ctx.db.patch(args.id, {
       num_rounds: newNumRounds,
       policy_ids: updatedPolicyIds,
