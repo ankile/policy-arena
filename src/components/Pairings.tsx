@@ -2,7 +2,12 @@ import { useState, useEffect } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
-import { fetchEpisodeSubset, getParquetCache, type EpisodeMetadata } from "../lib/hf-api";
+import {
+  fetchEpisodeSubset,
+  getParquetCache,
+  selectPrimaryCameraKey,
+  type EpisodeMetadata,
+} from "../lib/hf-api";
 import {
   useSearchParam,
   useSearchParamNullable,
@@ -83,10 +88,7 @@ export default function Pairings() {
     for (const [repo, cached] of getParquetCache()) {
       const episodeMap = new Map<number, Omit<EpisodeMetadata, "success">>();
       for (const ep of cached.episodes) episodeMap.set(ep.episodeIndex, ep);
-      const cameraKey =
-        cached.cameraKeys.length > 1
-          ? cached.cameraKeys[cached.cameraKeys.length - 1]
-          : cached.cameraKeys[0];
+      const cameraKey = selectPrimaryCameraKey(cached.cameraKeys);
       initial.set(repo, { status: "loaded", episodeMap, cameraKey });
     }
     return initial;
@@ -112,10 +114,7 @@ export default function Pairings() {
           for (const ep of info.episodes) {
             episodeMap.set(ep.episodeIndex, ep);
           }
-          const cameraKey =
-            info.cameraKeys.length > 1
-              ? info.cameraKeys[info.cameraKeys.length - 1]
-              : info.cameraKeys[0];
+          const cameraKey = selectPrimaryCameraKey(info.cameraKeys);
           setDatasetCache((prev) =>
             new Map(prev).set(repo, { status: "loaded", episodeMap, cameraKey })
           );

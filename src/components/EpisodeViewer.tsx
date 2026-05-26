@@ -3,6 +3,7 @@ import {
   fetchEpisodeSubset,
   fetchSuccessStatus,
   getVideoUrl,
+  visibleCameraKeys,
   type EpisodeMetadata,
 } from "../lib/hf-api";
 
@@ -243,7 +244,7 @@ export default function EpisodeViewer({
           success: successMap.get(ep.episodeIndex) ?? false,
         }));
         setEpisodes(episodes);
-        setCameraKeys(parquetInfo.cameraKeys);
+        setCameraKeys(visibleCameraKeys(parquetInfo.cameraKeys));
         // If an episodeIndex was provided, select it
         if (episodeIndex !== undefined) {
           const idx = episodes.findIndex(

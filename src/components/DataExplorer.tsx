@@ -8,6 +8,7 @@ import {
   fetchSourceStats,
   getParquetCache,
   getVideoUrl,
+  visibleCameraKeys,
   type EpisodeMetadata,
   type DatasetSourceStats,
 } from "../lib/hf-api";
@@ -376,8 +377,9 @@ function DatasetDetail({
     const cached = getParquetCache().get(repoId);
     if (cached) {
       setBaseEpisodes(cached.episodes);
-      const leftCams = cached.cameraKeys.filter((k) => k.includes("left"));
-      setCameraKeys(sortCameraKeys(leftCams.length > 0 ? leftCams : cached.cameraKeys));
+      const visibleCams = visibleCameraKeys(cached.cameraKeys);
+      const leftCams = visibleCams.filter((k) => k.includes("left"));
+      setCameraKeys(sortCameraKeys(leftCams.length > 0 ? leftCams : visibleCams));
       setEpisodesLoading(false);
     } else {
       setBaseEpisodes([]);
@@ -401,8 +403,9 @@ function DatasetDetail({
       .then((result) => {
         if (cancelled) return;
         setBaseEpisodes(result.episodes);
-        const leftCams = result.cameraKeys.filter((k) => k.includes("left"));
-        setCameraKeys(sortCameraKeys(leftCams.length > 0 ? leftCams : result.cameraKeys));
+        const visibleCams = visibleCameraKeys(result.cameraKeys);
+        const leftCams = visibleCams.filter((k) => k.includes("left"));
+        setCameraKeys(sortCameraKeys(leftCams.length > 0 ? leftCams : visibleCams));
         setEpisodesLoading(false);
       })
       .catch((err) => {

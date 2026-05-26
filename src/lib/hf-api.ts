@@ -4,6 +4,7 @@ const DEFAULT_DATASET_ID = "ankile/dp-franka-pick-cube-2026-02-12";
 const DATASETS_SERVER = "https://datasets-server.huggingface.co";
 
 const FPS = 15;
+const HIDDEN_CAMERA_KEYS = new Set(["observation.images.31078156_left"]);
 
 export interface EpisodeMetadata {
   episodeIndex: number;
@@ -46,7 +47,19 @@ function discoverCameraKeys(columnNames: string[]): string[] {
   return columnNames
     .filter((col) => col.startsWith(prefix) && col.endsWith(suffix))
     .map((col) => col.slice(prefix.length, -suffix.length))
+    .filter((key) => !HIDDEN_CAMERA_KEYS.has(key))
     .sort();
+}
+
+export function visibleCameraKeys(cameraKeys: string[]): string[] {
+  return cameraKeys.filter((key) => !HIDDEN_CAMERA_KEYS.has(key));
+}
+
+export function selectPrimaryCameraKey(cameraKeys: string[]): string {
+  const visibleKeys = visibleCameraKeys(cameraKeys);
+  return visibleKeys.length > 1
+    ? visibleKeys[visibleKeys.length - 1]
+    : (visibleKeys[0] ?? "");
 }
 
 /** Try to read a parquet file, returning null on failure (e.g. 404). */

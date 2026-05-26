@@ -5,6 +5,7 @@ import type { Id } from "../../convex/_generated/dataModel";
 import {
   fetchEpisodeSubset,
   getParquetCache,
+  selectPrimaryCameraKey,
   type EpisodeMetadata,
 } from "../lib/hf-api";
 import { useSearchParam, useSearchParamNullable, useSearchParamNumber, clearSearchParams } from "../lib/useSearchParam";
@@ -49,10 +50,7 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
     if (!cached) return null;
     const episodeMap = new Map<number, Omit<EpisodeMetadata, "success">>();
     for (const ep of cached.episodes) episodeMap.set(ep.episodeIndex, ep);
-    const cameraKey =
-      cached.cameraKeys.length > 1
-        ? cached.cameraKeys[cached.cameraKeys.length - 1]
-        : cached.cameraKeys[0];
+    const cameraKey = selectPrimaryCameraKey(cached.cameraKeys);
     return { episodeMap, cameraKey };
   });
   const [datasetError, setDatasetError] = useState(false);
@@ -68,10 +66,7 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
         for (const ep of info.episodes) {
           episodeMap.set(ep.episodeIndex, ep);
         }
-        const cameraKey =
-          info.cameraKeys.length > 1
-            ? info.cameraKeys[info.cameraKeys.length - 1]
-            : info.cameraKeys[0];
+        const cameraKey = selectPrimaryCameraKey(info.cameraKeys);
         setDatasetInfo({ episodeMap, cameraKey });
       })
       .catch(() => {
