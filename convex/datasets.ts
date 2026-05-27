@@ -7,10 +7,20 @@ export const register = mutation({
     name: v.string(),
     task: v.string(),
     source_type: v.string(),
+    dataset_role: v.optional(v.string()),
+    trainable: v.optional(v.boolean()),
     environment: v.string(),
     num_episodes: v.optional(v.int64()),
     model_id: v.optional(v.string()),
     model_url: v.optional(v.string()),
+    parent_repo_id: v.optional(v.string()),
+    derived_repo_ids: v.optional(v.array(v.string())),
+    mutually_exclusive_with: v.optional(v.array(v.string())),
+    view_family_id: v.optional(v.string()),
+    view_id: v.optional(v.string()),
+    producer_model_ids: v.optional(v.array(v.string())),
+    target_model_id: v.optional(v.string()),
+    target_arm_key: v.optional(v.string()),
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -119,10 +129,19 @@ export const list = query({
   args: {
     source_type: v.optional(v.string()),
     task: v.optional(v.string()),
+    dataset_role: v.optional(v.string()),
+    trainable: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     let datasets;
-    if (args.source_type) {
+    if (args.dataset_role) {
+      datasets = await ctx.db
+        .query("datasets")
+        .withIndex("by_dataset_role", (q) =>
+          q.eq("dataset_role", args.dataset_role!)
+        )
+        .collect();
+    } else if (args.source_type) {
       datasets = await ctx.db
         .query("datasets")
         .withIndex("by_source_type", (q) =>
@@ -134,6 +153,12 @@ export const list = query({
     }
     if (args.task) {
       datasets = datasets.filter((d) => d.task === args.task);
+    }
+    if (args.source_type && args.dataset_role) {
+      datasets = datasets.filter((d) => d.source_type === args.source_type);
+    }
+    if (args.trainable !== undefined) {
+      datasets = datasets.filter((d) => d.trainable === args.trainable);
     }
     return datasets.sort((a, b) => b._creationTime - a._creationTime);
   },

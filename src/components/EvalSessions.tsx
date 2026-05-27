@@ -442,6 +442,16 @@ export default function EvalSessions() {
                 >
                   HuggingFace &rarr;
                 </a>
+                {session.derivedDatasetRepos?.map((repo) => (
+                  <a
+                    key={repo}
+                    href={`?tab=explorer&dataset=${encodeURIComponent(repo)}`}
+                    className="hover:text-teal transition-colors font-mono"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Training view &rarr;
+                  </a>
+                ))}
               </div>
             </div>
             <svg

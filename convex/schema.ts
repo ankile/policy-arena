@@ -46,6 +46,8 @@ export default defineSchema({
     name: v.string(),
     task: v.string(),
     source_type: v.string(), // "teleop" | "rollout" | "dagger" | "eval"
+    dataset_role: v.optional(v.string()), // "aggregate_parent" | "training_view" | "eval_session" | "rollout"
+    trainable: v.optional(v.boolean()),
     environment: v.string(),
     num_episodes: v.optional(v.int64()),
     total_duration_seconds: v.optional(v.float64()),
@@ -56,9 +58,18 @@ export default defineSchema({
     num_autonomous_success: v.optional(v.int64()),
     model_id: v.optional(v.string()),        // programmatic policy lookup key (URI-prefixed)
     model_url: v.optional(v.string()),       // human-facing link (W&B artifact/run, HF Hub, etc.)
+    parent_repo_id: v.optional(v.string()),
+    derived_repo_ids: v.optional(v.array(v.string())),
+    mutually_exclusive_with: v.optional(v.array(v.string())),
+    view_family_id: v.optional(v.string()),
+    view_id: v.optional(v.string()),
+    producer_model_ids: v.optional(v.array(v.string())),
+    target_model_id: v.optional(v.string()),
+    target_arm_key: v.optional(v.string()),
     notes: v.optional(v.string()),
   })
     .index("by_repo", ["repo_id"])
     .index("by_task", ["task"])
+    .index("by_dataset_role", ["dataset_role"])
     .index("by_source_type", ["source_type"]),
 });

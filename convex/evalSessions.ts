@@ -220,6 +220,7 @@ export const list = query({
           ...session,
           policyNames,
           task: dataset?.task ?? null,
+          derivedDatasetRepos: dataset?.derived_repo_ids ?? [],
         };
       })
     );

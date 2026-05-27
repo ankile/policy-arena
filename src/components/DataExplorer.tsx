@@ -18,6 +18,13 @@ import {
 // ---------------------------------------------------------------------------
 
 type SourceTypeFilter = "all" | "teleop" | "rollout" | "dagger" | "eval";
+type DatasetRoleFilter =
+  | "all"
+  | "aggregate_parent"
+  | "training_view"
+  | "eval_session"
+  | "rollout";
+type TrainableFilter = "all" | "true" | "false";
 
 type EpisodeWithOptionalSuccess = Omit<EpisodeMetadata, "success"> & { success: boolean | null };
 
@@ -27,6 +34,20 @@ const SOURCE_TYPE_FILTERS: { id: SourceTypeFilter; label: string }[] = [
   { id: "rollout", label: "Rollout" },
   { id: "dagger", label: "DAgger" },
   { id: "eval", label: "Eval" },
+];
+
+const ROLE_FILTERS: { id: DatasetRoleFilter; label: string }[] = [
+  { id: "all", label: "All roles" },
+  { id: "training_view", label: "Training views" },
+  { id: "aggregate_parent", label: "Parents" },
+  { id: "eval_session", label: "Eval sessions" },
+  { id: "rollout", label: "Rollouts" },
+];
+
+const TRAINABLE_FILTERS: { id: TrainableFilter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "true", label: "Trainable" },
+  { id: "false", label: "Not trainable" },
 ];
 
 
@@ -92,6 +113,47 @@ function SourceTypeBadge({ type }: { type: string }) {
       }`}
     >
       {type === "dagger" ? "DAgger" : type}
+    </span>
+  );
+}
+
+function roleLabel(role?: string): string {
+  const labels: Record<string, string> = {
+    aggregate_parent: "Parent",
+    training_view: "Training view",
+    eval_session: "Eval session",
+    rollout: "Rollout",
+  };
+  return role ? (labels[role] ?? role.replaceAll("_", " ")) : "Legacy";
+}
+
+function RoleBadge({ role }: { role?: string }) {
+  const colors: Record<string, string> = {
+    aggregate_parent: "bg-warm-100 text-ink-muted",
+    training_view: "bg-teal-light text-teal",
+    eval_session: "bg-purple-100 text-purple-700",
+    rollout: "bg-blue-100 text-blue-700",
+  };
+  return (
+    <span
+      className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium ${
+        role ? (colors[role] ?? "bg-warm-100 text-ink-muted") : "bg-warm-100 text-ink-muted"
+      }`}
+    >
+      {roleLabel(role)}
+    </span>
+  );
+}
+
+function TrainableBadge({ trainable }: { trainable?: boolean }) {
+  if (trainable === undefined) return null;
+  return (
+    <span
+      className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium ${
+        trainable ? "bg-teal-light text-teal" : "bg-warm-100 text-ink-muted"
+      }`}
+    >
+      {trainable ? "Trainable" : "Not trainable"}
     </span>
   );
 }
@@ -576,6 +638,14 @@ function DatasetDetail({
               <p className="text-xs text-ink-muted mt-0.5 font-mono">
                 {repoId}
               </p>
+              {dataset && (
+                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                  <SourceTypeBadge type={dataset.source_type} />
+                  <RoleBadge role={dataset.dataset_role} />
+                  <TrainableBadge trainable={dataset.trainable} />
+                  <EnvironmentTag env={dataset.environment} />
+                </div>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -605,6 +675,38 @@ function DatasetDetail({
       </div>
 
       <div className="p-6">
+        {/* Summary stats */}
+        {dataset && (
+          <div className="mb-5 flex flex-wrap items-center gap-2 text-xs font-mono">
+            {dataset.parent_repo_id && (
+              <a
+                href={`?tab=explorer&dataset=${encodeURIComponent(dataset.parent_repo_id)}`}
+                className="px-2 py-1 rounded bg-warm-100 text-ink-muted hover:text-teal transition-colors"
+              >
+                Parent dataset &rarr;
+              </a>
+            )}
+            {dataset.derived_repo_ids?.map((repo) => (
+              <a
+                key={repo}
+                href={`?tab=explorer&dataset=${encodeURIComponent(repo)}`}
+                className="px-2 py-1 rounded bg-teal-light text-teal hover:opacity-80 transition-opacity"
+              >
+                {repo.split("/").pop()} &rarr;
+              </a>
+            ))}
+            {dataset.mutually_exclusive_with?.map((repo) => (
+              <a
+                key={repo}
+                href={`?tab=explorer&dataset=${encodeURIComponent(repo)}`}
+                className="px-2 py-1 rounded bg-coral-light text-coral hover:opacity-80 transition-opacity"
+              >
+                Exclusive with {repo.split("/").pop()} &rarr;
+              </a>
+            ))}
+          </div>
+        )}
+
         {/* Summary stats */}
         {(() => {
           const total = episodes.length;
@@ -785,6 +887,8 @@ function DatasetDetail({
 
 export default function DataExplorer() {
   const [sourceFilter, setSourceFilter] = useSearchParam("source", "all");
+  const [roleFilter, setRoleFilter] = useSearchParam("role", "all");
+  const [trainableFilter, setTrainableFilter] = useSearchParam("trainable", "all");
   const [taskFilter, setTaskFilter] = useSearchParam("task", "all");
   const [selectedRepoId, setSelectedRepoIdRaw] = useSearchParamNullable("dataset");
 
@@ -793,10 +897,16 @@ export default function DataExplorer() {
     setSelectedRepoIdRaw(id);
   };
 
-  const datasets = useQuery(
-    api.datasets.list,
-    sourceFilter === "all" ? {} : { source_type: sourceFilter }
-  );
+  const datasetQueryArgs: {
+    source_type?: string;
+    dataset_role?: string;
+    trainable?: boolean;
+  } = {};
+  if (sourceFilter !== "all") datasetQueryArgs.source_type = sourceFilter;
+  if (roleFilter !== "all") datasetQueryArgs.dataset_role = roleFilter;
+  if (trainableFilter !== "all") datasetQueryArgs.trainable = trainableFilter === "true";
+
+  const datasets = useQuery(api.datasets.list, datasetQueryArgs);
 
   // Check selectedRepoId FIRST — DatasetDetail fetches its own data from
   // HuggingFace, so it doesn't need the Convex datasets list to be ready.
@@ -895,6 +1005,52 @@ export default function DataExplorer() {
                 >
                   {count} · {epCount} ep
                 </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Role filters */}
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium mr-1">
+            Role
+          </span>
+          {ROLE_FILTERS.map((filter) => {
+            const isActive = roleFilter === filter.id;
+            return (
+              <button
+                key={filter.id}
+                onClick={() => setRoleFilter(filter.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                  isActive
+                    ? "bg-teal text-white shadow-sm"
+                    : "bg-white border border-warm-200 text-ink-muted hover:border-warm-300 hover:text-ink"
+                }`}
+              >
+                {filter.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Trainable filters */}
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium mr-1">
+            Use
+          </span>
+          {TRAINABLE_FILTERS.map((filter) => {
+            const isActive = trainableFilter === filter.id;
+            return (
+              <button
+                key={filter.id}
+                onClick={() => setTrainableFilter(filter.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                  isActive
+                    ? "bg-teal text-white shadow-sm"
+                    : "bg-white border border-warm-200 text-ink-muted hover:border-warm-300 hover:text-ink"
+                }`}
+              >
+                {filter.label}
               </button>
             );
           })}
@@ -1015,6 +1171,8 @@ export default function DataExplorer() {
                       {dataset.name}
                     </span>
                     <SourceTypeBadge type={dataset.source_type} />
+                    <RoleBadge role={dataset.dataset_role} />
+                    <TrainableBadge trainable={dataset.trainable} />
                     <EnvironmentTag env={dataset.environment} />
                   </div>
                   <div className="flex items-center gap-3 text-xs text-ink-muted">
@@ -1046,6 +1204,26 @@ export default function DataExplorer() {
                         { month: "short", day: "numeric", year: "numeric" }
                       )}
                     </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-ink-muted mt-1 font-mono">
+                    {dataset.parent_repo_id && (
+                      <a
+                        href={`?tab=explorer&dataset=${encodeURIComponent(dataset.parent_repo_id)}`}
+                        className="hover:text-teal transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        parent &rarr;
+                      </a>
+                    )}
+                    {dataset.derived_repo_ids && dataset.derived_repo_ids.length > 0 && (
+                      <span>{dataset.derived_repo_ids.length} derived view(s)</span>
+                    )}
+                    {dataset.mutually_exclusive_with &&
+                      dataset.mutually_exclusive_with.length > 0 && (
+                        <span className="text-coral">
+                          mutually exclusive with {dataset.mutually_exclusive_with.length}
+                        </span>
+                      )}
                   </div>
                   {dataset.num_success != null && (() => {
                     const nSuccess = Number(dataset.num_success);

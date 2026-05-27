@@ -209,14 +209,24 @@ class PolicyArenaClient:
         self,
         task: str | None = None,
         source_types: list[str] | None = None,
+        dataset_roles: list[str] | None = None,
+        trainable: bool | None = None,
     ) -> list[dict]:
-        """List registered datasets, optionally filtered by task and source types."""
+        """List registered datasets, optionally filtered by task/source/role."""
         args: dict = {}
         if task is not None:
             args["task"] = task
+        if trainable is not None:
+            args["trainable"] = trainable
+        if dataset_roles and len(dataset_roles) == 1:
+            args["dataset_role"] = dataset_roles[0]
+        if source_types and len(source_types) == 1:
+            args["source_type"] = source_types[0]
         datasets = self.client.query("datasets:list", args)
         if source_types:
             datasets = [d for d in datasets if d["source_type"] in source_types]
+        if dataset_roles:
+            datasets = [d for d in datasets if d.get("dataset_role") in dataset_roles]
         return datasets
 
     def update_dataset_task(

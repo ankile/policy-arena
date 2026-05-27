@@ -23,10 +23,28 @@ def main():
         default=None,
         help="Filter by source type(s), e.g. teleop rollout dagger",
     )
+    parser.add_argument(
+        "--role",
+        nargs="+",
+        default=None,
+        help="Filter by dataset role(s), e.g. training_view aggregate_parent eval_session",
+    )
+    parser.add_argument(
+        "--trainable",
+        choices=["true", "false"],
+        default=None,
+        help="Filter by whether the dataset is intended for training.",
+    )
     args = parser.parse_args()
 
     client = PolicyArenaClient(CONVEX_URL)
-    datasets = client.list_datasets(task=args.task, source_types=args.source)
+    trainable = None if args.trainable is None else args.trainable == "true"
+    datasets = client.list_datasets(
+        task=args.task,
+        source_types=args.source,
+        dataset_roles=args.role,
+        trainable=trainable,
+    )
 
     for d in datasets:
         print(d["repo_id"])
