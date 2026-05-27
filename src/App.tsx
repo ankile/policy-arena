@@ -71,7 +71,7 @@ function EnvironmentTag({ env }: { env: string }) {
   );
 }
 
-type SortKey = "elo" | "success";
+type SortKey = "elo" | "success" | "winRate" | "avgSuccessSteps";
 type Tab = "leaderboard" | "sessions" | "pairings" | "explorer";
 
 type TabConfig = { id: Tab; label: string };
@@ -96,6 +96,14 @@ function App() {
   const sortedPolicies = [...(policies ?? [])].sort((a, b) => {
     if (sortBy === "success") {
       return (b.successRate ?? -1) - (a.successRate ?? -1);
+    }
+    if (sortBy === "winRate") {
+      return winRate(Number(b.wins), Number(b.losses)) - winRate(Number(a.wins), Number(a.losses));
+    }
+    if (sortBy === "avgSuccessSteps") {
+      const aSteps = a.avgSuccessSteps ?? Number.POSITIVE_INFINITY;
+      const bSteps = b.avgSuccessSteps ?? Number.POSITIVE_INFINITY;
+      return aSteps - bSteps;
     }
     return b.elo - a.elo;
   });
@@ -262,18 +270,24 @@ function App() {
                   <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
                     W / D / L
                   </span>
-                  <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
-                    Win Rate
-                  </span>
+                  <button
+                    onClick={() => setSortBy("winRate")}
+                    className={`text-[11px] uppercase tracking-widest font-medium cursor-pointer ${sortBy === "winRate" ? "text-teal" : "text-ink-muted hover:text-ink"}`}
+                  >
+                    Win Rate {sortBy === "winRate" && "▼"}
+                  </button>
                   <button
                     onClick={() => setSortBy("success")}
                     className={`text-[11px] uppercase tracking-widest font-medium cursor-pointer ${sortBy === "success" ? "text-teal" : "text-ink-muted hover:text-ink"}`}
                   >
                     Success {sortBy === "success" && "▼"}
                   </button>
-                  <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
-                    Avg Steps
-                  </span>
+                  <button
+                    onClick={() => setSortBy("avgSuccessSteps")}
+                    className={`text-[11px] uppercase tracking-widest font-medium cursor-pointer ${sortBy === "avgSuccessSteps" ? "text-teal" : "text-ink-muted hover:text-ink"}`}
+                  >
+                    Avg Steps {sortBy === "avgSuccessSteps" && "▲"}
+                  </button>
                 </div>
 
                 {/* Rows */}
