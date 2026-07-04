@@ -57,6 +57,9 @@ export function visibleCameraKeys(cameraKeys: string[]): string[] {
 
 export function selectPrimaryCameraKey(cameraKeys: string[]): string {
   const visibleKeys = visibleCameraKeys(cameraKeys);
+  // Prefer the side_1 station view for previews when it exists.
+  const sideOne = visibleKeys.find((key) => key.includes("side_1"));
+  if (sideOne) return sideOne;
   return visibleKeys.length > 1
     ? visibleKeys[visibleKeys.length - 1]
     : (visibleKeys[0] ?? "");
