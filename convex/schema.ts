@@ -22,6 +22,8 @@ export default defineSchema({
     policy_ids: v.array(v.id("policies")),
     notes: v.optional(v.string()),
     session_mode: v.optional(v.string()),  // "manual" | "pool-sample" | "calibrate" | "rollout"
+    excluded: v.optional(v.boolean()),
+    exclusion_reason: v.optional(v.string()),
   }),
 
   roundResults: defineTable({
