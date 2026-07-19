@@ -4,7 +4,10 @@ const DEFAULT_DATASET_ID = "ankile/dp-franka-pick-cube-2026-02-12";
 const DATASETS_SERVER = "https://datasets-server.huggingface.co";
 
 const FPS = 15;
-const HIDDEN_CAMERA_KEYS = new Set(["observation.images.31078156_left"]);
+const HIDDEN_CAMERA_KEYS = new Set([
+  "observation.images.31078156_left",
+  "observation.images.wrist_right",
+]);
 type EpisodeWithoutSuccess = Omit<EpisodeMetadata, "success">;
 type ParquetCacheEntry = {
   episodes: EpisodeWithoutSuccess[];
@@ -96,9 +99,9 @@ export function visibleCameraKeys(cameraKeys: string[]): string[] {
  *
  * Old DROID datasets expose both eyes of each ZED as numeric role names such
  * as `18650758_left` and `18650758_right`; showing the left eye only avoids
- * duplicate stereo views. Modern datasets use semantic station roles such as
- * `wrist_left`, `wrist_right`, and `side_1`. Those names describe distinct
- * recorded views, so they must all remain visible.
+ * duplicate stereo views. Modern datasets use semantic station roles. Keep
+ * their policy-facing views instead of applying a substring heuristic;
+ * `wrist_right` is excluded centrally because it is not policy-facing.
  */
 export function explorerCameraKeys(cameraKeys: string[]): string[] {
   const visibleKeys = visibleCameraKeys(cameraKeys);

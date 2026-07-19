@@ -34,7 +34,7 @@ describe("episode metadata outcomes", () => {
 });
 
 describe("Data Explorer cameras", () => {
-  test("keeps every modern role-named station stream", () => {
+  test("keeps modern policy-facing roles and omits wrist_right", () => {
     expect(
       explorerCameraKeys([
         "observation.images.wrist_left",
@@ -44,7 +44,6 @@ describe("Data Explorer cameras", () => {
       ])
     ).toEqual([
       "observation.images.wrist_left",
-      "observation.images.wrist_right",
       "observation.images.side_1",
       "observation.images.side_2",
     ]);
