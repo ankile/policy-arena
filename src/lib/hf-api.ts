@@ -91,6 +91,26 @@ export function visibleCameraKeys(cameraKeys: string[]): string[] {
   return cameraKeys.filter((key) => !HIDDEN_CAMERA_KEYS.has(key));
 }
 
+/**
+ * Cameras shown by Data Explorer.
+ *
+ * Old DROID datasets expose both eyes of each ZED as numeric role names such
+ * as `18650758_left` and `18650758_right`; showing the left eye only avoids
+ * duplicate stereo views. Modern datasets use semantic station roles such as
+ * `wrist_left`, `wrist_right`, and `side_1`. Those names describe distinct
+ * recorded views, so they must all remain visible.
+ */
+export function explorerCameraKeys(cameraKeys: string[]): string[] {
+  const visibleKeys = visibleCameraKeys(cameraKeys);
+  const legacyStereoRole = /^\d+_(left|right)$/;
+  const isEntirelyLegacyStereo =
+    visibleKeys.length > 0 &&
+    visibleKeys.every((key) => legacyStereoRole.test(key.split(".").at(-1) ?? ""));
+
+  if (!isEntirelyLegacyStereo) return visibleKeys;
+  return visibleKeys.filter((key) => key.split(".").at(-1)?.endsWith("_left"));
+}
+
 export function selectPrimaryCameraKey(cameraKeys: string[]): string {
   const visibleKeys = visibleCameraKeys(cameraKeys);
   // Prefer the side_1 station view for previews when it exists.

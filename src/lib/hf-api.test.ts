@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   binaryTrueCountFromEpisodeStats,
   effectiveEpisodeLengthFromStats,
+  explorerCameraKeys,
   summarizeEpisodeFrames,
   successFromEpisodeStats,
 } from "./hf-api";
@@ -29,6 +30,50 @@ describe("episode metadata outcomes", () => {
     expect(() => successFromEpisodeStats({ "stats/success/max": [0.5] })).toThrow(
       "must be 0 or 1"
     );
+  });
+});
+
+describe("Data Explorer cameras", () => {
+  test("keeps every modern role-named station stream", () => {
+    expect(
+      explorerCameraKeys([
+        "observation.images.wrist_left",
+        "observation.images.wrist_right",
+        "observation.images.side_1",
+        "observation.images.side_2",
+      ])
+    ).toEqual([
+      "observation.images.wrist_left",
+      "observation.images.wrist_right",
+      "observation.images.side_1",
+      "observation.images.side_2",
+    ]);
+  });
+
+  test("keeps only the left eye for numeric legacy stereo roles", () => {
+    expect(
+      explorerCameraKeys([
+        "observation.images.18650758_left",
+        "observation.images.18650758_right",
+        "observation.images.25916956_left",
+        "observation.images.25916956_right",
+      ])
+    ).toEqual([
+      "observation.images.18650758_left",
+      "observation.images.25916956_left",
+    ]);
+  });
+
+  test("does not partially filter a mixed or unfamiliar camera contract", () => {
+    expect(
+      explorerCameraKeys([
+        "observation.images.18650758_left",
+        "observation.images.overhead",
+      ])
+    ).toEqual([
+      "observation.images.18650758_left",
+      "observation.images.overhead",
+    ]);
   });
 });
 

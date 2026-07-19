@@ -125,6 +125,28 @@ export const updateTask = mutation({
   },
 });
 
+export const updateClassification = mutation({
+  args: {
+    repo_id: v.string(),
+    dataset_role: v.string(),
+    trainable: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const dataset = await ctx.db
+      .query("datasets")
+      .withIndex("by_repo", (q) => q.eq("repo_id", args.repo_id))
+      .unique();
+    if (!dataset) {
+      throw new Error(`Dataset not found: ${args.repo_id}`);
+    }
+    await ctx.db.patch(dataset._id, {
+      dataset_role: args.dataset_role,
+      trainable: args.trainable,
+    });
+    return dataset._id;
+  },
+});
+
 export const list = query({
   args: {
     source_type: v.optional(v.string()),

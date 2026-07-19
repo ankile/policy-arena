@@ -8,10 +8,14 @@ import {
   fetchSourceStats,
   getParquetCache,
   getVideoUrl,
-  visibleCameraKeys,
+  explorerCameraKeys,
   type EpisodeMetadata,
   type DatasetSourceStats,
 } from "../lib/hf-api";
+import {
+  datasetRoleLabel,
+  resolvedDatasetRole,
+} from "../lib/dataset-classification";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -117,17 +121,8 @@ function SourceTypeBadge({ type }: { type: string }) {
   );
 }
 
-function roleLabel(role?: string): string {
-  const labels: Record<string, string> = {
-    aggregate_parent: "Parent",
-    training_view: "Training view",
-    eval_session: "Eval session",
-    rollout: "Rollout",
-  };
-  return role ? (labels[role] ?? role.replaceAll("_", " ")) : "Legacy";
-}
-
-function RoleBadge({ role }: { role?: string }) {
+function RoleBadge({ role, sourceType }: { role?: string; sourceType: string }) {
+  const resolvedRole = resolvedDatasetRole(role, sourceType);
   const colors: Record<string, string> = {
     aggregate_parent: "bg-warm-100 text-ink-muted",
     training_view: "bg-teal-light text-teal",
@@ -137,10 +132,12 @@ function RoleBadge({ role }: { role?: string }) {
   return (
     <span
       className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium ${
-        role ? (colors[role] ?? "bg-warm-100 text-ink-muted") : "bg-warm-100 text-ink-muted"
+        resolvedRole
+          ? (colors[resolvedRole] ?? "bg-warm-100 text-ink-muted")
+          : "bg-warm-100 text-ink-muted"
       }`}
     >
-      {roleLabel(role)}
+      {datasetRoleLabel(role, sourceType)}
     </span>
   );
 }
@@ -441,9 +438,7 @@ function DatasetDetail({
     const cached = getParquetCache().get(repoId);
     if (cached) {
       setBaseEpisodes(cached.episodes);
-      const visibleCams = visibleCameraKeys(cached.cameraKeys);
-      const leftCams = visibleCams.filter((k) => k.includes("left"));
-      setCameraKeys(sortCameraKeys(leftCams.length > 0 ? leftCams : visibleCams));
+      setCameraKeys(sortCameraKeys(explorerCameraKeys(cached.cameraKeys)));
       setEpisodesLoading(false);
     } else {
       setBaseEpisodes([]);
@@ -467,9 +462,7 @@ function DatasetDetail({
       .then((result) => {
         if (cancelled) return;
         setBaseEpisodes(result.episodes);
-        const visibleCams = visibleCameraKeys(result.cameraKeys);
-        const leftCams = visibleCams.filter((k) => k.includes("left"));
-        setCameraKeys(sortCameraKeys(leftCams.length > 0 ? leftCams : visibleCams));
+        setCameraKeys(sortCameraKeys(explorerCameraKeys(result.cameraKeys)));
         setEpisodesLoading(false);
       })
       .catch((err) => {
@@ -645,7 +638,10 @@ function DatasetDetail({
               {dataset && (
                 <div className="flex flex-wrap items-center gap-1.5 mt-2">
                   <SourceTypeBadge type={dataset.source_type} />
-                  <RoleBadge role={dataset.dataset_role} />
+                  <RoleBadge
+                    role={dataset.dataset_role}
+                    sourceType={dataset.source_type}
+                  />
                   <TrainableBadge trainable={dataset.trainable} />
                   <EnvironmentTag env={dataset.environment} />
                 </div>
@@ -1180,7 +1176,10 @@ export default function DataExplorer() {
                       {dataset.name}
                     </span>
                     <SourceTypeBadge type={dataset.source_type} />
-                    <RoleBadge role={dataset.dataset_role} />
+                    <RoleBadge
+                      role={dataset.dataset_role}
+                      sourceType={dataset.source_type}
+                    />
                     <TrainableBadge trainable={dataset.trainable} />
                     <EnvironmentTag env={dataset.environment} />
                   </div>
