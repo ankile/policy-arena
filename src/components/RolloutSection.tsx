@@ -42,6 +42,8 @@ function RolloutVideoCard({
 
   // Auto-play when expanded
   useEffect(() => {
+    // Expansion is the external control for this local playback state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (isExpanded && episode) setPlaying(true);
     if (!isExpanded) setPlaying(false);
   }, [isExpanded, episode]);
@@ -233,6 +235,8 @@ export default function RolloutSection({
     const missing = uniqueRepos.filter((repo) => !datasetCaches.has(repo));
     if (missing.length === 0) return;
 
+    // Reflect the async prefetch state immediately.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     Promise.all(
       missing.map(async (repo) => {

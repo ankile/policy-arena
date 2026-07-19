@@ -103,6 +103,8 @@ export default function Pairings() {
     if (!rounds) return;
     for (const repo of uniqueRepos) {
       if (datasetCache.has(repo)) continue;
+      // Publish the in-flight cache entry before starting its async load.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDatasetCache((prev) => new Map(prev).set(repo, { status: "loading" }));
       const neededIndices = new Set(
         rounds.filter((r) => r.datasetRepo === repo)

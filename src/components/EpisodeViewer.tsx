@@ -228,6 +228,8 @@ export default function EpisodeViewer({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Reset the viewer immediately when its dataset identity changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(null);
     setSelectedIndex(null);
@@ -236,7 +238,7 @@ export default function EpisodeViewer({
     const resolvedId = datasetId ?? "ankile/dp-franka-pick-cube-2026-02-12";
     Promise.all([
       fetchEpisodeSubset(resolvedId, new Set()),
-      fetchSuccessStatus(resolvedId).catch(() => new Map<number, boolean>()),
+      fetchSuccessStatus(resolvedId),
     ])
       .then(([parquetInfo, successMap]) => {
         const episodes = parquetInfo.episodes.map((ep) => ({

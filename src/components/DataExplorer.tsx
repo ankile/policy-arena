@@ -431,6 +431,8 @@ function DatasetDetail({
     if (prevRepoId.current !== repoId) {
       prevRepoId.current = repoId;
       setSelectedIndex(null);
+      // Reset UI state when navigating between dataset identities.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPlaying(false);
       setEpisodeFilter("all");
     }
@@ -489,13 +491,14 @@ function DatasetDetail({
           setSuccessMap(map);
           setSuccessLoading(false);
         })
-        .catch(() => {
+        .catch((err) => {
           if (cancelled) return;
           if (retriesLeft > 0) {
             setTimeout(() => attempt(retriesLeft - 1), 1500);
           } else {
-            setSuccessMap(new Map());
+            setSuccessMap(null);
             setSuccessLoading(false);
+            setError(`Failed to load episode outcomes: ${err.message}`);
           }
         });
     };
@@ -530,6 +533,7 @@ function DatasetDetail({
   }, [repoId]);
   useEffect(() => {
     if (episodesLoading || successLoading || sourceStatsLoading) return;
+    if (successMap === null) return;
     if (statsSynced.current) return;
     if (baseEpisodes.length === 0) return;
     statsSynced.current = true;
@@ -675,6 +679,11 @@ function DatasetDetail({
       </div>
 
       <div className="p-6">
+        {error && (
+          <div className="mb-5 rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-sm text-coral">
+            {error}
+          </div>
+        )}
         {/* Summary stats */}
         {dataset && (
           <div className="mb-5 flex flex-wrap items-center gap-2 text-xs font-mono">
