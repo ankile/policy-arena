@@ -1,6 +1,7 @@
 import { useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 
+import AuthControls from "./components/AuthControls";
 import DataExplorer from "./components/DataExplorer";
 import EvalSessions from "./components/EvalSessions";
 import Pairings from "./components/Pairings";
@@ -127,7 +128,8 @@ function App() {
           className="mb-14"
           style={{ animation: "fade-up 0.6s ease-out both" }}
         >
-          <div className="flex items-center gap-3 mb-3">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-teal to-teal/70 flex items-center justify-center">
               <svg
                 width="20"
@@ -150,6 +152,8 @@ function App() {
             <h1 className="font-display text-4xl text-ink tracking-tight">
               Policy Arena
             </h1>
+            </div>
+            <AuthControls />
           </div>
           <p className="text-ink-muted font-body text-lg ml-[52px]">
             Track, compare, and rank robot learning policies and datasets

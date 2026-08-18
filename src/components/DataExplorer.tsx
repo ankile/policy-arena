@@ -397,6 +397,7 @@ function DatasetDetail({
   onBack: () => void;
 }) {
   const dataset = useQuery(api.datasets.getByRepo, { repo_id: repoId });
+  const viewer = useQuery(api.users.viewer);
   const [selectedIndex, setSelectedIndex] = useSearchParamNumber("episode");
   const [playing, setPlaying] = useState(false);
   const [episodeFilter, setEpisodeFilter] = useSearchParam("outcome", "all");
@@ -529,6 +530,9 @@ function DatasetDetail({
     if (successMap === null) return;
     if (statsSynced.current) return;
     if (baseEpisodes.length === 0) return;
+    // Only allowlisted editors may write stats back; anonymous browsing must
+    // never mutate the database.
+    if (!viewer?.isEditor) return;
     statsSynced.current = true;
 
     const totalDuration = baseEpisodes.reduce((sum, ep) => sum + ep.duration, 0);
@@ -553,7 +557,7 @@ function DatasetDetail({
     }
 
     updateStats(statsUpdate);
-  }, [episodesLoading, successLoading, sourceStatsLoading, baseEpisodes, successMap, sourceStats, repoId, updateStats]);
+  }, [episodesLoading, successLoading, sourceStatsLoading, baseEpisodes, successMap, sourceStats, repoId, updateStats, viewer]);
 
   const handleTogglePlay = useCallback(() => {
     setPlaying((p) => !p);

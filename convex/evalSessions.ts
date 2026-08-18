@@ -1,6 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
+import { requireEditorOrService } from "./access";
 import { computeEloUpdate } from "./elo";
 
 function uniqueRoundIndexes(rounds: Array<{ round_index: bigint }>): Set<number> {
@@ -17,6 +18,7 @@ function uniqueRoundIndexes(rounds: Array<{ round_index: bigint }>): Set<number>
 
 export const submit = mutation({
   args: {
+    serviceToken: v.optional(v.string()),
     dataset_repo: v.string(),
     notes: v.optional(v.string()),
     session_mode: v.optional(v.string()),
@@ -44,6 +46,7 @@ export const submit = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    await requireEditorOrService(ctx, args.serviceToken);
     // 1. Register/upsert all policies
     const modelIdToPolicy = new Map<string, Id<"policies">>();
     for (const p of args.policies) {
@@ -289,8 +292,9 @@ export const getDetail = query({
 });
 
 export const deleteSession = mutation({
-  args: { id: v.id("evalSessions") },
+  args: { id: v.id("evalSessions"), serviceToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    await requireEditorOrService(ctx, args.serviceToken);
     const session = await ctx.db.get(args.id);
     if (!session) throw new Error("Session not found");
 
@@ -448,8 +452,10 @@ export const removePolicyFromSession = mutation({
   args: {
     id: v.id("evalSessions"),
     model_id: v.string(),
+    serviceToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireEditorOrService(ctx, args.serviceToken);
     const session = await ctx.db.get(args.id);
     if (!session) throw new Error("Session not found");
 
@@ -624,6 +630,7 @@ export const removePolicyFromSession = mutation({
 export const addRounds = mutation({
   args: {
     id: v.id("evalSessions"),
+    serviceToken: v.optional(v.string()),
     policies: v.array(
       v.object({
         name: v.string(),
@@ -648,6 +655,7 @@ export const addRounds = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    await requireEditorOrService(ctx, args.serviceToken);
     const session = await ctx.db.get(args.id);
     if (!session) throw new Error("Session not found");
     const incomingRoundIndexes = uniqueRoundIndexes(args.rounds);
@@ -839,8 +847,10 @@ export const updateNotes = mutation({
   args: {
     id: v.id("evalSessions"),
     notes: v.string(),
+    serviceToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireEditorOrService(ctx, args.serviceToken);
     const session = await ctx.db.get(args.id);
     if (!session) throw new Error("Session not found");
     await ctx.db.patch(args.id, { notes: args.notes });

@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { requireEditorOrService } from "./access";
 
 export const environments = query({
   handler: async (ctx) => {
@@ -81,8 +82,10 @@ export const updateEnvironment = mutation({
   args: {
     model_id: v.string(),
     environment: v.string(),
+    serviceToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireEditorOrService(ctx, args.serviceToken);
     const policy = await ctx.db
       .query("policies")
       .withIndex("by_model_id", (q) => q.eq("model_id", args.model_id))
@@ -96,8 +99,9 @@ export const updateEnvironment = mutation({
 });
 
 export const deletePolicy = mutation({
-  args: { model_id: v.string() },
+  args: { model_id: v.string(), serviceToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    await requireEditorOrService(ctx, args.serviceToken);
     const policy = await ctx.db
       .query("policies")
       .withIndex("by_model_id", (q) => q.eq("model_id", args.model_id))
@@ -137,8 +141,10 @@ export const register = mutation({
     model_url: v.optional(v.string()),
     training_url: v.optional(v.string()),
     environment: v.string(),
+    serviceToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireEditorOrService(ctx, args.serviceToken);
     const existing = await ctx.db
       .query("policies")
       .withIndex("by_model_id", (q) => q.eq("model_id", args.model_id))

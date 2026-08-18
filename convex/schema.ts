@@ -1,7 +1,25 @@
+import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  ...authTables,
+
+  // Overrides authTables.users to add the Hugging Face username, which is the
+  // key the ARENA_EDITORS allowlist matches against (see access.ts).
+  users: defineTable({
+    name: v.optional(v.string()),
+    image: v.optional(v.string()),
+    email: v.optional(v.string()),
+    emailVerificationTime: v.optional(v.float64()),
+    phone: v.optional(v.string()),
+    phoneVerificationTime: v.optional(v.float64()),
+    isAnonymous: v.optional(v.boolean()),
+    username: v.optional(v.string()),
+  })
+    .index("email", ["email"])
+    .index("phone", ["phone"]),
+
   policies: defineTable({
     name: v.string(),
     model_id: v.string(),

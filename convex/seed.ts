@@ -1,6 +1,8 @@
-import { mutation } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
 
-export const clearAll = mutation({
+// Deliberately internal: wiping the arena must not be reachable from the
+// public API. Run via `npx convex run seed:clearAll` with deploy credentials.
+export const clearAll = internalMutation({
   args: {},
   handler: async (ctx) => {
     const tables = [

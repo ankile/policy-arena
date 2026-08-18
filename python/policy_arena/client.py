@@ -1,13 +1,52 @@
+import os
 import random
 
 from convex import ConvexClient
 
 from policy_arena.types import DatasetInput, PolicyInput, RoundInput, RoundResultInput
 
+DEFAULT_TOKEN_PATH = "~/.config/sir/policy_arena_token"
+
+
+def load_service_token() -> str | None:
+    """Resolve the arena service token for machine writes.
+
+    Order: POLICY_ARENA_TOKEN env var, then the file at POLICY_ARENA_TOKEN_PATH
+    (default ~/.config/sir/policy_arena_token). Returns None when neither is
+    configured; mutations then fail loudly at call time.
+    """
+    token = os.environ.get("POLICY_ARENA_TOKEN")
+    if token and token.strip():
+        return token.strip()
+    path = os.path.expanduser(
+        os.environ.get("POLICY_ARENA_TOKEN_PATH", DEFAULT_TOKEN_PATH)
+    )
+    try:
+        with open(path) as f:
+            token = f.read().strip()
+    except FileNotFoundError:
+        return None
+    return token or None
+
 
 class PolicyArenaClient:
-    def __init__(self, url: str):
+    def __init__(self, url: str, service_token: str | None = None):
         self.client = ConvexClient(url)
+        self._service_token = (
+            service_token if service_token is not None else load_service_token()
+        )
+
+    def _mutation(self, name: str, args: dict):
+        """All arena mutations are auth-gated; attach the service token."""
+        if self._service_token is None:
+            raise RuntimeError(
+                "Policy Arena mutations require a service token. Set the "
+                "POLICY_ARENA_TOKEN env var or write the token to "
+                f"{DEFAULT_TOKEN_PATH} (override path with POLICY_ARENA_TOKEN_PATH)."
+            )
+        return self.client.mutation(
+            name, {**args, "serviceToken": self._service_token}
+        )
 
     def submit_eval_session(
         self,
@@ -27,7 +66,7 @@ class PolicyArenaClient:
             args["notes"] = notes
         if session_mode is not None:
             args["session_mode"] = session_mode
-        return self.client.mutation("evalSessions:submit", args)
+        return self._mutation("evalSessions:submit", args)
 
     def submit_rollout_session(
         self,
@@ -172,7 +211,7 @@ class PolicyArenaClient:
         rounds: list[RoundInput],
     ) -> str:
         """Append rounds to an existing eval session and update ELO."""
-        return self.client.mutation(
+        return self._mutation(
             "evalSessions:addRounds",
             {
                 "id": session_id,
@@ -190,20 +229,20 @@ class PolicyArenaClient:
 
     def delete_session(self, session_id: str) -> dict:
         """Delete an eval session and recompute ELO for all policies."""
-        return self.client.mutation(
+        return self._mutation(
             "evalSessions:deleteSession", {"id": session_id}
         )
 
     def remove_policy_from_session(self, session_id: str, model_id: str) -> dict:
         """Remove a policy from an eval session and recompute ELO."""
-        return self.client.mutation(
+        return self._mutation(
             "evalSessions:removePolicyFromSession",
             {"id": session_id, "model_id": model_id},
         )
 
     def register_dataset(self, dataset: DatasetInput) -> str:
         """Register a dataset in the arena for browsing."""
-        return self.client.mutation("datasets:register", dataset.to_dict())
+        return self._mutation("datasets:register", dataset.to_dict())
 
     def list_datasets(
         self,
@@ -233,14 +272,14 @@ class PolicyArenaClient:
         self, repo_id: str, task: str, environment: str
     ) -> str:
         """Re-categorize a dataset to a different task/environment."""
-        return self.client.mutation(
+        return self._mutation(
             "datasets:updateTask",
             {"repo_id": repo_id, "task": task, "environment": environment},
         )
 
     def update_policy_environment(self, model_id: str, environment: str) -> str:
         """Re-categorize a policy to a different environment."""
-        return self.client.mutation(
+        return self._mutation(
             "policies:updateEnvironment",
             {"model_id": model_id, "environment": environment},
         )

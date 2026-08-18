@@ -1,6 +1,7 @@
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
+import { requireEditorOrService } from "./access";
 
 type PolicyCounts = {
   wins: bigint;
@@ -134,8 +135,9 @@ export const auditSessionDerivedData = query({
 });
 
 export const repairSessionDerivedData = mutation({
-  args: { id: v.id("evalSessions") },
+  args: { id: v.id("evalSessions"), serviceToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    await requireEditorOrService(ctx, args.serviceToken);
     const session = await ctx.db.get(args.id);
     if (!session) throw new Error("Session not found");
 

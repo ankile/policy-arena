@@ -1,8 +1,10 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { requireEditorOrService } from "./access";
 
 export const register = mutation({
   args: {
+    serviceToken: v.optional(v.string()),
     repo_id: v.string(),
     name: v.string(),
     task: v.string(),
@@ -24,20 +26,23 @@ export const register = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireEditorOrService(ctx, args.serviceToken);
+    const { serviceToken: _serviceToken, ...fields } = args;
     const existing = await ctx.db
       .query("datasets")
-      .withIndex("by_repo", (q) => q.eq("repo_id", args.repo_id))
+      .withIndex("by_repo", (q) => q.eq("repo_id", fields.repo_id))
       .unique();
     if (existing) {
-      await ctx.db.patch(existing._id, { ...args });
+      await ctx.db.patch(existing._id, { ...fields });
       return existing._id;
     }
-    return await ctx.db.insert("datasets", args);
+    return await ctx.db.insert("datasets", fields);
   },
 });
 
 export const updateStats = mutation({
   args: {
+    serviceToken: v.optional(v.string()),
     repo_id: v.string(),
     num_episodes: v.number(),
     total_duration_seconds: v.number(),
@@ -48,6 +53,7 @@ export const updateStats = mutation({
     num_autonomous_success: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireEditorOrService(ctx, args.serviceToken);
     const dataset = await ctx.db
       .query("datasets")
       .withIndex("by_repo", (q) => q.eq("repo_id", args.repo_id))
@@ -81,8 +87,9 @@ export const updateStats = mutation({
 });
 
 export const deleteByRepo = mutation({
-  args: { repo_id: v.string() },
+  args: { repo_id: v.string(), serviceToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    await requireEditorOrService(ctx, args.serviceToken);
     const dataset = await ctx.db
       .query("datasets")
       .withIndex("by_repo", (q) => q.eq("repo_id", args.repo_id))
@@ -108,8 +115,10 @@ export const updateTask = mutation({
     repo_id: v.string(),
     task: v.string(),
     environment: v.string(),
+    serviceToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireEditorOrService(ctx, args.serviceToken);
     const dataset = await ctx.db
       .query("datasets")
       .withIndex("by_repo", (q) => q.eq("repo_id", args.repo_id))
