@@ -139,8 +139,10 @@ export const updateClassification = mutation({
     repo_id: v.string(),
     dataset_role: v.string(),
     trainable: v.boolean(),
+    serviceToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireEditorOrService(ctx, args.serviceToken);
     const dataset = await ctx.db
       .query("datasets")
       .withIndex("by_repo", (q) => q.eq("repo_id", args.repo_id))
