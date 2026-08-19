@@ -823,6 +823,49 @@ export interface AppliedProgress {
 
 const appliedProgressCache = new Map<string, AppliedProgress | null>();
 
+/** One event from the append-only label-provenance ledger (.label_history.jsonl).
+ *  `payload` is taxonomy-blind: opaque here, interpreted by the renderer per
+ *  label_kind (see sir/real/lifecycle/label_history.py). */
+export interface LabelEvent {
+  v: number;
+  label_kind: string;
+  episode_index: number;
+  payload: Record<string, unknown>;
+  prev?: Record<string, unknown>;
+  source: { kind: string; agent: string | null; tool: string };
+  evidence: Record<string, unknown>;
+  ts: string;
+  taxonomy?: string;
+}
+
+/**
+ * The dataset's label-provenance ledger from HF main. Null when the dataset
+ * has no ledger yet (404). Deliberately uncached: the ledger grows with every
+ * apply, and provenance shown stale is worse than a small refetch.
+ */
+export async function fetchLabelHistory(
+  datasetId: string
+): Promise<LabelEvent[] | null> {
+  const resp = await fetch(`${hfBase(datasetId)}/.label_history.jsonl`);
+  if (resp.status === 404) return null;
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch .label_history.jsonl: HTTP ${resp.status}`);
+  }
+  const text = await resp.text();
+  const events: LabelEvent[] = [];
+  for (const [i, line] of text.split("\n").entries()) {
+    if (!line.trim()) continue;
+    const event = JSON.parse(line) as LabelEvent;
+    for (const key of ["label_kind", "episode_index", "payload", "source", "ts"]) {
+      if (!(key in event)) {
+        throw new Error(`.label_history.jsonl line ${i + 1}: event missing ${key}`);
+      }
+    }
+    events.push(event);
+  }
+  return events;
+}
+
 /**
  * The dataset's applied `.outcome_edit_progress.json` from HF — the record of
  * truth for treatment that already reached the Hub (cv2-era sessions AND past

@@ -8,12 +8,14 @@ import {
   explorerCameraKeys,
   fetchAppliedProgress,
   fetchEpisodeFrameSignals,
+  fetchLabelHistory,
   fetchLedgerArms,
   fetchReviewEpisodes,
   getVideoUrl,
   selectPrimaryCameraKey,
   type AppliedProgress,
   type EpisodeFrameSignals,
+  type LabelEvent,
   type ReviewEpisode,
 } from "../lib/hf-api";
 
@@ -100,6 +102,40 @@ function orderCameraKeys(keys: string[]): string[] {
     return index === -1 ? CAMERA_ROLE_ORDER.length : index;
   };
   return [...keys].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+}
+
+// -- Label-history rendering (taxonomy-blind: unknown kinds render as JSON) --
+const SOURCE_TOOL_SHORT: Record<string, string> = {
+  "web-review": "web",
+  "cv2-editor": "cv2",
+  "collection-results": "collection",
+};
+
+function sourceLabel(event: LabelEvent): string {
+  const tool = SOURCE_TOOL_SHORT[event.source.tool] ?? event.source.tool;
+  const agent = event.source.agent ? ` ${event.source.agent}` : "";
+  return `${event.source.kind}·${tool}${agent}`;
+}
+
+function describeLabelPayload(
+  kind: string,
+  payload: Record<string, unknown>
+): string {
+  if (payload.action === "skip") return "skip (kept labels)";
+  if (payload.action === "unlabel") return "unlabeled (decision retracted)";
+  if (kind === "outcome" && typeof payload.new_outcome === "string") {
+    let text = `${payload.new_outcome} @ ${payload.outcome_frame}`;
+    if (payload.soft_truncate) text += " ·soft-trunc";
+    const marks = payload.subtask_frames;
+    if (Array.isArray(marks) && marks.length > 0) text += ` ·${marks.length} marks`;
+    return text;
+  }
+  return `${kind}: ${JSON.stringify(payload).slice(0, 60)}`;
+}
+
+function eventSeekFrame(event: LabelEvent): number | null {
+  const frame = event.payload.outcome_frame;
+  return typeof frame === "number" ? frame : null;
 }
 
 function cameraLabel(key: string): string {
@@ -1028,6 +1064,10 @@ export default function OutcomeReview({
   // First-time flow: only never-addressed episodes (no web review, no applied
   // record entry). Switch to "all" to revisit treated episodes.
   const [statusFilter, setStatusFilter] = useSearchParam("status", "unaddressed");
+  // Append-only label-provenance ledger (who/when/how for every label change).
+  // Supplementary: absence or load failure never blocks reviewing.
+  const [labelHistory, setLabelHistory] = useState<LabelEvent[] | null | undefined>(undefined);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [signals, setSignals] = useState<Map<number, EpisodeFrameSignals>>(
     () => new Map()
   );
@@ -1088,6 +1128,33 @@ export default function OutcomeReview({
       cancelled = true;
     };
   }, [repoId]);
+
+  // -- Label-history ledger (provenance; absence is fine) -------------------
+  useEffect(() => {
+    let cancelled = false;
+    setLabelHistory(undefined);
+    setHistoryError(null);
+    fetchLabelHistory(repoId)
+      .then((events) => {
+        if (!cancelled) setLabelHistory(events);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setHistoryError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [repoId]);
+
+  const historyByEpisode = useMemo(() => {
+    const byEpisode = new Map<number, LabelEvent[]>();
+    for (const event of labelHistory ?? []) {
+      const list = byEpisode.get(event.episode_index);
+      if (list) list.push(event);
+      else byEpisode.set(event.episode_index, [event]);
+    }
+    return byEpisode;
+  }, [labelHistory]);
 
   // -- Ledger arm labels (optional sidecars; absence is fine) --------------
   useEffect(() => {
@@ -1768,6 +1835,12 @@ export default function OutcomeReview({
           show as unaddressed: {appliedError}
         </div>
       )}
+      {historyError && (
+        <div className="mx-6 mt-4 rounded-lg border border-gold/40 bg-gold-light px-4 py-3 text-xs text-ink font-mono">
+          Label-history ledger failed to load (provenance hidden, reviewing
+          unaffected): {historyError}
+        </div>
+      )}
       {signalErrors.size > 0 && (
         <div className="mx-6 mt-4 rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-xs text-coral font-mono">
           {signalErrors.size} episode(s) failed frame-signal parsing:{" "}
@@ -1910,6 +1983,19 @@ export default function OutcomeReview({
                     detecting…
                   </span>
                 )}
+                {(() => {
+                  const chain = historyByEpisode.get(currentEpisode.episodeIndex);
+                  const last = chain?.[chain.length - 1];
+                  if (!last) return null;
+                  return (
+                    <span
+                      className="px-2 py-0.5 rounded-full text-xs font-mono bg-warm-100 text-ink-muted"
+                      title={`Current label source (${chain!.length} event${chain!.length === 1 ? "" : "s"} in ledger): ${describeLabelPayload(last.label_kind, last.payload)} at ${last.ts}`}
+                    >
+                      {sourceLabel(last)}
+                    </span>
+                  );
+                })()}
                 {reviewByEpisode.get(currentEpisode.episodeIndex) === undefined &&
                   applied != null &&
                   (applied.changed.has(currentEpisode.episodeIndex) ||
@@ -1983,6 +2069,47 @@ export default function OutcomeReview({
                   storedFrameHW={storedFrameHW}
                 />
               )}
+
+              {(() => {
+                const chain = historyByEpisode.get(currentEpisode.episodeIndex);
+                if (!chain || chain.length === 0) return null;
+                return (
+                  <div className="mt-3 rounded-lg border border-warm-200 bg-warm-50 px-3 py-2">
+                    <div className="text-[10px] font-mono uppercase tracking-wide text-ink-muted mb-1">
+                      Label history · {chain.length} event{chain.length === 1 ? "" : "s"}
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      {chain.map((event, i) => {
+                        const seek = eventSeekFrame(event);
+                        const current = i === chain.length - 1;
+                        return (
+                          <button
+                            key={i}
+                            disabled={seek === null}
+                            onClick={() =>
+                              seek !== null &&
+                              setFrame(Math.min(seek, currentEpisode.rawLength - 1))
+                            }
+                            title={seek !== null ? `Seek to frame ${seek}` : undefined}
+                            className={`flex items-baseline gap-2 text-left text-[11px] font-mono rounded px-1 -mx-1 ${
+                              seek !== null ? "cursor-pointer hover:bg-warm-100" : "cursor-default"
+                            } ${current ? "text-ink" : "text-ink-muted"}`}
+                          >
+                            <span className="shrink-0 text-ink-muted/70">
+                              {event.ts.slice(0, 16).replace("T", " ")}
+                            </span>
+                            <span className="shrink-0">{sourceLabel(event)}</span>
+                            <span className={current ? "font-medium" : ""}>
+                              {describeLabelPayload(event.label_kind, event.payload)}
+                              {current ? "  ← current" : ""}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 {OUTCOMES.map((outcome) => (
