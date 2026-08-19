@@ -128,6 +128,25 @@ export default defineSchema({
     source: v.string(), // exporter provenance (host + sir git sha)
   }).index("by_task", ["task"]),
 
+  // Stage-label task specs (Phase 2): the FULL StageLabelTaskSpec vocabulary,
+  // exported per (task, taxonomy_version) so LIVE and CANDIDATE taxonomies
+  // coexist during taxonomy iteration (stage splits/removals). `spec` is the
+  // serialized JSON from sir/real/stage_labeling/spec_export.py — service-
+  // write-only exported data whose shape Python validates at export; storing
+  // it opaque keeps this schema stable across taxonomy changes, and all
+  // numbers arrive as plain float64 (no BigInt handling in the UI).
+  stageTaskSpecs: defineTable({
+    task: v.string(),
+    taxonomy_version: v.string(),
+    taxonomy_hash: v.string(),
+    live: v.boolean(), // exactly one live version per task (enforced in upsert)
+    spec: v.any(),
+    exported_at: v.float64(),
+    source: v.string(), // exporter provenance (host + sir git sha)
+  })
+    .index("by_task", ["task"])
+    .index("by_task_version", ["task", "taxonomy_version"]),
+
   datasets: defineTable({
     repo_id: v.string(),
     name: v.string(),

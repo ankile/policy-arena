@@ -364,6 +364,38 @@ class PolicyArenaClient:
     def get_task_spec(self, task: str) -> dict | None:
         return self.client.query("taskSpecs:forTask", {"task": task})
 
+    def upsert_stage_task_spec(
+        self,
+        *,
+        task: str,
+        taxonomy_version: str,
+        taxonomy_hash: str,
+        live: bool,
+        spec: dict,
+        source: str,
+    ) -> str:
+        """Export one stage-label taxonomy version's full spec (service-only).
+
+        ``spec`` is the raw ``serialize_stage_spec`` payload; it is stored as an
+        opaque document, so plain Python ints are fine (they arrive in the UI as
+        float64 Numbers — deliberately no ConvexInt64 wrapping here).
+        """
+        return self._mutation(
+            "stageTaskSpecs:upsert",
+            {
+                "task": task,
+                "taxonomy_version": taxonomy_version,
+                "taxonomy_hash": taxonomy_hash,
+                "live": bool(live),
+                "spec": spec,
+                "source": source,
+            },
+        )
+
+    def get_stage_task_specs(self, task: str) -> list[dict]:
+        """Every exported taxonomy version for a task (live + candidates)."""
+        return self.client.query("stageTaskSpecs:forTask", {"task": task})
+
     def enqueue_apply_job(self, dataset_repo: str, *, dry_run: bool = False) -> str:
         return self._mutation(
             "applyJobs:enqueue", {"dataset_repo": dataset_repo, "dry_run": dry_run}

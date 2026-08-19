@@ -23,6 +23,7 @@ import type * as recommendations from "../recommendations.js";
 import type * as reviews from "../reviews.js";
 import type * as roundResults from "../roundResults.js";
 import type * as seed from "../seed.js";
+import type * as stageTaskSpecs from "../stageTaskSpecs.js";
 import type * as taskSpecs from "../taskSpecs.js";
 import type * as users from "../users.js";
 
@@ -48,6 +49,7 @@ declare const fullApi: ApiFromModules<{
   reviews: typeof reviews;
   roundResults: typeof roundResults;
   seed: typeof seed;
+  stageTaskSpecs: typeof stageTaskSpecs;
   taskSpecs: typeof taskSpecs;
   users: typeof users;
 }>;
