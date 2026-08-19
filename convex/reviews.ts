@@ -1,0 +1,123 @@
+import { query, mutation } from "./_generated/server";
+import { v } from "convex/values";
+import { getAuthUserId } from "@convex-dev/auth/server";
+import { requireEditorOrService } from "./access";
+
+const OUTCOMES = ["success", "failure", "timeout"] as const;
+const STATUSES = ["confirmed", "skipped", "cleared"] as const;
+
+/**
+ * Outcome reviews are APPEND-ONLY: every save inserts a row, and readers fold
+ * to the latest row per (dataset_repo, episode_index). This preserves a full
+ * audit trail; the applied record of truth on HF remains
+ * `.outcome_edit_progress.json`, materialized by the Python apply worker.
+ *
+ * Record semantics mirror sir/tools/outcome_editor.py exactly:
+ *  - confirmed: {new_outcome, outcome_frame, soft_truncate, subtask_frames?}
+ *    (subtask_frames key present ⇔ reviewed in subtask mode, may be empty)
+ *  - skipped: reviewed, no change
+ *  - cleared: undo a previous review (episode returns to unreviewed)
+ */
+export const save = mutation({
+  args: {
+    serviceToken: v.optional(v.string()),
+    dataset_repo: v.string(),
+    episode_index: v.int64(),
+    status: v.string(),
+    new_outcome: v.optional(v.string()),
+    outcome_frame: v.optional(v.int64()),
+    soft_truncate: v.optional(v.boolean()),
+    subtask_frames: v.optional(v.array(v.int64())),
+    // Attribution override for scripted backfills of historical cv2-era
+    // records (service principal only; humans are attributed from auth).
+    reviewer_override: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const principal = await requireEditorOrService(ctx, args.serviceToken);
+    if (!(STATUSES as readonly string[]).includes(args.status)) {
+      throw new Error(`Invalid review status: ${args.status}`);
+    }
+    if (args.status === "confirmed") {
+      if (
+        args.new_outcome === undefined ||
+        !(OUTCOMES as readonly string[]).includes(args.new_outcome)
+      ) {
+        throw new Error(
+          `Confirmed review requires new_outcome in ${OUTCOMES.join("/")}, got ${args.new_outcome}`
+        );
+      }
+      if (args.outcome_frame === undefined || args.outcome_frame < BigInt(0)) {
+        throw new Error("Confirmed review requires a non-negative outcome_frame");
+      }
+    } else {
+      if (
+        args.new_outcome !== undefined ||
+        args.outcome_frame !== undefined ||
+        args.subtask_frames !== undefined
+      ) {
+        throw new Error(`A ${args.status} review must not carry outcome fields`);
+      }
+    }
+    let reviewer: string;
+    if (principal === "service") {
+      reviewer = args.reviewer_override ?? "service";
+    } else {
+      if (args.reviewer_override !== undefined) {
+        throw new Error("reviewer_override is reserved for the service principal");
+      }
+      reviewer = principal;
+    }
+    const userId = await getAuthUserId(ctx);
+    return await ctx.db.insert("outcomeReviews", {
+      dataset_repo: args.dataset_repo,
+      episode_index: args.episode_index,
+      status: args.status,
+      new_outcome: args.new_outcome,
+      outcome_frame: args.outcome_frame,
+      soft_truncate: args.status === "confirmed" ? (args.soft_truncate ?? false) : undefined,
+      subtask_frames: args.subtask_frames,
+      reviewer,
+      reviewer_user_id: userId ?? undefined,
+      saved_at: Date.now(),
+    });
+  },
+});
+
+/** Latest review per episode for a repo (cleared rows fold to "no review"). */
+export const latestForRepo = query({
+  args: { dataset_repo: v.string() },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("outcomeReviews")
+      .withIndex("by_repo", (q) => q.eq("dataset_repo", args.dataset_repo))
+      .collect();
+    const latest = new Map<string, (typeof rows)[number]>();
+    for (const row of rows) {
+      // _creationTime is monotonically assigned; later insert wins.
+      const key = row.episode_index.toString();
+      const prev = latest.get(key);
+      if (!prev || row._creationTime > prev._creationTime) latest.set(key, row);
+    }
+    const episodes = [...latest.values()]
+      .filter((row) => row.status !== "cleared")
+      .sort((a, b) => Number(a.episode_index - b.episode_index));
+    return {
+      episodes,
+      num_confirmed: episodes.filter((e) => e.status === "confirmed").length,
+      num_skipped: episodes.filter((e) => e.status === "skipped").length,
+    };
+  },
+});
+
+/** Full append-only history for one episode (audit surface). */
+export const historyForEpisode = query({
+  args: { dataset_repo: v.string(), episode_index: v.int64() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("outcomeReviews")
+      .withIndex("by_repo_episode", (q) =>
+        q.eq("dataset_repo", args.dataset_repo).eq("episode_index", args.episode_index)
+      )
+      .collect();
+  },
+});

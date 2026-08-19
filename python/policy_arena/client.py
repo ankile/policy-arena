@@ -1,7 +1,7 @@
 import os
 import random
 
-from convex import ConvexClient
+from convex import ConvexClient, ConvexInt64
 
 from policy_arena.types import DatasetInput, PolicyInput, RoundInput, RoundResultInput
 
@@ -287,3 +287,85 @@ class PolicyArenaClient:
     def get_leaderboard(self) -> list[dict]:
         """Get current leaderboard."""
         return self.client.query("policies:leaderboard")
+
+    # ── Outcome review + apply-job bridge (arena review worker) ──
+
+    def fetch_outcome_reviews(self, dataset_repo: str) -> dict:
+        """Latest outcome review per episode for a repo.
+
+        Returns {"episodes": [...], "num_confirmed": int, "num_skipped": int}
+        where each episode row carries status/new_outcome/outcome_frame/
+        soft_truncate/subtask_frames/reviewer.
+        """
+        return self.client.query(
+            "reviews:latestForRepo", {"dataset_repo": dataset_repo}
+        )
+
+    def save_outcome_review(
+        self,
+        dataset_repo: str,
+        episode_index: int,
+        status: str,
+        *,
+        new_outcome: str | None = None,
+        outcome_frame: int | None = None,
+        soft_truncate: bool | None = None,
+        subtask_frames: list[int] | None = None,
+        reviewer_override: str | None = None,
+    ) -> str:
+        """Record an outcome review (service path — e.g. cv2-era backfills)."""
+        args: dict = {
+            "dataset_repo": dataset_repo,
+            "episode_index": ConvexInt64(int(episode_index)),
+            "status": status,
+        }
+        if new_outcome is not None:
+            args["new_outcome"] = new_outcome
+        if outcome_frame is not None:
+            args["outcome_frame"] = ConvexInt64(int(outcome_frame))
+        if soft_truncate is not None:
+            args["soft_truncate"] = bool(soft_truncate)
+        if subtask_frames is not None:
+            args["subtask_frames"] = [ConvexInt64(int(f)) for f in subtask_frames]
+        if reviewer_override is not None:
+            args["reviewer_override"] = reviewer_override
+        return self._mutation("reviews:save", args)
+
+    def enqueue_apply_job(self, dataset_repo: str, *, dry_run: bool = False) -> str:
+        return self._mutation(
+            "applyJobs:enqueue", {"dataset_repo": dataset_repo, "dry_run": dry_run}
+        )
+
+    def claim_apply_job(self, worker_id: str) -> dict | None:
+        """Claim the oldest pending apply job; None when the queue is empty."""
+        return self._mutation("applyJobs:claim", {"worker_id": worker_id})
+
+    def finish_apply_job(
+        self,
+        job_id: str,
+        *,
+        ok: bool,
+        hf_commit_sha: str | None = None,
+        error: str | None = None,
+        log_tail: str | None = None,
+        num_confirmed: int | None = None,
+        num_skipped: int | None = None,
+    ) -> str:
+        args: dict = {"id": job_id, "ok": ok}
+        if hf_commit_sha is not None:
+            args["hf_commit_sha"] = hf_commit_sha
+        if error is not None:
+            args["error"] = error
+        if log_tail is not None:
+            args["log_tail"] = log_tail
+        if num_confirmed is not None:
+            args["num_confirmed"] = ConvexInt64(int(num_confirmed))
+        if num_skipped is not None:
+            args["num_skipped"] = ConvexInt64(int(num_skipped))
+        return self._mutation("applyJobs:finish", args)
+
+    def worker_heartbeat(self, worker_id: str, info: str | None = None) -> str:
+        args: dict = {"worker_id": worker_id}
+        if info is not None:
+            args["info"] = info
+        return self._mutation("applyJobs:beat", args)

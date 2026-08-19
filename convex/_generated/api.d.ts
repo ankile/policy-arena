@@ -9,6 +9,7 @@
  */
 
 import type * as access from "../access.js";
+import type * as applyJobs from "../applyJobs.js";
 import type * as auth from "../auth.js";
 import type * as datasets from "../datasets.js";
 import type * as elo from "../elo.js";
@@ -19,6 +20,7 @@ import type * as maintenance from "../maintenance.js";
 import type * as pairings from "../pairings.js";
 import type * as policies from "../policies.js";
 import type * as recommendations from "../recommendations.js";
+import type * as reviews from "../reviews.js";
 import type * as roundResults from "../roundResults.js";
 import type * as seed from "../seed.js";
 import type * as users from "../users.js";
@@ -31,6 +33,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   access: typeof access;
+  applyJobs: typeof applyJobs;
   auth: typeof auth;
   datasets: typeof datasets;
   elo: typeof elo;
@@ -41,6 +44,7 @@ declare const fullApi: ApiFromModules<{
   pairings: typeof pairings;
   policies: typeof policies;
   recommendations: typeof recommendations;
+  reviews: typeof reviews;
   roundResults: typeof roundResults;
   seed: typeof seed;
   users: typeof users;

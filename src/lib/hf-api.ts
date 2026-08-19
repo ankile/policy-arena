@@ -3,7 +3,7 @@ import { asyncBufferFromUrl, parquetReadObjects, toJson } from "hyparquet";
 const DEFAULT_DATASET_ID = "ankile/dp-franka-pick-cube-2026-02-12";
 const DATASETS_SERVER = "https://datasets-server.huggingface.co";
 
-const FPS = 15;
+export const FPS = 15;
 const HIDDEN_CAMERA_KEYS = new Set([
   "observation.images.31078156_left",
   "observation.images.wrist_right",
@@ -79,15 +79,21 @@ export function getVideoUrl(
   return `${hfBase(datasetId)}/videos/${cameraKey}/chunk-000/file-${String(fileIndex).padStart(3, "0")}.mp4`;
 }
 
-/** Discover camera keys from parquet column names matching videos/<key>/file_index. */
-function discoverCameraKeys(columnNames: string[]): string[] {
+/** Every camera key present in the parquet schema, including hidden ones. */
+function discoverAllCameraKeys(columnNames: string[]): string[] {
   const prefix = "videos/";
   const suffix = "/file_index";
   return columnNames
     .filter((col) => col.startsWith(prefix) && col.endsWith(suffix))
     .map((col) => col.slice(prefix.length, -suffix.length))
-    .filter((key) => !HIDDEN_CAMERA_KEYS.has(key))
     .sort();
+}
+
+/** Discover camera keys from parquet column names matching videos/<key>/file_index. */
+function discoverCameraKeys(columnNames: string[]): string[] {
+  return discoverAllCameraKeys(columnNames).filter(
+    (key) => !HIDDEN_CAMERA_KEYS.has(key)
+  );
 }
 
 export function visibleCameraKeys(cameraKeys: string[]): string[] {
@@ -285,6 +291,16 @@ export function summarizeEpisodeFrames(
   return { effectiveLength, success };
 }
 
+/** Path of the data parquet file holding an episode's frame rows. */
+function episodeDataPath(row: Record<string, unknown>): string {
+  const chunkIndex = metadataScalar(row, "data/chunk_index");
+  const fileIndex = metadataScalar(row, "data/file_index");
+  return (
+    `data/chunk-${String(chunkIndex).padStart(3, "0")}/` +
+    `file-${String(fileIndex).padStart(3, "0")}.parquet`
+  );
+}
+
 function needsFrameSummary(row: Record<string, unknown>): boolean {
   const hasOutcome = "stats/success/max" in row;
   const hasBoundary =
@@ -302,11 +318,7 @@ async function loadFrameSummaries(
   const episodesByPath = new Map<string, Set<number>>();
   for (const row of needed) {
     const episodeIndex = metadataScalar(row, "episode_index");
-    const chunkIndex = metadataScalar(row, "data/chunk_index");
-    const fileIndex = metadataScalar(row, "data/file_index");
-    const path =
-      `data/chunk-${String(chunkIndex).padStart(3, "0")}/` +
-      `file-${String(fileIndex).padStart(3, "0")}.parquet`;
+    const path = episodeDataPath(row);
     const episodeIndices = episodesByPath.get(path) ?? new Set<number>();
     episodeIndices.add(episodeIndex);
     episodesByPath.set(path, episodeIndices);
@@ -540,6 +552,243 @@ export async function fetchSuccessStatus(
     );
   }
   return new Map(cached.successMap);
+}
+
+// ---------------------------------------------------------------------------
+// Outcome review (web port of sir/tools/outcome_editor.py)
+//
+// The review UI needs a strictly RAW view of every episode: the videos contain
+// `length` frames, so the scrub range is [0, rawLength) — NOT the trimmed
+// `numFrames` the explorer shows. It also needs per-camera video timing so all
+// station views can be seeked frame-exactly, and the frame-level reward/done/
+// is_valid signals the desktop editor reads out of the data parquet.
+// ---------------------------------------------------------------------------
+
+export interface ReviewCameraTiming {
+  fileIndex: number;
+  fromTimestamp: number;
+  toTimestamp: number;
+}
+
+export interface ReviewEpisode {
+  episodeIndex: number;
+  /** RAW episode length: the number of frames actually present in the videos. */
+  rawLength: number;
+  /** Data parquet holding this episode's frame rows (reward/done/is_valid). */
+  dataPath: string;
+  perCamera: Record<string, ReviewCameraTiming>;
+}
+
+export type DetectedOutcome = "success" | "failure" | "timeout";
+
+export interface EpisodeFrameSignals {
+  detectedOutcome: DetectedOutcome;
+  /** Last frame_index with is_valid==1 (rawLength-1 when there is no column). */
+  lastValidFrame: number;
+  /** Number of leading is_valid==1 frames. */
+  validLength: number;
+  /** First done==1 frame inside the valid prefix — the existing outcome mark. */
+  doneOnsetFrame: number | null;
+  /** Mid-episode reward spikes (reward>0.5 with done==0): subtask rewards. */
+  rewardSpikeFrames: number[];
+}
+
+const reviewEpisodeCache = new Map<string, ReviewEpisode[]>();
+const frameSignalCache = new Map<string, EpisodeFrameSignals>();
+const frameSignalFileLoads = new Map<string, Promise<void>>();
+
+function frameSignalKey(datasetId: string, episodeIndex: number): string {
+  return `${datasetId}::${episodeIndex}`;
+}
+
+/**
+ * Raw per-episode metadata for outcome review: raw length, the data parquet
+ * path, and timing for EVERY camera (the explorer only reads camera 0).
+ */
+export async function fetchReviewEpisodes(
+  datasetId: string
+): Promise<ReviewEpisode[]> {
+  const cached = reviewEpisodeCache.get(datasetId);
+  if (cached) return cached;
+
+  const metadataFiles = await listEpisodeMetadataFiles(datasetId);
+  const perFileRows = await Promise.all(
+    metadataFiles.map((path) => readParquet(`${hfBase(datasetId)}/${path}`))
+  );
+  const rows = perFileRows.flat();
+  if (rows.length === 0) {
+    throw new Error(`${datasetId} has no episode metadata rows`);
+  }
+
+  const cameraKeys = discoverAllCameraKeys(Object.keys(rows[0]));
+  if (cameraKeys.length === 0) {
+    throw new Error(`${datasetId} has no video columns to review`);
+  }
+
+  const episodes = rows.map((row) => {
+    const rawLength = metadataScalar(row, "length");
+    if (!Number.isInteger(rawLength) || rawLength < 1) {
+      throw new Error(`Episode length must be a positive integer, got ${rawLength}`);
+    }
+    const perCamera: Record<string, ReviewCameraTiming> = {};
+    for (const key of cameraKeys) {
+      perCamera[key] = {
+        fileIndex: metadataScalar(row, `videos/${key}/file_index`),
+        fromTimestamp: metadataScalar(row, `videos/${key}/from_timestamp`),
+        toTimestamp: metadataScalar(row, `videos/${key}/to_timestamp`),
+      };
+    }
+    return {
+      episodeIndex: metadataScalar(row, "episode_index"),
+      rawLength,
+      dataPath: episodeDataPath(row),
+      perCamera,
+    };
+  });
+
+  episodes.sort((a, b) => a.episodeIndex - b.episodeIndex);
+  reviewEpisodeCache.set(datasetId, episodes);
+  return episodes;
+}
+
+/**
+ * Frame-level outcome signals for one episode.
+ *
+ * Mirrors `detect_episode_outcome` / `detect_existing_outcome_frame` /
+ * `last_valid_frame_index` in sir/tools/outcome_editor.py: the outcome is read
+ * off the LAST is_valid==1 frame (reward>0.5 && done==1 -> success, done==1 ->
+ * failure, otherwise timeout).
+ */
+function computeFrameSignals(
+  rows: Record<string, unknown>[],
+  episodeIndex: number
+): EpisodeFrameSignals {
+  if (rows.length === 0) {
+    throw new Error(`Episode ${episodeIndex} has no frame rows`);
+  }
+  const sorted = [...rows].sort(
+    (a, b) => metadataScalar(a, "frame_index") - metadataScalar(b, "frame_index")
+  );
+  for (let index = 0; index < sorted.length; index++) {
+    if (metadataScalar(sorted[index], "frame_index") !== index) {
+      throw new Error(`Episode ${episodeIndex} has non-contiguous frame indices`);
+    }
+  }
+
+  const hasIsValid = "is_valid" in sorted[0];
+  const hasDone = "done" in sorted[0];
+  const hasReward = "reward" in sorted[0];
+
+  let validLength = sorted.length;
+  if (hasIsValid) {
+    validLength = 0;
+    let seenInvalid = false;
+    for (const row of sorted) {
+      const value = metadataScalar(row, "is_valid");
+      if (value !== 0 && value !== 1) {
+        throw new Error(`Episode ${episodeIndex} has non-binary is_valid`);
+      }
+      if (value === 0) {
+        seenInvalid = true;
+      } else {
+        if (seenInvalid) {
+          throw new Error(
+            `Episode ${episodeIndex} has a valid frame after an invalid frame`
+          );
+        }
+        validLength += 1;
+      }
+    }
+    if (validLength === 0) {
+      throw new Error(`Episode ${episodeIndex} has no valid frames`);
+    }
+  }
+
+  const lastValidFrame = validLength - 1;
+  const lastValid = sorted[lastValidFrame];
+  const lastDone = hasDone ? metadataScalar(lastValid, "done") : 0;
+  const lastReward = hasReward ? metadataScalar(lastValid, "reward") : 0;
+  const detectedOutcome: DetectedOutcome =
+    lastReward > 0.5 && lastDone === 1
+      ? "success"
+      : lastDone === 1
+        ? "failure"
+        : "timeout";
+
+  let doneOnsetFrame: number | null = null;
+  if (hasDone) {
+    for (let index = 0; index < validLength; index++) {
+      if (metadataScalar(sorted[index], "done") === 1) {
+        doneOnsetFrame = index;
+        break;
+      }
+    }
+  }
+
+  const rewardSpikeFrames: number[] = [];
+  if (hasReward) {
+    for (let index = 0; index < sorted.length; index++) {
+      const reward = metadataScalar(sorted[index], "reward");
+      const done = hasDone ? metadataScalar(sorted[index], "done") : 0;
+      if (reward > 0.5 && done === 0) rewardSpikeFrames.push(index);
+    }
+  }
+
+  return {
+    detectedOutcome,
+    lastValidFrame,
+    validLength,
+    doneOnsetFrame,
+    rewardSpikeFrames,
+  };
+}
+
+/**
+ * Frame signals for one episode, cached per (datasetId, episodeIndex).
+ *
+ * One data parquet holds many episodes, so the file is read ONCE and every
+ * episode it contains is cached; concurrent callers share the in-flight read.
+ */
+export async function fetchEpisodeFrameSignals(
+  datasetId: string,
+  dataPath: string,
+  episodeIndex: number
+): Promise<EpisodeFrameSignals> {
+  const cached = frameSignalCache.get(frameSignalKey(datasetId, episodeIndex));
+  if (cached) return cached;
+
+  const fileKey = `${datasetId}::${dataPath}`;
+  let load = frameSignalFileLoads.get(fileKey);
+  if (!load) {
+    load = (async () => {
+      const frameRows = await readParquet(`${hfBase(datasetId)}/${dataPath}`);
+      const byEpisode = new Map<number, Record<string, unknown>[]>();
+      for (const row of frameRows) {
+        const index = metadataScalar(row, "episode_index");
+        const bucket = byEpisode.get(index);
+        if (bucket) bucket.push(row);
+        else byEpisode.set(index, [row]);
+      }
+      for (const [index, rows] of byEpisode) {
+        frameSignalCache.set(
+          frameSignalKey(datasetId, index),
+          computeFrameSignals(rows, index)
+        );
+      }
+    })().finally(() => {
+      frameSignalFileLoads.delete(fileKey);
+    });
+    frameSignalFileLoads.set(fileKey, load);
+  }
+  await load;
+
+  const signals = frameSignalCache.get(frameSignalKey(datasetId, episodeIndex));
+  if (!signals) {
+    throw new Error(
+      `${dataPath} in ${datasetId} contains no rows for episode ${episodeIndex}`
+    );
+  }
+  return signals;
 }
 
 export async function fetchSourceStats(

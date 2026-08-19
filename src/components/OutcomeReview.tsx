@@ -1,0 +1,1653 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { RefObject } from "react";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { useSearchParam, useSearchParamNumber } from "../lib/useSearchParam";
+import {
+  FPS,
+  explorerCameraKeys,
+  fetchEpisodeFrameSignals,
+  fetchReviewEpisodes,
+  getVideoUrl,
+  selectPrimaryCameraKey,
+  type EpisodeFrameSignals,
+  type ReviewEpisode,
+} from "../lib/hf-api";
+
+// ---------------------------------------------------------------------------
+// Contract notes
+//
+// This is the operator decision-capture half of sir/tools/outcome_editor.py.
+// It ONLY writes decisions into Convex (api.reviews.save) and enqueues apply
+// jobs (api.applyJobs.enqueue). Materializing `.outcome_edit_progress.json`,
+// rewriting reward/done/is_valid and pushing to HuggingFace all happen in the
+// Python apply worker — nothing here touches the dataset.
+// ---------------------------------------------------------------------------
+
+type Outcome = "success" | "failure" | "timeout";
+type QueueFilter = "all" | "failure" | "success" | "timeout";
+
+const OUTCOMES: Outcome[] = ["success", "failure", "timeout"];
+
+/**
+ * Required mid-episode subtask marks, keyed by the Convex dataset `task`.
+ *
+ * AUTHORITY IS PYTHON: `resolve_subtask_marks` in sir/tools/outcome_editor.py
+ * reads `RealTaskSpec.num_subtask_marks`, and the apply worker RE-VALIDATES every
+ * confirmed record with `subtask_mark_count_error` before touching HuggingFace.
+ * This table only makes the gate visible to the operator while they review; a
+ * stale entry here cannot write a bad label — it can only mis-guide the UI, and
+ * the worker will reject the job loudly. Keep it in sync with the task registry.
+ */
+const REVIEW_SUBTASK_MARKS: Record<string, number> = {
+  routing_d1: 1,
+};
+
+const OUTCOME_CHIP: Record<Outcome, string> = {
+  success: "bg-teal-light text-teal",
+  failure: "bg-coral-light text-coral",
+  timeout: "bg-gold-light text-gold",
+};
+
+// Palette hex values mirror the @theme block in src/index.css (teal / coral / gold).
+const OUTCOME_HEX: Record<Outcome, string> = {
+  success: "#0B6E6E",
+  failure: "#D4654A",
+  timeout: "#C4961A",
+};
+
+const QUEUE_FILTERS: { id: QueueFilter; label: string }[] = [
+  { id: "failure", label: "Failures" },
+  { id: "success", label: "Successes" },
+  { id: "timeout", label: "Timeouts" },
+  { id: "all", label: "All" },
+];
+
+// Station roles read left-to-right the way the operator looks at the cell.
+const CAMERA_ROLE_ORDER = ["side_1", "side_2", "wrist_left", "wrist_right"];
+
+const SIGNAL_CONCURRENCY = 3;
+
+function clamp(value: number, low: number, high: number): number {
+  return Math.min(high, Math.max(low, value));
+}
+
+function orderCameraKeys(keys: string[]): string[] {
+  const rank = (key: string) => {
+    const bare = key.split(".").at(-1) ?? key;
+    const index = CAMERA_ROLE_ORDER.indexOf(bare);
+    return index === -1 ? CAMERA_ROLE_ORDER.length : index;
+  };
+  return [...keys].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+}
+
+function cameraLabel(key: string): string {
+  return key.split(".").at(-1) ?? key;
+}
+
+/**
+ * Legality of `n` subtask marks for `outcome` — mirrors
+ * `subtask_mark_count_error` in sir/real/lifecycle/outcome_results.py.
+ */
+function subtaskMarkCountError(
+  outcome: Outcome,
+  n: number,
+  required: number
+): string | null {
+  if (required <= 0) return null;
+  if (outcome === "success") {
+    if (n !== required) {
+      return `a SUCCESS episode must carry exactly ${required} subtask mark(s), got ${n}`;
+    }
+    return null;
+  }
+  if (n > required) {
+    return `a ${outcome.toUpperCase()} episode may carry at most ${required} subtask mark(s), got ${n}`;
+  }
+  return null;
+}
+
+function formatClock(ms: number): string {
+  return new Date(ms).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatAge(ms: number): string {
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  if (seconds < 90) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 90) return `${minutes}m ago`;
+  return `${Math.round(minutes / 60)}h ago`;
+}
+
+// ---------------------------------------------------------------------------
+// Review records (Convex rows, BigInt → number)
+// ---------------------------------------------------------------------------
+
+interface ReviewRecord {
+  episodeIndex: number;
+  status: string;
+  newOutcome: Outcome | null;
+  outcomeFrame: number | null;
+  softTruncate: boolean;
+  subtaskFrames: number[] | null;
+  reviewer: string;
+  savedAt: number;
+}
+
+interface PendingReview {
+  outcome: Outcome | null;
+  markedFrame: number | null;
+  subtaskFrames: number[];
+  softTruncate: boolean;
+}
+
+const EMPTY_PENDING: PendingReview = {
+  outcome: null,
+  markedFrame: null,
+  subtaskFrames: [],
+  softTruncate: false,
+};
+
+// ---------------------------------------------------------------------------
+// Timeline strip
+// ---------------------------------------------------------------------------
+
+function Timeline({
+  rawLength,
+  frame,
+  signals,
+  pending,
+  onScrub,
+}: {
+  rawLength: number;
+  frame: number;
+  signals: EpisodeFrameSignals | null;
+  pending: PendingReview;
+  onScrub: (frame: number) => void;
+}) {
+  const barRef = useRef<HTMLDivElement | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const pct = (value: number) => `${(value / rawLength) * 100}%`;
+
+  const frameFromClientX = (clientX: number): number => {
+    const bar = barRef.current;
+    if (!bar) return frame;
+    const rect = bar.getBoundingClientRect();
+    if (rect.width <= 0) return frame;
+    const ratio = (clientX - rect.left) / rect.width;
+    return clamp(Math.floor(ratio * rawLength), 0, rawLength - 1);
+  };
+
+  const invalidStart =
+    signals && signals.lastValidFrame < rawLength - 1
+      ? signals.lastValidFrame + 1
+      : null;
+  const truncStart =
+    pending.softTruncate && pending.markedFrame !== null
+      ? pending.markedFrame + 1
+      : null;
+
+  return (
+    <div className="mt-4">
+      <div
+        ref={barRef}
+        className="relative h-12 rounded-lg bg-warm-100 border border-warm-200 cursor-pointer select-none touch-none"
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          setDragging(true);
+          onScrub(frameFromClientX(e.clientX));
+        }}
+        onPointerMove={(e) => {
+          if (dragging) onScrub(frameFromClientX(e.clientX));
+        }}
+        onPointerUp={(e) => {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+          setDragging(false);
+        }}
+        onPointerCancel={() => setDragging(false)}
+      >
+        {/* Invalid padding beyond the last valid frame */}
+        {invalidStart !== null && (
+          <div
+            className="absolute top-0 bottom-0 bg-warm-300/60"
+            style={{
+              left: pct(invalidStart),
+              right: 0,
+              backgroundImage:
+                "repeating-linear-gradient(45deg, rgba(138,127,114,0.35) 0 5px, transparent 5px 10px)",
+            }}
+            title={`is_valid==0 padding from frame ${invalidStart}`}
+          />
+        )}
+
+        {/* Region a confirmed soft truncation would invalidate */}
+        {truncStart !== null && truncStart < rawLength && (
+          <div
+            className="absolute top-0 bottom-0"
+            style={{
+              left: pct(truncStart),
+              right: 0,
+              backgroundImage:
+                "repeating-linear-gradient(-45deg, rgba(212,101,74,0.35) 0 5px, transparent 5px 10px)",
+            }}
+            title={`soft truncation would drop frames ${truncStart}..${rawLength - 1}`}
+          />
+        )}
+
+        {/* Existing done==1 onset */}
+        {signals?.doneOnsetFrame != null && (
+          <div
+            className="absolute top-0 bottom-0 border-l border-dashed border-ink-muted"
+            style={{ left: pct(signals.doneOnsetFrame) }}
+            title={`existing outcome frame (done==1 onset) ${signals.doneOnsetFrame}`}
+          />
+        )}
+
+        {/* Existing mid-episode reward spikes (hollow) */}
+        {signals?.rewardSpikeFrames.map((spike) => (
+          <div
+            key={`spike-${spike}`}
+            className="absolute bottom-1 w-2 h-2 rounded-full border border-ink-muted"
+            style={{ left: pct(spike), transform: "translateX(-50%)" }}
+            title={`existing reward spike at frame ${spike}`}
+          />
+        ))}
+
+        {/* Pending subtask marks */}
+        {pending.subtaskFrames.map((mark) => (
+          <div
+            key={`mark-${mark}`}
+            className="absolute bottom-1 w-2.5 h-2.5 rounded-full bg-purple-600"
+            style={{ left: pct(mark), transform: "translateX(-50%)" }}
+            title={`subtask mark at frame ${mark}`}
+          />
+        ))}
+
+        {/* Pending outcome marker */}
+        {pending.markedFrame !== null && pending.outcome !== null && (
+          <>
+            <div
+              className="absolute top-0 bottom-0 w-px"
+              style={{
+                left: pct(pending.markedFrame),
+                backgroundColor: OUTCOME_HEX[pending.outcome],
+              }}
+            />
+            <div
+              className="absolute top-0"
+              style={{
+                left: pct(pending.markedFrame),
+                transform: "translateX(-50%)",
+                width: 0,
+                height: 0,
+                borderLeft: "6px solid transparent",
+                borderRight: "6px solid transparent",
+                borderTop: `9px solid ${OUTCOME_HEX[pending.outcome]}`,
+              }}
+              title={`${pending.outcome} @ frame ${pending.markedFrame}`}
+            />
+          </>
+        )}
+
+        {/* Playhead */}
+        <div
+          className="absolute top-0 bottom-0 w-0.5 bg-ink"
+          style={{ left: pct(frame), transform: "translateX(-50%)" }}
+        />
+      </div>
+      <div className="flex justify-between text-[10px] font-mono text-ink-muted mt-1">
+        <span>0</span>
+        <span>{rawLength - 1}</span>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Camera grid + frame-exact seeking
+// ---------------------------------------------------------------------------
+
+interface ViewerControls {
+  togglePlay: () => void;
+  /** Stop playback and snap the frame counter to the displayed frame. */
+  pause: () => void;
+}
+
+function ReviewViewer({
+  datasetId,
+  episode,
+  cameraKeys,
+  primaryKey,
+  frame,
+  onFrame,
+  signals,
+  pending,
+  controlsRef,
+}: {
+  datasetId: string;
+  episode: ReviewEpisode;
+  cameraKeys: string[];
+  primaryKey: string;
+  frame: number;
+  onFrame: (frame: number) => void;
+  signals: EpisodeFrameSignals | null;
+  pending: PendingReview;
+  controlsRef: RefObject<ViewerControls | null>;
+}) {
+  const videoRefs = useRef(new Map<string, HTMLVideoElement>());
+  const seekTokenRef = useRef(0);
+  const playingRef = useRef(false);
+  const [playing, setPlaying] = useState(false);
+  const [drift, setDrift] = useState<string | null>(null);
+  const [unverifiable, setUnverifiable] = useState(false);
+  // Bumped when a video reaches HAVE_METADATA. Seeks issued before that are
+  // dropped by the browser, so the seek+verify pass must re-run afterwards or
+  // the operator sees a phantom drift warning from the pre-load frame 0.
+  const [metadataEpoch, setMetadataEpoch] = useState(0);
+
+  const primaryFrom = episode.perCamera[primaryKey].fromTimestamp;
+  const primaryTo = episode.perCamera[primaryKey].toTimestamp;
+
+  const setVideoRef = useCallback(
+    (key: string) => (el: HTMLVideoElement | null) => {
+      if (el) videoRefs.current.set(key, el);
+      else videoRefs.current.delete(key);
+    },
+    []
+  );
+
+  // Playback state is per-episode; a queue advance must never leave the new
+  // episode auto-playing from the previous one's position.
+  useEffect(() => {
+    playingRef.current = false;
+    /* eslint-disable react-hooks/set-state-in-effect -- switching episodes is
+       an imperative reset of playback state, not derived render state. */
+    setPlaying(false);
+    setDrift(null);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [episode]);
+
+  // Frame-exact seek: every camera lands on the midpoint of frame i, offset by
+  // that camera's own from_timestamp (0 today, but multi-episode video chunks
+  // rely on it). The primary camera's landing is VERIFIED, never assumed.
+  useEffect(() => {
+    if (playing) return;
+    for (const key of cameraKeys) {
+      const video = videoRefs.current.get(key);
+      if (!video) continue;
+      video.currentTime =
+        episode.perCamera[key].fromTimestamp + (frame + 0.5) / FPS;
+    }
+    const primary = videoRefs.current.get(primaryKey);
+    if (!primary) return;
+    // Capability is flagged from the loadedmetadata handler (see below) so the
+    // operator sees a banner instead of a silently unverified seek.
+    if (typeof primary.requestVideoFrameCallback !== "function") return;
+    const token = ++seekTokenRef.current;
+    primary.requestVideoFrameCallback((_now, meta) => {
+      if (seekTokenRef.current !== token) return;
+      const exact = (meta.mediaTime - primaryFrom) * FPS;
+      const landed = Math.round(exact);
+      if (Math.abs(exact - landed) > 0.25 || landed !== frame) {
+        setDrift(
+          `requested frame ${frame}, video presented frame ${landed} ` +
+            `(mediaTime ${meta.mediaTime.toFixed(4)}s, from_timestamp ` +
+            `${primaryFrom.toFixed(4)}s, exact ${exact.toFixed(3)})`
+        );
+      } else {
+        setDrift(null);
+      }
+    });
+  }, [frame, playing, episode, cameraKeys, primaryKey, primaryFrom, metadataEpoch]);
+
+  const stopAndSnap = useCallback(() => {
+    playingRef.current = false;
+    setPlaying(false);
+    const primary = videoRefs.current.get(primaryKey);
+    if (!primary) return;
+    const snapped = clamp(
+      Math.round((primary.currentTime - primaryFrom) * FPS - 0.5),
+      0,
+      episode.rawLength - 1
+    );
+    onFrame(snapped);
+  }, [episode.rawLength, onFrame, primaryFrom, primaryKey]);
+
+  const togglePlay = useCallback(() => {
+    if (playingRef.current) {
+      stopAndSnap();
+    } else {
+      playingRef.current = true;
+      setPlaying(true);
+    }
+  }, [stopAndSnap]);
+
+  const pause = useCallback(() => {
+    if (playingRef.current) stopAndSnap();
+  }, [stopAndSnap]);
+
+  useEffect(() => {
+    controlsRef.current = { togglePlay, pause };
+  }, [controlsRef, togglePlay, pause]);
+
+  // Playback: the primary camera drives, the others follow its offset-corrected
+  // clock; playback halts at the raw end of the episode segment.
+  useEffect(() => {
+    if (!playing) return;
+    const primary = videoRefs.current.get(primaryKey);
+    if (!primary) return;
+    const videos = cameraKeys
+      .map((key) => videoRefs.current.get(key))
+      .filter((v): v is HTMLVideoElement => Boolean(v));
+    for (const video of videos) void video.play();
+
+    let raf = 0;
+    const tick = () => {
+      const elapsed = primary.currentTime - primaryFrom;
+      for (const key of cameraKeys) {
+        const video = videoRefs.current.get(key);
+        if (!video || video === primary) continue;
+        const target = episode.perCamera[key].fromTimestamp + elapsed;
+        if (Math.abs(video.currentTime - target) > 0.1) video.currentTime = target;
+      }
+      if (primary.currentTime >= primaryTo) {
+        stopAndSnap();
+        return;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      for (const video of videos) video.pause();
+    };
+  }, [playing, cameraKeys, episode, primaryKey, primaryFrom, primaryTo, stopAndSnap]);
+
+  const gridCols = cameraKeys.length === 1 ? "grid-cols-1" : "grid-cols-2";
+
+  return (
+    <div>
+      {drift && (
+        <div className="mb-3 rounded-lg border border-coral bg-coral-light px-4 py-2 text-xs font-mono text-coral">
+          ⚠ frame drift on {cameraLabel(primaryKey)}: {drift}. Do not trust the
+          displayed frame — re-seek (arrow keys) before marking.
+        </div>
+      )}
+      {unverifiable && (
+        <div className="mb-3 rounded-lg border border-gold bg-gold-light px-4 py-2 text-xs font-mono text-gold">
+          ⚠ this browser has no requestVideoFrameCallback — seek landings cannot
+          be verified. Review in Chrome/Edge before confirming marks.
+        </div>
+      )}
+
+      <div className={`grid ${gridCols} gap-3`}>
+        {cameraKeys.map((key) => (
+          <div key={key} className="relative">
+            <video
+              ref={setVideoRef(key)}
+              src={getVideoUrl(key, episode.perCamera[key].fileIndex, datasetId)}
+              className="w-full rounded-lg bg-warm-100"
+              muted
+              playsInline
+              preload="auto"
+              onLoadedMetadata={(e) => {
+                const video = e.target as HTMLVideoElement;
+                video.currentTime =
+                  episode.perCamera[key].fromTimestamp + (frame + 0.5) / FPS;
+                if (
+                  key === primaryKey &&
+                  typeof video.requestVideoFrameCallback !== "function"
+                ) {
+                  setUnverifiable(true);
+                }
+                setMetadataEpoch((epoch) => epoch + 1);
+              }}
+            />
+            <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/60 text-white text-[11px] font-mono">
+              {cameraLabel(key)}
+              {key === primaryKey ? " ·primary" : ""}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <Timeline
+        rawLength={episode.rawLength}
+        frame={frame}
+        signals={signals}
+        pending={pending}
+        onScrub={(next) => {
+          if (playingRef.current) stopAndSnap();
+          onFrame(next);
+        }}
+      />
+
+      <div className="flex items-center gap-3 mt-3">
+        <button
+          onClick={togglePlay}
+          className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-teal text-white font-body font-medium text-xs hover:bg-teal/90 transition-colors cursor-pointer"
+        >
+          {playing ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="4" width="4" height="16" rx="1" />
+              <rect x="14" y="4" width="4" height="16" rx="1" />
+            </svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="6,4 20,12 6,20" />
+            </svg>
+          )}
+          {playing ? "Pause" : "Play"}
+          <span className="font-mono text-[10px] opacity-70">space</span>
+        </button>
+        <span className="font-mono text-xs text-ink">
+          frame {frame} / {episode.rawLength - 1}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Work queue row
+// ---------------------------------------------------------------------------
+
+function QueueRow({
+  episode,
+  signals,
+  signalError,
+  review,
+  selected,
+  onSelect,
+}: {
+  episode: ReviewEpisode;
+  signals: EpisodeFrameSignals | null;
+  signalError: string | null;
+  review: ReviewRecord | null;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      className={`w-full text-left px-3 py-2 rounded-lg border transition-all cursor-pointer ${
+        selected
+          ? "bg-teal/10 border-teal shadow-sm"
+          : "bg-white border-warm-200 hover:border-warm-300"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-mono text-xs font-medium text-ink">
+          Ep {episode.episodeIndex}
+        </span>
+        {signalError ? (
+          <span
+            className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-coral-light text-coral"
+            title={signalError}
+          >
+            error
+          </span>
+        ) : signals ? (
+          <span
+            className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide ${OUTCOME_CHIP[signals.detectedOutcome]}`}
+          >
+            {signals.detectedOutcome}
+          </span>
+        ) : (
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-warm-100 text-ink-muted animate-pulse">
+            …
+          </span>
+        )}
+      </div>
+      <div className="flex items-center justify-between gap-2 mt-1">
+        <span className="text-[10px] font-mono text-ink-muted">
+          {episode.rawLength}f
+        </span>
+        {review === null ? (
+          <span className="text-[10px] font-mono text-ink-muted/60">
+            unreviewed
+          </span>
+        ) : review.status === "confirmed" ? (
+          <span
+            className="text-[10px] font-mono text-teal"
+            title={`${review.reviewer} · ${formatClock(review.savedAt)}`}
+          >
+            ✓ {review.newOutcome}
+            {review.softTruncate ? " ·trunc" : ""}
+          </span>
+        ) : (
+          <span
+            className="text-[10px] font-mono text-ink-muted"
+            title={`${review.reviewer} · ${formatClock(review.savedAt)}`}
+          >
+            skipped
+          </span>
+        )}
+      </div>
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Commit panel
+// ---------------------------------------------------------------------------
+
+function CommitPanel({
+  repoId,
+  numConfirmed,
+  numSkipped,
+  numEpisodes,
+}: {
+  repoId: string;
+  numConfirmed: number;
+  numSkipped: number;
+  numEpisodes: number;
+}) {
+  const jobs = useQuery(api.applyJobs.forRepo, { dataset_repo: repoId });
+  const worker = useQuery(api.applyJobs.workerStatus, {});
+  const enqueue = useMutation(api.applyJobs.enqueue);
+  const cancelJob = useMutation(api.applyJobs.cancel);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const activeJob = jobs?.find(
+    (job) => job.status === "pending" || job.status === "applying"
+  );
+  const totalReviews = numConfirmed + numSkipped;
+
+  const age = worker ? now - worker.last_seen : null;
+  const workerPill =
+    age === null
+      ? {
+          text: "no worker has ever checked in",
+          className: "bg-coral-light text-coral",
+        }
+      : age < 90_000
+        ? {
+            text: `worker live ${formatAge(age)}`,
+            className: "bg-teal-light text-teal",
+          }
+        : age < 600_000
+          ? {
+              text: `worker last seen ${formatAge(age)}`,
+              className: "bg-gold-light text-gold",
+            }
+          : {
+              text: `worker offline (${formatAge(age)}) — start \`uv run python -m sir.tools.arena_review_worker\` on iris`,
+              className: "bg-coral-light text-coral",
+            };
+
+  const statusChip: Record<string, string> = {
+    pending: "bg-gold-light text-gold",
+    applying: "bg-gold-light text-gold",
+    applied: "bg-teal-light text-teal",
+    failed: "bg-coral-light text-coral",
+    cancelled: "bg-warm-100 text-ink-muted",
+  };
+
+  return (
+    <div className="border-t border-warm-200 bg-warm-50 px-6 py-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="font-mono text-xs text-ink">
+          {numConfirmed} confirmed · {numSkipped} skipped · {numEpisodes} episodes
+        </span>
+        <span
+          className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${workerPill.className}`}
+          title={worker ? `${worker.worker_id}${worker.info ? ` · ${worker.info}` : ""}` : undefined}
+        >
+          {workerPill.text}
+        </span>
+        <div className="flex-1" />
+        <button
+          disabled={busy || totalReviews === 0 || Boolean(activeJob)}
+          onClick={() => {
+            setError(null);
+            setBusy(true);
+            enqueue({ dataset_repo: repoId })
+              .catch((err: Error) => setError(err.message))
+              .finally(() => setBusy(false));
+          }}
+          className={`px-4 py-2 rounded-lg text-xs font-medium transition-colors ${
+            busy || totalReviews === 0 || activeJob
+              ? "bg-warm-100 text-ink-muted/50 cursor-not-allowed"
+              : "bg-teal text-white hover:bg-teal/90 cursor-pointer"
+          }`}
+        >
+          {activeJob ? `Job ${activeJob.status}…` : "Commit to HuggingFace"}
+        </button>
+      </div>
+
+      {error && (
+        <div className="mt-3 rounded-lg border border-coral/30 bg-coral-light px-3 py-2 text-xs text-coral font-mono">
+          {error}
+        </div>
+      )}
+
+      {jobs && jobs.length > 0 && (
+        <div className="mt-3 space-y-1.5">
+          {jobs.map((job) => (
+            <div
+              key={job._id}
+              className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-ink-muted"
+            >
+              <span
+                className={`px-1.5 py-0.5 rounded ${statusChip[job.status] ?? "bg-warm-100 text-ink-muted"}`}
+              >
+                {job.status}
+              </span>
+              <span>{formatClock(job.requested_at)}</span>
+              <span>{job.requested_by}</span>
+              {job.num_confirmed != null && (
+                <span>
+                  {Number(job.num_confirmed)} confirmed ·{" "}
+                  {Number(job.num_skipped ?? BigInt(0))} skipped
+                </span>
+              )}
+              {job.hf_commit_sha && (
+                <a
+                  href={`https://huggingface.co/datasets/${repoId}/tree/${job.hf_commit_sha}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-teal hover:underline"
+                >
+                  {job.hf_commit_sha.slice(0, 8)} →
+                </a>
+              )}
+              {job.error && (
+                <button
+                  onClick={() => setExpanded(expanded === job._id ? null : job._id)}
+                  className="text-coral hover:underline cursor-pointer"
+                >
+                  {expanded === job._id ? "hide error" : "show error"}
+                </button>
+              )}
+              {job.status === "pending" && (
+                <button
+                  onClick={() => {
+                    setError(null);
+                    cancelJob({ id: job._id }).catch((err: Error) =>
+                      setError(err.message)
+                    );
+                  }}
+                  className="text-ink-muted hover:text-coral cursor-pointer"
+                >
+                  cancel
+                </button>
+              )}
+              {expanded === job._id && (
+                <pre className="w-full whitespace-pre-wrap rounded bg-white border border-warm-200 p-2 text-[10px] text-coral">
+                  {job.error}
+                  {job.log_tail ? `\n\n${job.log_tail}` : ""}
+                </pre>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Help overlay
+// ---------------------------------------------------------------------------
+
+const HELP_KEYS: [string, string][] = [
+  ["← / →", "step 1 frame (shift: 10)"],
+  ["[ / ]", "step 30 frames"],
+  ["Home / End", "first / last frame"],
+  ["space", "play / pause"],
+  ["s / f / t", "set outcome success / failure / timeout + mark here"],
+  ["m", "move the outcome mark to this frame"],
+  ["g", "toggle a subtask mark at this frame"],
+  ["x", "toggle soft truncation"],
+  ["u", "unmark: reset to the detected outcome"],
+  ["c", "confirm + save, advance to the next episode"],
+  ["n", "skip (twice when subtask marks are unsaved)"],
+  ["p / b", "previous episode in the queue"],
+  ["q / Esc", "exit review mode"],
+  ["?", "toggle this help"],
+];
+
+function HelpOverlay({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl border border-warm-200 shadow-lg p-6 max-w-md w-full"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="font-display text-lg text-ink mb-3">Review shortcuts</h3>
+        <dl className="space-y-1.5">
+          {HELP_KEYS.map(([key, description]) => (
+            <div key={key} className="flex items-baseline gap-3 text-xs">
+              <dt className="font-mono text-ink w-28 flex-shrink-0">{key}</dt>
+              <dd className="text-ink-muted font-body">{description}</dd>
+            </div>
+          ))}
+        </dl>
+        <button
+          onClick={onClose}
+          className="mt-4 px-3 py-1.5 rounded-lg border border-warm-200 text-xs text-ink-muted hover:bg-warm-50 cursor-pointer"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Outcome review (main)
+// ---------------------------------------------------------------------------
+
+export default function OutcomeReview({
+  repoId,
+  task,
+  onExit,
+}: {
+  repoId: string;
+  task?: string;
+  onExit: () => void;
+}) {
+  const viewer = useQuery(api.users.viewer);
+  const reviews = useQuery(api.reviews.latestForRepo, { dataset_repo: repoId });
+  const saveReview = useMutation(api.reviews.save);
+
+  const [episodes, setEpisodes] = useState<ReviewEpisode[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [signals, setSignals] = useState<Map<number, EpisodeFrameSignals>>(
+    () => new Map()
+  );
+  const [signalErrors, setSignalErrors] = useState<Map<number, string>>(
+    () => new Map()
+  );
+  const [filter, setFilter] = useSearchParam("queue", "failure");
+  const [selectedEpisode, setSelectedEpisode] = useSearchParamNumber("episode");
+  const [frame, setFrame] = useState(0);
+  const [pending, setPending] = useState<PendingReview>(EMPTY_PENDING);
+  const [dirty, setDirty] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [skipArmed, setSkipArmed] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const controlsRef = useRef<ViewerControls | null>(null);
+
+  const subtaskMarksRequired = task ? (REVIEW_SUBTASK_MARKS[task] ?? 0) : 0;
+
+  // -- Episode metadata --------------------------------------------------
+  useEffect(() => {
+    let cancelled = false;
+    setEpisodes(null);
+    setLoadError(null);
+    fetchReviewEpisodes(repoId)
+      .then((result) => {
+        if (!cancelled) setEpisodes(result);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setLoadError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [repoId]);
+
+  // -- Detected outcomes, progressively in the background -----------------
+  useEffect(() => {
+    if (!episodes) return;
+    let cancelled = false;
+    const queue = [...episodes];
+    const worker = async () => {
+      while (!cancelled) {
+        const episode = queue.shift();
+        if (!episode) return;
+        try {
+          const result = await fetchEpisodeFrameSignals(
+            repoId,
+            episode.dataPath,
+            episode.episodeIndex
+          );
+          if (cancelled) return;
+          setSignals((prev) => new Map(prev).set(episode.episodeIndex, result));
+        } catch (err) {
+          if (cancelled) return;
+          // Surfaced in the queue row + a banner; never defaulted to an outcome.
+          setSignalErrors((prev) =>
+            new Map(prev).set(episode.episodeIndex, (err as Error).message)
+          );
+        }
+      }
+    };
+    void Promise.all(
+      Array.from({ length: SIGNAL_CONCURRENCY }, () => worker())
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [episodes, repoId]);
+
+  // -- Convex reviews ----------------------------------------------------
+  const reviewByEpisode = useMemo(() => {
+    const map = new Map<number, ReviewRecord>();
+    for (const row of reviews?.episodes ?? []) {
+      map.set(Number(row.episode_index), {
+        episodeIndex: Number(row.episode_index),
+        status: row.status,
+        newOutcome: (row.new_outcome as Outcome | undefined) ?? null,
+        outcomeFrame:
+          row.outcome_frame != null ? Number(row.outcome_frame) : null,
+        softTruncate: row.soft_truncate ?? false,
+        subtaskFrames: row.subtask_frames
+          ? row.subtask_frames.map((value) => Number(value))
+          : null,
+        reviewer: row.reviewer,
+        savedAt: row.saved_at,
+      });
+    }
+    return map;
+  }, [reviews]);
+
+  const effectiveOutcome = useCallback(
+    (episodeIndex: number): Outcome | null => {
+      const review = reviewByEpisode.get(episodeIndex);
+      if (review?.status === "confirmed" && review.newOutcome) {
+        return review.newOutcome;
+      }
+      return signals.get(episodeIndex)?.detectedOutcome ?? null;
+    },
+    [reviewByEpisode, signals]
+  );
+
+  const filteredEpisodes = useMemo(() => {
+    if (!episodes) return [];
+    if (filter === "all") return episodes;
+    return episodes.filter(
+      (episode) => effectiveOutcome(episode.episodeIndex) === filter
+    );
+  }, [episodes, filter, effectiveOutcome]);
+
+  const currentEpisode = useMemo(
+    () =>
+      episodes?.find((episode) => episode.episodeIndex === selectedEpisode) ??
+      null,
+    [episodes, selectedEpisode]
+  );
+  const currentSignals =
+    selectedEpisode !== null ? (signals.get(selectedEpisode) ?? null) : null;
+  const currentSignalError =
+    selectedEpisode !== null ? (signalErrors.get(selectedEpisode) ?? null) : null;
+
+  // Pull the selected episode's signals to the front of the queue. Keyed on a
+  // boolean, not the signals map, so unrelated background arrivals do not
+  // re-fire this fetch on every update.
+  const currentSignalsMissing =
+    currentEpisode !== null && !signals.has(currentEpisode.episodeIndex);
+  useEffect(() => {
+    if (!currentEpisode || !currentSignalsMissing) return;
+    let cancelled = false;
+    fetchEpisodeFrameSignals(
+      repoId,
+      currentEpisode.dataPath,
+      currentEpisode.episodeIndex
+    )
+      .then((result) => {
+        if (!cancelled) {
+          setSignals((prev) =>
+            new Map(prev).set(currentEpisode.episodeIndex, result)
+          );
+        }
+      })
+      .catch((err: Error) => {
+        if (!cancelled) {
+          setSignalErrors((prev) =>
+            new Map(prev).set(currentEpisode.episodeIndex, err.message)
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentEpisode, currentSignalsMissing, repoId]);
+
+  // Auto-select the head of the queue when nothing is selected yet.
+  useEffect(() => {
+    if (selectedEpisode !== null) return;
+    const head = filteredEpisodes[0];
+    if (head) setSelectedEpisode(head.episodeIndex);
+  }, [selectedEpisode, filteredEpisodes, setSelectedEpisode]);
+
+  // -- Prefill on episode open -------------------------------------------
+  const prefilledFor = useRef<number | null>(null);
+  useEffect(() => {
+    if (selectedEpisode === null || !currentSignals) return;
+    if (prefilledFor.current === selectedEpisode) return;
+    prefilledFor.current = selectedEpisode;
+    // Opening an episode resets the operator's working state to the prefill.
+    const review = reviewByEpisode.get(selectedEpisode);
+    if (review?.status === "confirmed" && review.newOutcome) {
+      setPending({
+        outcome: review.newOutcome,
+        markedFrame: review.outcomeFrame,
+        subtaskFrames: review.subtaskFrames ?? [],
+        softTruncate: review.softTruncate,
+      });
+    } else {
+      setPending({
+        outcome: currentSignals.detectedOutcome,
+        markedFrame:
+          currentSignals.doneOnsetFrame ?? currentSignals.lastValidFrame,
+        subtaskFrames: [],
+        softTruncate: false,
+      });
+    }
+    setFrame(0);
+    setDirty(false);
+    setSkipArmed(false);
+    setActionError(null);
+  }, [selectedEpisode, currentSignals, reviewByEpisode]);
+
+  // -- Actions -----------------------------------------------------------
+  const selectEpisode = useCallback(
+    (episodeIndex: number) => {
+      setSelectedEpisode(episodeIndex);
+    },
+    [setSelectedEpisode]
+  );
+
+  const advance = useCallback(
+    (fromIndex: number) => {
+      const position = filteredEpisodes.findIndex(
+        (episode) => episode.episodeIndex === fromIndex
+      );
+      const next = filteredEpisodes[position + 1];
+      if (next) selectEpisode(next.episodeIndex);
+    },
+    [filteredEpisodes, selectEpisode]
+  );
+
+  const confirm = useCallback(async () => {
+    if (selectedEpisode === null || saving) return;
+    if (!pending.outcome) {
+      setActionError("Set an outcome (s / f / t) before confirming.");
+      return;
+    }
+    if (pending.markedFrame === null) {
+      setActionError("Mark the outcome frame (m) before confirming.");
+      return;
+    }
+    if (subtaskMarksRequired > 0) {
+      const countError = subtaskMarkCountError(
+        pending.outcome,
+        pending.subtaskFrames.length,
+        subtaskMarksRequired
+      );
+      if (countError) {
+        setActionError(
+          `Cannot confirm: ${countError}; press g to toggle a subtask mark.`
+        );
+        return;
+      }
+      const late = pending.subtaskFrames.filter(
+        (mark) => mark >= (pending.markedFrame as number)
+      );
+      if (late.length > 0) {
+        setActionError(
+          `Subtask mark(s) ${late.join(", ")} are not before the outcome frame ` +
+            `${pending.markedFrame}; move them earlier (g to toggle).`
+        );
+        return;
+      }
+    } else if (pending.subtaskFrames.length > 0) {
+      setActionError(
+        `Task ${task ?? "(unknown)"} takes no subtask marks; remove them with g.`
+      );
+      return;
+    }
+
+    setSaving(true);
+    setActionError(null);
+    try {
+      await saveReview({
+        dataset_repo: repoId,
+        episode_index: BigInt(selectedEpisode),
+        status: "confirmed",
+        new_outcome: pending.outcome,
+        outcome_frame: BigInt(pending.markedFrame),
+        soft_truncate: pending.softTruncate,
+        // The key's PRESENCE marks this as reviewed in subtask mode, exactly
+        // like the desktop editor's progress record. Omit it when N == 0.
+        subtask_frames:
+          subtaskMarksRequired > 0
+            ? pending.subtaskFrames.map((mark) => BigInt(mark))
+            : undefined,
+      });
+      setDirty(false);
+      advance(selectedEpisode);
+    } catch (err) {
+      setActionError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    advance,
+    pending,
+    repoId,
+    saveReview,
+    saving,
+    selectedEpisode,
+    subtaskMarksRequired,
+    task,
+  ]);
+
+  const skip = useCallback(async () => {
+    if (selectedEpisode === null || saving) return;
+    if (pending.subtaskFrames.length > 0 && !skipArmed) {
+      // Mirrors the cv2 editor's double-n guard: skipping would silently drop
+      // marks the operator already placed.
+      setSkipArmed(true);
+      setActionError(
+        `Episode ${selectedEpisode} has ${pending.subtaskFrames.length} unsaved subtask ` +
+          `mark(s) at ${pending.subtaskFrames.join(", ")}. Press c to SAVE, or n again to DISCARD.`
+      );
+      return;
+    }
+    setSaving(true);
+    setActionError(null);
+    try {
+      await saveReview({
+        dataset_repo: repoId,
+        episode_index: BigInt(selectedEpisode),
+        status: "skipped",
+      });
+      setDirty(false);
+      setSkipArmed(false);
+      advance(selectedEpisode);
+    } catch (err) {
+      setActionError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    advance,
+    pending.subtaskFrames,
+    repoId,
+    saveReview,
+    saving,
+    selectedEpisode,
+    skipArmed,
+  ]);
+
+  // Stepping while playing would desync the frame counter from the video, so a
+  // navigation key stops playback first (the cv2 editor does the same).
+  const stepFrame = useCallback(
+    (delta: number) => {
+      if (!currentEpisode) return;
+      controlsRef.current?.pause();
+      setFrame((prev) => clamp(prev + delta, 0, currentEpisode.rawLength - 1));
+    },
+    [currentEpisode]
+  );
+
+  const jumpToFrame = useCallback((next: number) => {
+    controlsRef.current?.pause();
+    setFrame(next);
+  }, []);
+
+  const updatePending = useCallback((update: Partial<PendingReview>) => {
+    setPending((prev) => ({ ...prev, ...update }));
+    setDirty(true);
+  }, []);
+
+  // -- Keyboard ----------------------------------------------------------
+  function handleKey(event: KeyboardEvent) {
+    const target = event.target as HTMLElement | null;
+    if (
+      target &&
+      (target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT" ||
+        target.isContentEditable)
+    ) {
+      return;
+    }
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+    const key = event.key;
+    if (key !== "n") setSkipArmed(false);
+
+    if (showHelp && (key === "Escape" || key === "q" || key === "?")) {
+      event.preventDefault();
+      setShowHelp(false);
+      return;
+    }
+    if (key === "Escape" || key === "q") {
+      event.preventDefault();
+      onExit();
+      return;
+    }
+    if (key === "?") {
+      event.preventDefault();
+      setShowHelp(true);
+      return;
+    }
+    if (!currentEpisode) return;
+
+    switch (key) {
+      case "ArrowLeft":
+        event.preventDefault();
+        stepFrame(event.shiftKey ? -10 : -1);
+        return;
+      case "ArrowRight":
+        event.preventDefault();
+        stepFrame(event.shiftKey ? 10 : 1);
+        return;
+      case "[":
+        event.preventDefault();
+        stepFrame(-30);
+        return;
+      case "]":
+        event.preventDefault();
+        stepFrame(30);
+        return;
+      case "Home":
+        event.preventDefault();
+        jumpToFrame(0);
+        return;
+      case "End":
+        event.preventDefault();
+        jumpToFrame(currentEpisode.rawLength - 1);
+        return;
+      case " ":
+        event.preventDefault();
+        controlsRef.current?.togglePlay();
+        return;
+      case "s":
+      case "f":
+      case "t": {
+        event.preventDefault();
+        const outcome: Outcome =
+          key === "s" ? "success" : key === "f" ? "failure" : "timeout";
+        updatePending({ outcome, markedFrame: frame });
+        setActionError(null);
+        return;
+      }
+      case "m":
+      case "Enter":
+        event.preventDefault();
+        updatePending({ markedFrame: frame });
+        setActionError(null);
+        return;
+      case "g": {
+        event.preventDefault();
+        if (subtaskMarksRequired <= 0) {
+          setActionError(
+            `Task ${task ?? "(unknown)"} defines 0 subtask marks (RealTaskSpec.num_subtask_marks).`
+          );
+          return;
+        }
+        const marks = pending.subtaskFrames;
+        if (marks.includes(frame)) {
+          updatePending({ subtaskFrames: marks.filter((m) => m !== frame) });
+          setActionError(null);
+        } else if (marks.length >= subtaskMarksRequired) {
+          setActionError(
+            `Already have ${subtaskMarksRequired} subtask mark(s); press g on a marked frame to remove one.`
+          );
+        } else {
+          updatePending({ subtaskFrames: [...marks, frame].sort((a, b) => a - b) });
+          setActionError(null);
+        }
+        return;
+      }
+      case "x":
+        event.preventDefault();
+        updatePending({ softTruncate: !pending.softTruncate });
+        return;
+      case "u":
+        event.preventDefault();
+        if (!currentSignals) return;
+        updatePending({
+          outcome: currentSignals.detectedOutcome,
+          markedFrame: null,
+          subtaskFrames: [],
+          softTruncate: false,
+        });
+        setActionError(null);
+        return;
+      case "c":
+        event.preventDefault();
+        void confirm();
+        return;
+      case "n":
+        event.preventDefault();
+        void skip();
+        return;
+      case "p":
+      case "b": {
+        event.preventDefault();
+        const position = filteredEpisodes.findIndex(
+          (episode) => episode.episodeIndex === currentEpisode.episodeIndex
+        );
+        const previous = filteredEpisodes[position - 1];
+        if (previous) selectEpisode(previous.episodeIndex);
+        else setActionError("Already at the first episode in the queue.");
+        return;
+      }
+      default:
+        return;
+    }
+  }
+
+  const keyHandlerRef = useRef<(event: KeyboardEvent) => void>(() => {});
+  useEffect(() => {
+    keyHandlerRef.current = handleKey;
+  });
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => keyHandlerRef.current(event);
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, []);
+
+  // -- Render ------------------------------------------------------------
+  const cameraKeys = useMemo(() => {
+    if (!currentEpisode) return [];
+    return orderCameraKeys(
+      explorerCameraKeys(Object.keys(currentEpisode.perCamera))
+    );
+  }, [currentEpisode]);
+  const primaryKey = useMemo(
+    () => (cameraKeys.length > 0 ? selectPrimaryCameraKey(cameraKeys) : ""),
+    [cameraKeys]
+  );
+
+  const numReviewed = reviewByEpisode.size;
+  const numConfirmed = reviews?.num_confirmed ?? 0;
+  const numSkipped = reviews?.num_skipped ?? 0;
+  const numLoadedSignals = signals.size;
+
+  if (!viewer?.isEditor) {
+    return (
+      <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8">
+        <button
+          onClick={onExit}
+          className="text-xs text-ink-muted hover:text-teal mb-4 cursor-pointer"
+        >
+          &larr; Back to explorer
+        </button>
+        <p className="font-body text-ink-muted text-center">
+          {viewer === undefined
+            ? "Checking permissions…"
+            : "Outcome review is limited to allowlisted editors. Sign in with an editor account."}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-warm-200 shadow-sm overflow-hidden">
+      {showHelp && <HelpOverlay onClose={() => setShowHelp(false)} />}
+
+      {/* Header */}
+      <div className="px-6 py-4 border-b border-warm-100 bg-warm-50 flex items-center justify-between gap-4">
+        <div>
+          <button
+            onClick={onExit}
+            className="text-xs text-ink-muted hover:text-teal cursor-pointer"
+          >
+            &larr; Back to explorer
+          </button>
+          <h2 className="font-display text-xl text-ink mt-1">Outcome review</h2>
+          <p className="text-xs text-ink-muted font-mono mt-0.5">
+            {repoId}
+            {task ? ` · ${task}` : ""} ·{" "}
+            {subtaskMarksRequired > 0
+              ? `${subtaskMarksRequired} subtask mark(s) required`
+              : "no subtask marks"}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-mono text-ink-muted">
+            {dirty ? "unsaved changes" : "saved ✓"}
+          </span>
+          <button
+            onClick={() => setShowHelp(true)}
+            className="w-7 h-7 rounded-full border border-warm-200 text-ink-muted hover:text-teal hover:border-teal text-sm cursor-pointer"
+            title="Keyboard shortcuts"
+          >
+            ?
+          </button>
+        </div>
+      </div>
+
+      {loadError && (
+        <div className="mx-6 mt-4 rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-sm text-coral font-mono">
+          Failed to load episode metadata: {loadError}
+        </div>
+      )}
+      {signalErrors.size > 0 && (
+        <div className="mx-6 mt-4 rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-xs text-coral font-mono">
+          {signalErrors.size} episode(s) failed frame-signal parsing:{" "}
+          {[...signalErrors.entries()]
+            .slice(0, 3)
+            .map(([index, message]) => `ep ${index}: ${message}`)
+            .join(" · ")}
+        </div>
+      )}
+
+      <div className="grid grid-cols-[260px_1fr] gap-0">
+        {/* Work queue */}
+        <div className="border-r border-warm-100 p-4 flex flex-col gap-3 max-h-[80vh]">
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as QueueFilter)}
+            className="w-full rounded-lg border border-warm-200 bg-white px-2 py-1.5 text-xs font-body text-ink cursor-pointer"
+          >
+            {QUEUE_FILTERS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <div className="text-[11px] font-mono text-ink-muted">
+            {numReviewed} of {episodes?.length ?? 0} reviewed ·{" "}
+            {filteredEpisodes.length} in queue
+            {episodes && numLoadedSignals < episodes.length && (
+              <span className="block animate-pulse">
+                outcomes {numLoadedSignals}/{episodes.length}…
+              </span>
+            )}
+          </div>
+          <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
+            {episodes === null && !loadError && (
+              <div className="flex items-center gap-2 text-xs text-ink-muted">
+                <div className="w-4 h-4 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
+                Loading episodes…
+              </div>
+            )}
+            {filteredEpisodes.map((episode) => (
+              <QueueRow
+                key={episode.episodeIndex}
+                episode={episode}
+                signals={signals.get(episode.episodeIndex) ?? null}
+                signalError={signalErrors.get(episode.episodeIndex) ?? null}
+                review={reviewByEpisode.get(episode.episodeIndex) ?? null}
+                selected={selectedEpisode === episode.episodeIndex}
+                onSelect={() => selectEpisode(episode.episodeIndex)}
+              />
+            ))}
+            {episodes !== null && filteredEpisodes.length === 0 && (
+              <div className="text-xs text-ink-muted font-body">
+                No episodes match this filter yet.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Viewer */}
+        <div className="p-5">
+          {currentEpisode === null ? (
+            <div className="py-16 text-center text-ink-muted font-body">
+              Select an episode from the queue to review it.
+            </div>
+          ) : currentSignalError ? (
+            <div className="rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-sm text-coral font-mono">
+              Episode {currentEpisode.episodeIndex} frame signals failed to
+              parse: {currentSignalError}
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-3 mb-3">
+                <span className="font-display text-lg text-ink">
+                  Episode {currentEpisode.episodeIndex}
+                </span>
+                {currentSignals ? (
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-xs font-medium ${OUTCOME_CHIP[currentSignals.detectedOutcome]}`}
+                  >
+                    detected {currentSignals.detectedOutcome}
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-xs bg-warm-100 text-ink-muted animate-pulse">
+                    detecting…
+                  </span>
+                )}
+                {pending.outcome && (
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-xs font-medium ${OUTCOME_CHIP[pending.outcome]}`}
+                  >
+                    pending {pending.outcome}
+                    {pending.markedFrame !== null
+                      ? ` @ ${pending.markedFrame}`
+                      : " (unmarked)"}
+                  </span>
+                )}
+                {pending.softTruncate && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-coral-light text-coral">
+                    soft-truncate
+                  </span>
+                )}
+                {subtaskMarksRequired > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-purple-100 text-purple-700">
+                    subtask {pending.subtaskFrames.length}/{subtaskMarksRequired}
+                    {pending.subtaskFrames.length > 0
+                      ? ` @ ${pending.subtaskFrames.join(", ")}`
+                      : ""}
+                  </span>
+                )}
+                {currentSignals && (
+                  <span className="text-[11px] font-mono text-ink-muted">
+                    valid {currentSignals.validLength}/{currentEpisode.rawLength}
+                    {currentSignals.doneOnsetFrame != null
+                      ? ` · done@${currentSignals.doneOnsetFrame}`
+                      : ""}
+                  </span>
+                )}
+              </div>
+
+              {actionError && (
+                <div className="mb-3 rounded-lg border border-coral/30 bg-coral-light px-3 py-2 text-xs text-coral font-mono">
+                  {actionError}
+                </div>
+              )}
+
+              {cameraKeys.length === 0 ? (
+                <div className="rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-sm text-coral font-mono">
+                  Episode {currentEpisode.episodeIndex} exposes no reviewable
+                  camera streams.
+                </div>
+              ) : (
+                <ReviewViewer
+                  datasetId={repoId}
+                  episode={currentEpisode}
+                  cameraKeys={cameraKeys}
+                  primaryKey={primaryKey}
+                  frame={frame}
+                  onFrame={setFrame}
+                  signals={currentSignals}
+                  pending={pending}
+                  controlsRef={controlsRef}
+                />
+              )}
+
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                {OUTCOMES.map((outcome) => (
+                  <button
+                    key={outcome}
+                    onClick={() => {
+                      updatePending({ outcome, markedFrame: frame });
+                      setActionError(null);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all ${
+                      pending.outcome === outcome
+                        ? OUTCOME_CHIP[outcome]
+                        : "bg-white border border-warm-200 text-ink-muted hover:border-warm-300"
+                    }`}
+                  >
+                    {outcome}
+                    <span className="ml-1.5 font-mono text-[10px] opacity-60">
+                      {outcome[0]}
+                    </span>
+                  </button>
+                ))}
+                <button
+                  onClick={() => updatePending({ softTruncate: !pending.softTruncate })}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all ${
+                    pending.softTruncate
+                      ? "bg-coral-light text-coral"
+                      : "bg-white border border-warm-200 text-ink-muted hover:border-warm-300"
+                  }`}
+                >
+                  soft-truncate
+                  <span className="ml-1.5 font-mono text-[10px] opacity-60">x</span>
+                </button>
+                <div className="flex-1" />
+                <button
+                  disabled={saving}
+                  onClick={() => void skip()}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium border border-warm-200 text-ink-muted hover:border-warm-300 cursor-pointer"
+                >
+                  {skipArmed ? "skip (discard marks)" : "skip"}
+                  <span className="ml-1.5 font-mono text-[10px] opacity-60">n</span>
+                </button>
+                <button
+                  disabled={saving}
+                  onClick={() => void confirm()}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-medium ${
+                    saving
+                      ? "bg-warm-100 text-ink-muted/50 cursor-not-allowed"
+                      : "bg-teal text-white hover:bg-teal/90 cursor-pointer"
+                  }`}
+                >
+                  confirm
+                  <span className="ml-1.5 font-mono text-[10px] opacity-70">c</span>
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      <CommitPanel
+        repoId={repoId}
+        numConfirmed={numConfirmed}
+        numSkipped={numSkipped}
+        numEpisodes={episodes?.length ?? 0}
+      />
+    </div>
+  );
+}

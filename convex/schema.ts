@@ -61,6 +61,48 @@ export default defineSchema({
     session_id: v.id("evalSessions"),
   }).index("by_policy", ["policy_id"]),
 
+  // Append-only human outcome reviews (web port of sir/tools/outcome_editor).
+  // Latest row per (dataset_repo, episode_index) wins; "cleared" undoes.
+  outcomeReviews: defineTable({
+    dataset_repo: v.string(),
+    episode_index: v.int64(),
+    status: v.string(), // "confirmed" | "skipped" | "cleared"
+    new_outcome: v.optional(v.string()), // "success" | "failure" | "timeout"
+    outcome_frame: v.optional(v.int64()),
+    soft_truncate: v.optional(v.boolean()),
+    subtask_frames: v.optional(v.array(v.int64())),
+    reviewer: v.string(),
+    reviewer_user_id: v.optional(v.id("users")),
+    saved_at: v.float64(),
+  })
+    .index("by_repo", ["dataset_repo"])
+    .index("by_repo_episode", ["dataset_repo", "episode_index"]),
+
+  // Jobs bridging web reviews to HF via the Python apply worker.
+  applyJobs: defineTable({
+    dataset_repo: v.string(),
+    status: v.string(), // pending | applying | applied | failed | cancelled
+    requested_by: v.string(),
+    requested_at: v.float64(),
+    worker_id: v.optional(v.string()),
+    started_at: v.optional(v.float64()),
+    finished_at: v.optional(v.float64()),
+    hf_commit_sha: v.optional(v.string()),
+    error: v.optional(v.string()),
+    log_tail: v.optional(v.string()),
+    num_confirmed: v.optional(v.int64()),
+    num_skipped: v.optional(v.int64()),
+    dry_run: v.optional(v.boolean()),
+  })
+    .index("by_repo", ["dataset_repo"])
+    .index("by_status", ["status"]),
+
+  workerHeartbeats: defineTable({
+    worker_id: v.string(),
+    last_seen: v.float64(),
+    info: v.optional(v.string()),
+  }).index("by_worker", ["worker_id"]),
+
   datasets: defineTable({
     repo_id: v.string(),
     name: v.string(),

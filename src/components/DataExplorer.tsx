@@ -16,6 +16,7 @@ import {
   datasetRoleLabel,
   resolvedDatasetRole,
 } from "../lib/dataset-classification";
+import OutcomeReview from "./OutcomeReview";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -401,6 +402,8 @@ function DatasetDetail({
   const [selectedIndex, setSelectedIndex] = useSearchParamNumber("episode");
   const [playing, setPlaying] = useState(false);
   const [episodeFilter, setEpisodeFilter] = useSearchParam("outcome", "all");
+  // "view" (not "mode") because EvalSessions already owns the "mode" param.
+  const [view, setView] = useSearchParam("view", "explorer");
   const updateStats = useMutation(api.datasets.updateStats);
 
   // -- Staged state --
@@ -574,6 +577,23 @@ function DatasetDetail({
     selectedIndex !== null ? episodes[selectedIndex] : null;
 
   const successCount = successMap ? [...successMap.values()].filter(Boolean).length : null;
+
+  // Outcome review replaces the detail view entirely. It fetches its own raw
+  // episode metadata, so it must not wait on the explorer's parquet load.
+  if (view === "review") {
+    return (
+      <OutcomeReview
+        repoId={repoId}
+        task={dataset?.task}
+        onExit={() => {
+          // The "episode" param means an array position in the explorer and an
+          // episode_index in review mode; drop it when crossing the boundary.
+          setSelectedIndex(null);
+          setView("explorer");
+        }}
+      />
+    );
+  }
 
   // Only show full-page spinner on cache miss with no data
   if (episodesLoading && baseEpisodes.length === 0) {
@@ -825,6 +845,21 @@ function DatasetDetail({
               </button>
             );
           })}
+          {viewer?.isEditor && (
+            <>
+              <div className="flex-1" />
+              <button
+                onClick={() => {
+                  setPlaying(false);
+                  setSelectedIndex(null);
+                  setView("review");
+                }}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white border border-teal text-teal hover:bg-teal-light transition-all cursor-pointer"
+              >
+                Review episodes &rarr;
+              </button>
+            </>
+          )}
         </div>
 
         {/* Episode strip */}
@@ -902,7 +937,7 @@ export default function DataExplorer() {
   const [selectedRepoId, setSelectedRepoIdRaw] = useSearchParamNullable("dataset");
 
   const setSelectedRepoId = (id: string | null) => {
-    if (id === null) clearSearchParams("episode", "outcome");
+    if (id === null) clearSearchParams("episode", "outcome", "view", "queue");
     setSelectedRepoIdRaw(id);
   };
 
