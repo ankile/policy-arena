@@ -396,6 +396,83 @@ class PolicyArenaClient:
         """Every exported taxonomy version for a task (live + candidates)."""
         return self.client.query("stageTaskSpecs:forTask", {"task": task})
 
+    def push_stage_prefills(
+        self, rows: list[dict], *, source: str, chunk_size: int = 50
+    ) -> dict:
+        """Push labeling-pipeline predictions as review prefills (service-only).
+
+        Each row must carry task / dataset_repo / episode_index /
+        taxonomy_version / label / pipeline / evidence (see
+        ``stagePrefills.upsertBatch``). ``episode_index`` is wrapped to int64
+        here; everything else is sent as-is (numbers arrive as float64, which
+        the UI and the gold exporter both handle).
+        """
+        if not rows:
+            raise ValueError("push_stage_prefills called with zero rows")
+        totals = {"inserted": 0, "replaced": 0}
+        for start in range(0, len(rows), chunk_size):
+            chunk = [
+                {**row, "episode_index": ConvexInt64(int(row["episode_index"]))}
+                for row in rows[start : start + chunk_size]
+            ]
+            result = self._mutation(
+                "stagePrefills:upsertBatch", {"rows": chunk, "source": source}
+            )
+            totals["inserted"] += int(result["inserted"])
+            totals["replaced"] += int(result["replaced"])
+        return totals
+
+    def fetch_stage_prefills(
+        self, dataset_repo: str, *, taxonomy_version: str | None = None
+    ) -> list[dict]:
+        args: dict = {"dataset_repo": dataset_repo}
+        if taxonomy_version is not None:
+            args["taxonomy_version"] = taxonomy_version
+        return self.client.query("stagePrefills:forRepo", args)
+
+    def save_stage_review(
+        self,
+        *,
+        task: str,
+        dataset_repo: str,
+        episode_index: int,
+        taxonomy_version: str,
+        status: str,
+        label: dict | None = None,
+        notes: str | None = None,
+        episode_duration_s: float | None = None,
+        reviewer_override: str | None = None,
+        saved_at_override: float | None = None,
+    ) -> str:
+        """Record a stage review (service path — parity replays and backfills)."""
+        args: dict = {
+            "task": task,
+            "dataset_repo": dataset_repo,
+            "episode_index": ConvexInt64(int(episode_index)),
+            "taxonomy_version": taxonomy_version,
+            "status": status,
+        }
+        if label is not None:
+            args["label"] = label
+        if notes is not None:
+            args["notes"] = notes
+        if episode_duration_s is not None:
+            args["episode_duration_s"] = float(episode_duration_s)
+        if reviewer_override is not None:
+            args["reviewer_override"] = reviewer_override
+        if saved_at_override is not None:
+            args["saved_at_override"] = float(saved_at_override)
+        return self._mutation("stageReviews:save", args)
+
+    def fetch_stage_reviews(
+        self, dataset_repo: str, *, taxonomy_version: str | None = None
+    ) -> dict:
+        """Latest non-cleared stage review per (episode, taxonomy, reviewer)."""
+        args: dict = {"dataset_repo": dataset_repo}
+        if taxonomy_version is not None:
+            args["taxonomy_version"] = taxonomy_version
+        return self.client.query("stageReviews:latestForRepo", args)
+
     def enqueue_apply_job(self, dataset_repo: str, *, dry_run: bool = False) -> str:
         return self._mutation(
             "applyJobs:enqueue", {"dataset_repo": dataset_repo, "dry_run": dry_run}

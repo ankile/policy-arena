@@ -147,6 +147,59 @@ export default defineSchema({
     .index("by_task", ["task"])
     .index("by_task_version", ["task", "taxonomy_version"]),
 
+  // VLM stage-label predictions ("prefills"): the most up-to-date prediction
+  // per (dataset_repo, episode_index, taxonomy_version), pushed by
+  // sir/tools/publish_stage_prefills.py when a labeling pipeline's output is
+  // published. Service-write-only, replaced wholesale on re-publish —
+  // prediction HISTORY lives in git run dirs and the HF .label_history.jsonl
+  // ledger, not here. `label` is the full editable-field row keyed by the
+  // spec's own field names (opaque; interpreted against stageTaskSpecs).
+  stagePrefills: defineTable({
+    task: v.string(),
+    dataset_repo: v.string(),
+    episode_index: v.int64(),
+    taxonomy_version: v.string(),
+    label: v.record(v.string(), v.any()),
+    review_reason: v.optional(v.string()), // battery adjudication flags, verbatim
+    violation_codes: v.optional(v.array(v.string())), // Python validate_label on the prediction
+    confidence: v.optional(v.string()), // gemini consensus: low | medium | high
+    vote_summary: v.optional(v.any()), // compact per-field sample votes
+    episode_duration_s: v.optional(v.float64()),
+    pipeline: v.object({
+      name: v.string(),
+      version: v.string(),
+      git_commit: v.string(),
+    }),
+    evidence: v.any(), // run_name/model/prompt_variant/samples/labels_csv_sha256/urls
+    pushed_at: v.float64(),
+    source: v.string(),
+  })
+    .index("by_repo", ["dataset_repo"])
+    .index("by_repo_episode", ["dataset_repo", "episode_index"]),
+
+  // Append-only human stage reviews (multi-reviewer). Latest row per
+  // (dataset_repo, episode_index, taxonomy_version, reviewer) wins; "cleared"
+  // folds out. Gold consolidation (sir refresh_stage_gold) pulls committed
+  // rows (confirmed | corrected) and re-validates them authoritatively with
+  // the Python validator before they can become consolidated_gold.csv rows.
+  stageReviews: defineTable({
+    task: v.string(),
+    dataset_repo: v.string(),
+    episode_index: v.int64(),
+    taxonomy_version: v.string(),
+    status: v.string(), // confirmed | corrected | uncertain | draft | cleared
+    label: v.optional(v.record(v.string(), v.any())),
+    notes: v.optional(v.string()),
+    prefill_pushed_at: v.optional(v.float64()), // which prefill generation was shown
+    blind: v.optional(v.boolean()), // reviewed with policy/arm identity hidden
+    reviewer: v.string(),
+    reviewer_user_id: v.optional(v.id("users")),
+    saved_at: v.float64(),
+  })
+    .index("by_repo", ["dataset_repo"])
+    .index("by_repo_episode", ["dataset_repo", "episode_index"])
+    .index("by_task", ["task"]),
+
   datasets: defineTable({
     repo_id: v.string(),
     name: v.string(),
