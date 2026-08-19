@@ -807,6 +807,70 @@ const ARM_LABEL_FIELDS = ["arm_key", "arm", "manifest_source", "manifest_sources
 
 const ledgerArmCache = new Map<string, Map<number, string>>();
 
+/** One episode's entry in the APPLIED (HF) outcome-edit record. */
+export interface AppliedRecord {
+  newOutcome: string;
+  outcomeFrame: number;
+  softTruncate: boolean;
+  /** Present ⇔ reviewed in subtask mode (may be empty), like the progress file. */
+  subtaskFrames: number[] | null;
+}
+
+export interface AppliedProgress {
+  changed: Map<number, AppliedRecord>;
+  skipped: Set<number>;
+}
+
+const appliedProgressCache = new Map<string, AppliedProgress | null>();
+
+/**
+ * The dataset's applied `.outcome_edit_progress.json` from HF — the record of
+ * truth for treatment that already reached the Hub (cv2-era sessions AND past
+ * worker applies). Null when the dataset has never been treated (404).
+ */
+export async function fetchAppliedProgress(
+  datasetId: string
+): Promise<AppliedProgress | null> {
+  if (appliedProgressCache.has(datasetId)) {
+    return appliedProgressCache.get(datasetId) ?? null;
+  }
+  const resp = await fetch(`${hfBase(datasetId)}/.outcome_edit_progress.json`);
+  if (resp.status === 404) {
+    appliedProgressCache.set(datasetId, null);
+    return null;
+  }
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch .outcome_edit_progress.json: HTTP ${resp.status}`);
+  }
+  const raw = (await resp.json()) as {
+    changed_episodes: Record<
+      string,
+      {
+        new_outcome: string;
+        outcome_frame: number;
+        soft_truncate: boolean;
+        subtask_frames?: number[];
+      }
+    >;
+    skipped_episodes: number[];
+  };
+  const changed = new Map<number, AppliedRecord>();
+  for (const [ep, record] of Object.entries(raw.changed_episodes)) {
+    changed.set(Number(ep), {
+      newOutcome: record.new_outcome,
+      outcomeFrame: record.outcome_frame,
+      softTruncate: record.soft_truncate,
+      subtaskFrames: record.subtask_frames ?? null,
+    });
+  }
+  const progress: AppliedProgress = {
+    changed,
+    skipped: new Set(raw.skipped_episodes.map(Number)),
+  };
+  appliedProgressCache.set(datasetId, progress);
+  return progress;
+}
+
 /**
  * Per-episode arm labels from the dataset's HF ledger JSONLs. Episodes without
  * a ledger row (or repos without ledgers) are simply absent from the map.

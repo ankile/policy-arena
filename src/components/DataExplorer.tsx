@@ -937,7 +937,8 @@ export default function DataExplorer() {
   const [selectedRepoId, setSelectedRepoIdRaw] = useSearchParamNullable("dataset");
 
   const setSelectedRepoId = (id: string | null) => {
-    if (id === null) clearSearchParams("episode", "outcome", "view", "queue", "arm");
+    if (id === null)
+      clearSearchParams("episode", "outcome", "view", "queue", "arm", "status");
     setSelectedRepoIdRaw(id);
   };
 

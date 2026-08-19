@@ -6,11 +6,13 @@ import { useSearchParam, useSearchParamNumber } from "../lib/useSearchParam";
 import {
   FPS,
   explorerCameraKeys,
+  fetchAppliedProgress,
   fetchEpisodeFrameSignals,
   fetchLedgerArms,
   fetchReviewEpisodes,
   getVideoUrl,
   selectPrimaryCameraKey,
+  type AppliedProgress,
   type EpisodeFrameSignals,
   type ReviewEpisode,
 } from "../lib/hf-api";
@@ -657,6 +659,7 @@ function QueueRow({
   signals,
   signalError,
   review,
+  applied,
   selected,
   onSelect,
   arm,
@@ -665,6 +668,8 @@ function QueueRow({
   signals: EpisodeFrameSignals | null;
   signalError: string | null;
   review: ReviewRecord | null;
+  /** Applied HF-record state when no web review exists: outcome, or "skip". */
+  applied: string | null;
   selected: boolean;
   onSelect: () => void;
   arm: string | null;
@@ -706,7 +711,14 @@ function QueueRow({
           {episode.rawLength}f
           {arm ? ` · ${arm}` : ""}
         </span>
-        {review === null ? (
+        {review === null && applied !== null ? (
+          <span
+            className="text-[10px] font-mono text-teal/70"
+            title="Already treated on HuggingFace (applied outcome-edit record)"
+          >
+            {applied === "skip" ? "skipped" : `✓ ${applied}`} ·applied
+          </span>
+        ) : review === null ? (
           <span className="text-[10px] font-mono text-ink-muted/60">
             unreviewed
           </span>
@@ -972,6 +984,15 @@ export default function OutcomeReview({
   const [ledgerArms, setLedgerArms] = useState<Map<number, string> | null>(null);
   const [ledgerError, setLedgerError] = useState<string | null>(null);
   const [armFilter, setArmFilter] = useSearchParam("arm", "all");
+  // The APPLIED record on HF (cv2-era sessions + past worker applies) — the
+  // record of truth for treatment that already reached the Hub. Without it the
+  // queue calls fully-treated datasets "unreviewed". Tri-state: undefined =
+  // still loading, null = dataset has no record (never treated).
+  const [applied, setApplied] = useState<AppliedProgress | null | undefined>(undefined);
+  const [appliedError, setAppliedError] = useState<string | null>(null);
+  // First-time flow: only never-addressed episodes (no web review, no applied
+  // record entry). Switch to "all" to revisit treated episodes.
+  const [statusFilter, setStatusFilter] = useSearchParam("status", "unaddressed");
   const [signals, setSignals] = useState<Map<number, EpisodeFrameSignals>>(
     () => new Map()
   );
@@ -1008,6 +1029,25 @@ export default function OutcomeReview({
       })
       .catch((err: Error) => {
         if (!cancelled) setLoadError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [repoId]);
+
+  // -- Applied outcome-edit record from HF (absence = never treated) --------
+  useEffect(() => {
+    let cancelled = false;
+    setApplied(undefined);
+    setAppliedError(null);
+    fetchAppliedProgress(repoId)
+      .then((progress) => {
+        if (!cancelled) setApplied(progress);
+      })
+      .catch((err: Error) => {
+        // A present-but-unreadable record must be loud: silently treating a
+        // fully-reviewed dataset as unaddressed invites duplicate review work.
+        if (!cancelled) setAppliedError(err.message);
       });
     return () => {
       cancelled = true;
@@ -1103,9 +1143,26 @@ export default function OutcomeReview({
     [ledgerArms]
   );
 
+  // Addressed = a web review exists OR the applied HF record already carries
+  // the episode (changed or skipped — a cv2-era skip is a deliberate
+  // keep-labels-as-is decision, not an omission).
+  const isAddressed = useCallback(
+    (episodeIndex: number): boolean =>
+      reviewByEpisode.has(episodeIndex) ||
+      (applied != null &&
+        (applied.changed.has(episodeIndex) || applied.skipped.has(episodeIndex))),
+    [reviewByEpisode, applied]
+  );
+
   const filteredEpisodes = useMemo(() => {
     if (!episodes) return [];
     let result = episodes;
+    if (statusFilter === "unaddressed") {
+      // Addressed-ness is unknown until the applied record settles (or errors
+      // loudly) — an early queue here would flash fully-treated episodes.
+      if (applied === undefined) return [];
+      result = result.filter((episode) => !isAddressed(episode.episodeIndex));
+    }
     if (filter !== "all") {
       result = result.filter(
         (episode) => effectiveOutcome(episode.episodeIndex) === filter
@@ -1119,7 +1176,17 @@ export default function OutcomeReview({
       );
     }
     return result;
-  }, [episodes, filter, effectiveOutcome, armFilter, ledgerArms, armOptions]);
+  }, [
+    episodes,
+    statusFilter,
+    applied,
+    isAddressed,
+    filter,
+    effectiveOutcome,
+    armFilter,
+    ledgerArms,
+    armOptions,
+  ]);
 
   const currentEpisode = useMemo(
     () =>
@@ -1175,16 +1242,28 @@ export default function OutcomeReview({
   const prefilledFor = useRef<number | null>(null);
   useEffect(() => {
     if (selectedEpisode === null || !currentSignals) return;
+    // The applied HF record outranks detected signals in the prefill — wait
+    // for it to settle (a load error falls through, with its loud banner).
+    if (applied === undefined && appliedError === null) return;
     if (prefilledFor.current === selectedEpisode) return;
     prefilledFor.current = selectedEpisode;
-    // Opening an episode resets the operator's working state to the prefill.
+    // Opening an episode resets the operator's working state to the prefill:
+    // web review > applied HF record (cv2 resume semantics) > detected signals.
     const review = reviewByEpisode.get(selectedEpisode);
+    const appliedRecord = applied?.changed.get(selectedEpisode);
     if (review?.status === "confirmed" && review.newOutcome) {
       setPending({
         outcome: review.newOutcome,
         markedFrame: review.outcomeFrame,
         subtaskFrames: review.subtaskFrames ?? [],
         softTruncate: review.softTruncate,
+      });
+    } else if (review === undefined && appliedRecord !== undefined) {
+      setPending({
+        outcome: appliedRecord.newOutcome as Outcome,
+        markedFrame: appliedRecord.outcomeFrame,
+        subtaskFrames: appliedRecord.subtaskFrames ?? [],
+        softTruncate: appliedRecord.softTruncate,
       });
     } else {
       setPending({
@@ -1199,7 +1278,7 @@ export default function OutcomeReview({
     setDirty(false);
     setSkipArmed(false);
     setActionError(null);
-  }, [selectedEpisode, currentSignals, reviewByEpisode]);
+  }, [selectedEpisode, currentSignals, reviewByEpisode, applied, appliedError]);
 
   // -- Actions -----------------------------------------------------------
   const selectEpisode = useCallback(
@@ -1555,10 +1634,16 @@ export default function OutcomeReview({
     return map;
   }, [taskSpec, cameraKeys]);
 
-  const numReviewed = reviewByEpisode.size;
   const numConfirmed = reviews?.num_confirmed ?? 0;
   const numSkipped = reviews?.num_skipped ?? 0;
   const numLoadedSignals = signals.size;
+  const numAddressed = useMemo(
+    () =>
+      episodes === null || applied === undefined
+        ? null
+        : episodes.filter((episode) => isAddressed(episode.episodeIndex)).length,
+    [episodes, applied, isAddressed]
+  );
 
   if (!viewer?.isEditor) {
     return (
@@ -1619,6 +1704,12 @@ export default function OutcomeReview({
           Failed to load episode metadata: {loadError}
         </div>
       )}
+      {appliedError && (
+        <div className="mx-6 mt-4 rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-xs text-coral font-mono">
+          Failed to load the applied outcome-edit record — treated episodes may
+          show as unaddressed: {appliedError}
+        </div>
+      )}
       {signalErrors.size > 0 && (
         <div className="mx-6 mt-4 rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-xs text-coral font-mono">
           {signalErrors.size} episode(s) failed frame-signal parsing:{" "}
@@ -1632,6 +1723,18 @@ export default function OutcomeReview({
       <div className="grid grid-cols-[260px_1fr] gap-0">
         {/* Work queue */}
         <div className="border-r border-warm-100 p-4 flex flex-col gap-3 max-h-[80vh]">
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              e.currentTarget.blur();
+            }}
+            className="w-full rounded-lg border border-warm-200 bg-white px-2 py-1.5 text-xs font-body text-ink cursor-pointer"
+            title="Unaddressed = no web review and not in the applied HF record"
+          >
+            <option value="unaddressed">Unaddressed only</option>
+            <option value="all">All statuses</option>
+          </select>
           <select
             value={filter}
             onChange={(e) => {
@@ -1672,7 +1775,8 @@ export default function OutcomeReview({
             </div>
           )}
           <div className="text-[11px] font-mono text-ink-muted">
-            {numReviewed} of {episodes?.length ?? 0} reviewed ·{" "}
+            {numAddressed ?? "…"} of {episodes?.length ?? 0} addressed ·{" "}
+            {reviewByEpisode.size} this web ledger ·{" "}
             {filteredEpisodes.length} in queue
             {episodes && numLoadedSignals < episodes.length && (
               <span className="block animate-pulse">
@@ -1694,6 +1798,10 @@ export default function OutcomeReview({
                 signals={signals.get(episode.episodeIndex) ?? null}
                 signalError={signalErrors.get(episode.episodeIndex) ?? null}
                 review={reviewByEpisode.get(episode.episodeIndex) ?? null}
+                applied={
+                  applied?.changed.get(episode.episodeIndex)?.newOutcome ??
+                  (applied?.skipped.has(episode.episodeIndex) ? "skip" : null)
+                }
                 selected={selectedEpisode === episode.episodeIndex}
                 onSelect={() => selectEpisode(episode.episodeIndex)}
                 arm={ledgerArms?.get(episode.episodeIndex) ?? null}
@@ -1701,7 +1809,14 @@ export default function OutcomeReview({
             ))}
             {episodes !== null && filteredEpisodes.length === 0 && (
               <div className="text-xs text-ink-muted font-body">
-                No episodes match this filter yet.
+                {statusFilter === "unaddressed" && applied === undefined
+                  ? "Checking the applied HF record…"
+                  : statusFilter === "unaddressed" &&
+                      numAddressed !== null &&
+                      numAddressed > 0
+                    ? `No unaddressed episodes match — ${numAddressed} already addressed. ` +
+                      `Switch to "All statuses" to revisit them.`
+                    : "No episodes match this filter yet."}
               </div>
             )}
           </div>
@@ -1735,6 +1850,20 @@ export default function OutcomeReview({
                     detecting…
                   </span>
                 )}
+                {reviewByEpisode.get(currentEpisode.episodeIndex) === undefined &&
+                  applied != null &&
+                  (applied.changed.has(currentEpisode.episodeIndex) ||
+                    applied.skipped.has(currentEpisode.episodeIndex)) && (
+                    <span
+                      className="px-2 py-0.5 rounded-full text-xs font-medium bg-teal/10 text-teal"
+                      title="This episode's decisions are already applied on HuggingFace; confirming records a NEW review on top"
+                    >
+                      already applied on HF
+                      {applied.skipped.has(currentEpisode.episodeIndex)
+                        ? " (skip)"
+                        : ""}
+                    </span>
+                  )}
                 {pending.outcome && (
                   <span
                     className={`px-2 py-0.5 rounded-full text-xs font-medium ${OUTCOME_CHIP[pending.outcome]}`}
