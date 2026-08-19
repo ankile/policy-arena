@@ -331,6 +331,37 @@ class PolicyArenaClient:
             args["reviewer_override"] = reviewer_override
         return self._mutation("reviews:save", args)
 
+    def upsert_task_spec(
+        self,
+        *,
+        task: str,
+        task_name: str,
+        num_subtask_marks: int,
+        stored_frame_hw: tuple[int, int],
+        camera_keys_by_role: dict[str, str],
+        crop_boxes: dict[str, tuple[int, int, int, int]],
+        source: str,
+    ) -> str:
+        """Export one task's registry-derived review spec (service-only)."""
+        return self._mutation(
+            "taskSpecs:upsert",
+            {
+                "task": task,
+                "task_name": task_name,
+                "num_subtask_marks": ConvexInt64(int(num_subtask_marks)),
+                "stored_frame_hw": [ConvexInt64(int(v)) for v in stored_frame_hw],
+                "camera_keys_by_role": dict(camera_keys_by_role),
+                "crop_boxes": {
+                    role: [ConvexInt64(int(v)) for v in box]
+                    for role, box in crop_boxes.items()
+                },
+                "source": source,
+            },
+        )
+
+    def get_task_spec(self, task: str) -> dict | None:
+        return self.client.query("taskSpecs:forTask", {"task": task})
+
     def enqueue_apply_job(self, dataset_repo: str, *, dry_run: bool = False) -> str:
         return self._mutation(
             "applyJobs:enqueue", {"dataset_repo": dataset_repo, "dry_run": dry_run}
@@ -346,6 +377,7 @@ class PolicyArenaClient:
         *,
         ok: bool,
         hf_commit_sha: str | None = None,
+        pre_apply_sha: str | None = None,
         error: str | None = None,
         log_tail: str | None = None,
         num_confirmed: int | None = None,
@@ -354,6 +386,8 @@ class PolicyArenaClient:
         args: dict = {"id": job_id, "ok": ok}
         if hf_commit_sha is not None:
             args["hf_commit_sha"] = hf_commit_sha
+        if pre_apply_sha is not None:
+            args["pre_apply_sha"] = pre_apply_sha
         if error is not None:
             args["error"] = error
         if log_tail is not None:

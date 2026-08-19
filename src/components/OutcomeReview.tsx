@@ -7,6 +7,7 @@ import {
   FPS,
   explorerCameraKeys,
   fetchEpisodeFrameSignals,
+  fetchLedgerArms,
   fetchReviewEpisodes,
   getVideoUrl,
   selectPrimaryCameraKey,
@@ -30,18 +31,36 @@ type QueueFilter = "all" | "failure" | "success" | "timeout";
 const OUTCOMES: Outcome[] = ["success", "failure", "timeout"];
 
 /**
- * Required mid-episode subtask marks, keyed by the Convex dataset `task`.
+ * Required mid-episode subtask marks, keyed by the Convex dataset `task` —
+ * FALLBACK ONLY, used while the exported `taskSpecs` row is loading or for a
+ * task the exporter has not pushed yet.
  *
  * AUTHORITY IS PYTHON: `resolve_subtask_marks` in sir/tools/outcome_editor.py
- * reads `RealTaskSpec.num_subtask_marks`, and the apply worker RE-VALIDATES every
+ * reads `RealTaskSpec.num_subtask_marks` (exported to Convex by
+ * sir/tools/export_arena_task_specs.py), and the apply worker RE-VALIDATES every
  * confirmed record with `subtask_mark_count_error` before touching HuggingFace.
  * This table only makes the gate visible to the operator while they review; a
  * stale entry here cannot write a bad label — it can only mis-guide the UI, and
- * the worker will reject the job loudly. Keep it in sync with the task registry.
+ * the worker will reject the job loudly.
  */
 const REVIEW_SUBTASK_MARKS: Record<string, number> = {
   routing_d1: 1,
 };
+
+type CropBox = [number, number, number, number];
+
+/** Port of camera_role_for_video_key in sir/real/camera_utils.py. */
+function cameraRoleForVideoKey(
+  key: string,
+  keysByRole: Record<string, string>
+): string | null {
+  const bare = key.split(".").at(-1) ?? key;
+  if (bare in keysByRole) return bare;
+  for (const [role, serial] of Object.entries(keysByRole)) {
+    if (bare === serial) return role;
+  }
+  return null;
+}
 
 const OUTCOME_CHIP: Record<Outcome, string> = {
   success: "bg-teal-light text-teal",
@@ -329,6 +348,8 @@ function ReviewViewer({
   signals,
   pending,
   controlsRef,
+  cropByCameraKey,
+  storedFrameHW,
 }: {
   datasetId: string;
   episode: ReviewEpisode;
@@ -339,6 +360,10 @@ function ReviewViewer({
   signals: EpisodeFrameSignals | null;
   pending: PendingReview;
   controlsRef: RefObject<ViewerControls | null>;
+  /** Station display crops per camera key (stored-frame px), null = no spec. */
+  cropByCameraKey: Record<string, CropBox> | null;
+  /** Crop reference space [H, W]; present whenever cropByCameraKey is. */
+  storedFrameHW: [number, number] | null;
 }) {
   const videoRefs = useRef(new Map<string, HTMLVideoElement>());
   const seekTokenRef = useRef(0);
@@ -346,6 +371,14 @@ function ReviewViewer({
   const [playing, setPlaying] = useState(false);
   const [drift, setDrift] = useState<string | null>(null);
   const [unverifiable, setUnverifiable] = useState(false);
+  // Station crop display defaults ON to match the cv2 editor's review view.
+  const [cropOn, setCropOn] = useState(true);
+  const [cropDimsError, setCropDimsError] = useState<string | null>(null);
+  const hasCrops =
+    cropByCameraKey !== null &&
+    storedFrameHW !== null &&
+    cameraKeys.some((key) => cropByCameraKey[key] !== undefined);
+  const cropsActive = hasCrops && cropOn && cropDimsError === null;
   // Bumped when a video reaches HAVE_METADATA. Seeks issued before that are
   // dropped by the browser, so the seek+verify pass must re-run afterwards or
   // the operator sees a phantom drift warning from the pre-load frame 0.
@@ -370,6 +403,8 @@ function ReviewViewer({
        an imperative reset of playback state, not derived render state. */
     setPlaying(false);
     setDrift(null);
+    // Per-episode: a bad episode re-trips the dims guard on its own metadata.
+    setCropDimsError(null);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [episode]);
 
@@ -486,35 +521,81 @@ function ReviewViewer({
         </div>
       )}
 
+      {cropDimsError && (
+        <div className="mb-3 rounded-lg border border-gold bg-gold-light px-4 py-2 text-xs font-mono text-gold">
+          ⚠ station crops disabled: {cropDimsError}
+        </div>
+      )}
+
       <div className={`grid ${gridCols} gap-3`}>
-        {cameraKeys.map((key) => (
-          <div key={key} className="relative">
-            <video
-              ref={setVideoRef(key)}
-              src={getVideoUrl(key, episode.perCamera[key].fileIndex, datasetId)}
-              className="w-full rounded-lg bg-warm-100"
-              muted
-              playsInline
-              preload="auto"
-              onLoadedMetadata={(e) => {
-                const video = e.target as HTMLVideoElement;
-                video.currentTime =
-                  episode.perCamera[key].fromTimestamp + (frame + 0.5) / FPS;
-                if (
-                  key === primaryKey &&
-                  typeof video.requestVideoFrameCallback !== "function"
-                ) {
-                  setUnverifiable(true);
-                }
-                setMetadataEpoch((epoch) => epoch + 1);
-              }}
-            />
-            <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/60 text-white text-[11px] font-mono">
-              {cameraLabel(key)}
-              {key === primaryKey ? " ·primary" : ""}
-            </span>
-          </div>
-        ))}
+        {cameraKeys.map((key) => {
+          const box = cropByCameraKey?.[key];
+          // Stable DOM per camera: cropping is style/class-only so toggling
+          // (or the dims guard tripping) never remounts (= reloads) the video.
+          const cropped =
+            cropsActive && box !== undefined && storedFrameHW !== null;
+          const [frameH, frameW] = storedFrameHW ?? [0, 0];
+          let containerStyle: React.CSSProperties | undefined;
+          let videoStyle: React.CSSProperties | undefined;
+          if (cropped) {
+            const [x0, y0, x1, y1] = box;
+            containerStyle = { aspectRatio: `${x1 - x0} / ${y1 - y0}` };
+            videoStyle = {
+              position: "absolute",
+              maxWidth: "none",
+              width: `${(frameW / (x1 - x0)) * 100}%`,
+              left: `${(-x0 / (x1 - x0)) * 100}%`,
+              top: `${(-y0 / (y1 - y0)) * 100}%`,
+            };
+          }
+          return (
+            <div
+              key={key}
+              className={`relative ${cropped ? "overflow-hidden rounded-lg bg-warm-100" : ""}`}
+              style={containerStyle}
+            >
+              <video
+                ref={setVideoRef(key)}
+                src={getVideoUrl(key, episode.perCamera[key].fileIndex, datasetId)}
+                className={cropped ? "" : "w-full rounded-lg bg-warm-100"}
+                style={videoStyle}
+                muted
+                playsInline
+                preload="auto"
+                onLoadedMetadata={(e) => {
+                  const video = e.target as HTMLVideoElement;
+                  video.currentTime =
+                    episode.perCamera[key].fromTimestamp + (frame + 0.5) / FPS;
+                  if (
+                    key === primaryKey &&
+                    typeof video.requestVideoFrameCallback !== "function"
+                  ) {
+                    setUnverifiable(true);
+                  }
+                  // The crop boxes live in stored-frame pixel space; a video
+                  // with different native dims would be cropped WRONG, so fail
+                  // loud and fall back to full frames.
+                  if (
+                    box !== undefined &&
+                    storedFrameHW !== null &&
+                    (video.videoWidth !== frameW || video.videoHeight !== frameH)
+                  ) {
+                    setCropDimsError(
+                      `${cameraLabel(key)} is ${video.videoWidth}x${video.videoHeight}, ` +
+                        `crop boxes expect ${frameW}x${frameH} stored frames`
+                    );
+                  }
+                  setMetadataEpoch((epoch) => epoch + 1);
+                }}
+              />
+              <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/60 text-white text-[11px] font-mono">
+                {cameraLabel(key)}
+                {key === primaryKey ? " ·primary" : ""}
+                {cropped ? " ·crop" : ""}
+              </span>
+            </div>
+          );
+        })}
       </div>
 
       <Timeline
@@ -549,6 +630,19 @@ function ReviewViewer({
         <span className="font-mono text-xs text-ink">
           frame {frame} / {episode.rawLength - 1}
         </span>
+        {hasCrops && cropDimsError === null && (
+          <button
+            onClick={() => setCropOn((on) => !on)}
+            className={`ml-auto px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all ${
+              cropOn
+                ? "bg-teal/10 text-teal border border-teal/40"
+                : "bg-white border border-warm-200 text-ink-muted hover:border-warm-300"
+            }`}
+            title="Station display crops from the task registry (same view as the cv2 editor)"
+          >
+            station crop {cropOn ? "on" : "off"}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -565,6 +659,7 @@ function QueueRow({
   review,
   selected,
   onSelect,
+  arm,
 }: {
   episode: ReviewEpisode;
   signals: EpisodeFrameSignals | null;
@@ -572,6 +667,7 @@ function QueueRow({
   review: ReviewRecord | null;
   selected: boolean;
   onSelect: () => void;
+  arm: string | null;
 }) {
   return (
     <button
@@ -606,8 +702,9 @@ function QueueRow({
         )}
       </div>
       <div className="flex items-center justify-between gap-2 mt-1">
-        <span className="text-[10px] font-mono text-ink-muted">
+        <span className="text-[10px] font-mono text-ink-muted truncate">
           {episode.rawLength}f
+          {arm ? ` · ${arm}` : ""}
         </span>
         {review === null ? (
           <span className="text-[10px] font-mono text-ink-muted/60">
@@ -867,10 +964,14 @@ export default function OutcomeReview({
 }) {
   const viewer = useQuery(api.users.viewer);
   const reviews = useQuery(api.reviews.latestForRepo, { dataset_repo: repoId });
+  const taskSpec = useQuery(api.taskSpecs.forTask, task ? { task } : "skip");
   const saveReview = useMutation(api.reviews.save);
 
   const [episodes, setEpisodes] = useState<ReviewEpisode[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [ledgerArms, setLedgerArms] = useState<Map<number, string> | null>(null);
+  const [ledgerError, setLedgerError] = useState<string | null>(null);
+  const [armFilter, setArmFilter] = useSearchParam("arm", "all");
   const [signals, setSignals] = useState<Map<number, EpisodeFrameSignals>>(
     () => new Map()
   );
@@ -888,7 +989,13 @@ export default function OutcomeReview({
   const [showHelp, setShowHelp] = useState(false);
   const controlsRef = useRef<ViewerControls | null>(null);
 
-  const subtaskMarksRequired = task ? (REVIEW_SUBTASK_MARKS[task] ?? 0) : 0;
+  // Exported registry row wins; hardcoded map only bridges load/missing rows.
+  // Worker re-validation is the authority either way (see REVIEW_SUBTASK_MARKS).
+  const subtaskMarksRequired = task
+    ? taskSpec != null
+      ? Number(taskSpec.num_subtask_marks)
+      : (REVIEW_SUBTASK_MARKS[task] ?? 0)
+    : 0;
 
   // -- Episode metadata --------------------------------------------------
   useEffect(() => {
@@ -901,6 +1008,24 @@ export default function OutcomeReview({
       })
       .catch((err: Error) => {
         if (!cancelled) setLoadError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [repoId]);
+
+  // -- Ledger arm labels (optional sidecars; absence is fine) --------------
+  useEffect(() => {
+    let cancelled = false;
+    setLedgerArms(null);
+    setLedgerError(null);
+    fetchLedgerArms(repoId)
+      .then((arms) => {
+        if (!cancelled) setLedgerArms(arms);
+      })
+      .catch((err: Error) => {
+        // A malformed ledger must be visible, not silently unfiltered.
+        if (!cancelled) setLedgerError(err.message);
       });
     return () => {
       cancelled = true;
@@ -973,13 +1098,28 @@ export default function OutcomeReview({
     [reviewByEpisode, signals]
   );
 
+  const armOptions = useMemo(
+    () => (ledgerArms ? [...new Set(ledgerArms.values())].sort() : []),
+    [ledgerArms]
+  );
+
   const filteredEpisodes = useMemo(() => {
     if (!episodes) return [];
-    if (filter === "all") return episodes;
-    return episodes.filter(
-      (episode) => effectiveOutcome(episode.episodeIndex) === filter
-    );
-  }, [episodes, filter, effectiveOutcome]);
+    let result = episodes;
+    if (filter !== "all") {
+      result = result.filter(
+        (episode) => effectiveOutcome(episode.episodeIndex) === filter
+      );
+    }
+    // A stale ?arm= from another dataset must not silently empty the queue:
+    // only apply the filter when the value exists in THIS dataset's ledger.
+    if (armFilter !== "all" && ledgerArms && armOptions.includes(armFilter)) {
+      result = result.filter(
+        (episode) => ledgerArms.get(episode.episodeIndex) === armFilter
+      );
+    }
+    return result;
+  }, [episodes, filter, effectiveOutcome, armFilter, ledgerArms, armOptions]);
 
   const currentEpisode = useMemo(
     () =>
@@ -1082,6 +1222,15 @@ export default function OutcomeReview({
 
   const confirm = useCallback(async () => {
     if (selectedEpisode === null || saving) return;
+    // The pending state still holds the PREVIOUS episode's decision until this
+    // episode's signals arrive and the prefill effect runs — confirming in
+    // that window would record the old outcome/frame onto the new episode.
+    if (prefilledFor.current !== selectedEpisode) {
+      setActionError(
+        `Episode ${selectedEpisode} is still loading — wait for the outcome prefill.`
+      );
+      return;
+    }
     if (!pending.outcome) {
       setActionError("Set an outcome (s / f / t) before confirming.");
       return;
@@ -1156,6 +1305,14 @@ export default function OutcomeReview({
 
   const skip = useCallback(async () => {
     if (selectedEpisode === null || saving) return;
+    // Same prefill-race guard as confirm: pending may still be the previous
+    // episode's state (its subtask marks would trigger a bogus double-n arm).
+    if (prefilledFor.current !== selectedEpisode) {
+      setActionError(
+        `Episode ${selectedEpisode} is still loading — wait for the outcome prefill.`
+      );
+      return;
+    }
     if (pending.subtaskFrames.length > 0 && !skipArmed) {
       // Mirrors the cv2 editor's double-n guard: skipping would silently drop
       // marks the operator already placed.
@@ -1375,6 +1532,29 @@ export default function OutcomeReview({
     [cameraKeys]
   );
 
+  // Station display crops from the exported task spec, resolved per video key
+  // (role- or serial-named), in stored-frame pixel space.
+  const storedFrameHW = useMemo<[number, number] | null>(
+    () =>
+      taskSpec != null
+        ? [Number(taskSpec.stored_frame_hw[0]), Number(taskSpec.stored_frame_hw[1])]
+        : null,
+    [taskSpec]
+  );
+  const cropByCameraKey = useMemo<Record<string, CropBox> | null>(() => {
+    if (taskSpec == null) return null;
+    const keysByRole = taskSpec.camera_keys_by_role;
+    const map: Record<string, CropBox> = {};
+    for (const key of cameraKeys) {
+      const role = cameraRoleForVideoKey(key, keysByRole);
+      const box = role !== null ? taskSpec.crop_boxes[role] : undefined;
+      if (box !== undefined) {
+        map[key] = box.map(Number) as CropBox;
+      }
+    }
+    return map;
+  }, [taskSpec, cameraKeys]);
+
   const numReviewed = reviewByEpisode.size;
   const numConfirmed = reviews?.num_confirmed ?? 0;
   const numSkipped = reviews?.num_skipped ?? 0;
@@ -1454,7 +1634,12 @@ export default function OutcomeReview({
         <div className="border-r border-warm-100 p-4 flex flex-col gap-3 max-h-[80vh]">
           <select
             value={filter}
-            onChange={(e) => setFilter(e.target.value as QueueFilter)}
+            onChange={(e) => {
+              setFilter(e.target.value as QueueFilter);
+              // A focused select swallows the review shortcuts and letter keys
+              // drive its native typeahead — release focus after each change.
+              e.currentTarget.blur();
+            }}
             className="w-full rounded-lg border border-warm-200 bg-white px-2 py-1.5 text-xs font-body text-ink cursor-pointer"
           >
             {QUEUE_FILTERS.map((option) => (
@@ -1463,6 +1648,29 @@ export default function OutcomeReview({
               </option>
             ))}
           </select>
+          {armOptions.length > 0 && (
+            <select
+              value={armFilter}
+              onChange={(e) => {
+                setArmFilter(e.target.value);
+                e.currentTarget.blur();
+              }}
+              className="w-full rounded-lg border border-warm-200 bg-white px-2 py-1.5 text-xs font-body text-ink cursor-pointer"
+              title="Filter by ledger arm (blind_dagger / protocol_quota / teleop_manifest ledgers)"
+            >
+              <option value="all">All arms</option>
+              {armOptions.map((arm) => (
+                <option key={arm} value={arm}>
+                  {arm}
+                </option>
+              ))}
+            </select>
+          )}
+          {ledgerError && (
+            <div className="rounded-lg border border-coral/30 bg-coral-light px-2 py-1.5 text-[10px] text-coral font-mono">
+              arm filter unavailable — ledger parse failed: {ledgerError}
+            </div>
+          )}
           <div className="text-[11px] font-mono text-ink-muted">
             {numReviewed} of {episodes?.length ?? 0} reviewed ·{" "}
             {filteredEpisodes.length} in queue
@@ -1488,6 +1696,7 @@ export default function OutcomeReview({
                 review={reviewByEpisode.get(episode.episodeIndex) ?? null}
                 selected={selectedEpisode === episode.episodeIndex}
                 onSelect={() => selectEpisode(episode.episodeIndex)}
+                arm={ledgerArms?.get(episode.episodeIndex) ?? null}
               />
             ))}
             {episodes !== null && filteredEpisodes.length === 0 && (
@@ -1581,6 +1790,8 @@ export default function OutcomeReview({
                   signals={currentSignals}
                   pending={pending}
                   controlsRef={controlsRef}
+                  cropByCameraKey={cropByCameraKey}
+                  storedFrameHW={storedFrameHW}
                 />
               )}
 

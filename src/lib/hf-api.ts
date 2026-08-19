@@ -791,6 +791,70 @@ export async function fetchEpisodeFrameSignals(
   return signals;
 }
 
+// Known per-episode ledger sidecars, mirroring `_default_ledger_paths` in
+// sir/tools/outcome_editor.py. Absence of a ledger is genuinely optional
+// (teleop-only repos have none); a present-but-malformed ledger throws.
+const LEDGER_FILES = [
+  "meta/blind_dagger_ledger.jsonl",
+  "meta/protocol_quota_ledger.jsonl",
+  "meta/teleop_manifest_ledger.jsonl",
+];
+
+// Arm label fields in cv2 --arm-key precedence order (build_episode_selector
+// in sir/tools/outcome_editor.py filters on any of these; for display we take
+// the first present).
+const ARM_LABEL_FIELDS = ["arm_key", "arm", "manifest_source", "manifest_sources"];
+
+const ledgerArmCache = new Map<string, Map<number, string>>();
+
+/**
+ * Per-episode arm labels from the dataset's HF ledger JSONLs. Episodes without
+ * a ledger row (or repos without ledgers) are simply absent from the map.
+ */
+export async function fetchLedgerArms(
+  datasetId: string
+): Promise<Map<number, string>> {
+  const cached = ledgerArmCache.get(datasetId);
+  if (cached) return cached;
+
+  const arms = new Map<number, string>();
+  // Duplicate detection over ALL rows (labelled or not), mirroring the loud
+  // _load_ledger_rows_by_episode failure in sir/tools/outcome_editor.py.
+  const seen = new Set<number>();
+  for (const file of LEDGER_FILES) {
+    const resp = await fetch(`${hfBase(datasetId)}/${file}`);
+    if (resp.status === 404) continue;
+    if (!resp.ok) {
+      throw new Error(`Failed to fetch ${file}: HTTP ${resp.status}`);
+    }
+    const text = await resp.text();
+    for (const line of text.split("\n")) {
+      if (!line.trim()) continue;
+      const row = JSON.parse(line) as Record<string, unknown>;
+      if (row.episode_index == null) {
+        throw new Error(`${file}: ledger row missing episode_index`);
+      }
+      const episodeIndex = Number(row.episode_index);
+      if (seen.has(episodeIndex)) {
+        throw new Error(
+          `Duplicate episode_index ${episodeIndex} across ledger files`
+        );
+      }
+      seen.add(episodeIndex);
+      let label: string | null = null;
+      for (const field of ARM_LABEL_FIELDS) {
+        const value = row[field];
+        if (value == null) continue;
+        label = Array.isArray(value) ? value.map(String).join("+") : String(value);
+        break;
+      }
+      if (label !== null) arms.set(episodeIndex, label);
+    }
+  }
+  ledgerArmCache.set(datasetId, arms);
+  return arms;
+}
+
 export async function fetchSourceStats(
   datasetId: string
 ): Promise<DatasetSourceStats | null> {

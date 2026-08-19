@@ -76,6 +76,10 @@ export const finish = mutation({
     id: v.id("applyJobs"),
     ok: v.boolean(),
     hf_commit_sha: v.optional(v.string()),
+    // Repo sha BEFORE the worker's push — the exact pre-review state, needed
+    // because one apply can produce multiple HF commits (data + README card),
+    // so parent(hf_commit_sha) is not a reliable pre-state.
+    pre_apply_sha: v.optional(v.string()),
     error: v.optional(v.string()),
     log_tail: v.optional(v.string()),
     num_confirmed: v.optional(v.int64()),
@@ -98,6 +102,7 @@ export const finish = mutation({
       status: args.ok ? "applied" : "failed",
       finished_at: Date.now(),
       hf_commit_sha: args.hf_commit_sha,
+      pre_apply_sha: args.pre_apply_sha,
       error: args.error,
       log_tail: args.log_tail,
       num_confirmed: args.num_confirmed,

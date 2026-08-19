@@ -88,6 +88,7 @@ export default defineSchema({
     started_at: v.optional(v.float64()),
     finished_at: v.optional(v.float64()),
     hf_commit_sha: v.optional(v.string()),
+    pre_apply_sha: v.optional(v.string()),
     error: v.optional(v.string()),
     log_tail: v.optional(v.string()),
     num_confirmed: v.optional(v.int64()),
@@ -102,6 +103,26 @@ export default defineSchema({
     last_seen: v.float64(),
     info: v.optional(v.string()),
   }).index("by_worker", ["worker_id"]),
+
+  // Task-spec data exported from the Python task registry (RealTaskSpec) —
+  // NEVER hand-edited. sir/tools/export_arena_task_specs.py is the sole
+  // writer; the UI reads crop boxes / subtask-mark counts from here instead
+  // of mirroring Python constants in TS. Phase 2 extends this with the full
+  // StageLabelTaskSpec export.
+  taskSpecs: defineTable({
+    task: v.string(), // RealTaskSpec.name — matches datasets.task
+    task_name: v.string(), // LeRobot/collection task name, e.g. "Square_D1"
+    num_subtask_marks: v.int64(),
+    // Crop reference space [H, W] (stored-frame pixels; station frames are 480x640).
+    stored_frame_hw: v.array(v.int64()),
+    // Station role -> serial-eye camera key (e.g. side_1 -> "25916956_left").
+    camera_keys_by_role: v.record(v.string(), v.string()),
+    // Station role -> effective display crop [x0, y0, x1, y1] in stored-frame
+    // pixels, half-open (defaults merged with RealTaskSpec.camera_crop_overrides).
+    crop_boxes: v.record(v.string(), v.array(v.int64())),
+    exported_at: v.float64(),
+    source: v.string(), // exporter provenance (host + sir git sha)
+  }).index("by_task", ["task"]),
 
   datasets: defineTable({
     repo_id: v.string(),
