@@ -112,28 +112,55 @@ export const finish = mutation({
   },
 });
 
+// An `applying` job whose worker died (laptop sleep mid-apply) would
+// otherwise be stuck forever: enqueue rejects while it exists, and the
+// freshness gate blocks every ingest for the repo. After this long with no
+// finish, the claim is considered abandoned and cancellable.
+const STALE_APPLYING_MS = 10 * 60 * 1000;
+
 export const cancel = mutation({
   args: { id: v.id("applyJobs") },
   handler: async (ctx, args) => {
     await requireEditor(ctx);
     const job = await ctx.db.get(args.id);
     if (!job) throw new Error("Job not found");
-    if (job.status !== "pending") {
-      throw new Error(`Only pending jobs can be cancelled (status: ${job.status})`);
+    const staleApplying =
+      job.status === "applying" &&
+      job.started_at !== undefined &&
+      Date.now() - job.started_at > STALE_APPLYING_MS;
+    if (job.status !== "pending" && !staleApplying) {
+      throw new Error(
+        `Only pending or stale-applying jobs can be cancelled (status: ${job.status})`
+      );
     }
-    await ctx.db.patch(args.id, { status: "cancelled", finished_at: Date.now() });
+    await ctx.db.patch(args.id, {
+      status: "cancelled",
+      finished_at: Date.now(),
+      error: staleApplying
+        ? "cancelled by operator: worker claim went stale mid-apply (HF may be " +
+          "partially mutated; re-committing re-applies idempotently)"
+        : undefined,
+    });
     return args.id;
   },
 });
 
 export const forRepo = query({
-  args: { dataset_repo: v.string() },
+  args: {
+    dataset_repo: v.string(),
+    // Default keeps the UI panel small; audit consumers (freshness gate,
+    // parity gate, backfill) pass a large limit — truncation there silently
+    // hid applied jobs and misattributed history.
+    limit: v.optional(v.float64()),
+  },
   handler: async (ctx, args) => {
     const jobs = await ctx.db
       .query("applyJobs")
       .withIndex("by_repo", (q) => q.eq("dataset_repo", args.dataset_repo))
       .collect();
-    return jobs.sort((a, b) => b.requested_at - a.requested_at).slice(0, 5);
+    return jobs
+      .sort((a, b) => b.requested_at - a.requested_at)
+      .slice(0, args.limit ?? 5);
   },
 });
 

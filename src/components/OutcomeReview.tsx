@@ -372,8 +372,11 @@ function Timeline({
 
 interface ViewerControls {
   togglePlay: () => void;
-  /** Stop playback and snap the frame counter to the displayed frame. */
-  pause: () => void;
+  /** Stop playback and snap the frame counter to the displayed frame.
+   *  Returns the snapped frame when playback WAS running, else null — mark
+   *  handlers must use it: during playback the parent `frame` state is frozen
+   *  at the play-start value and marking there lands frames early. */
+  pause: () => number | null;
 }
 
 function ReviewViewer({
@@ -388,6 +391,7 @@ function ReviewViewer({
   controlsRef,
   cropByCameraKey,
   storedFrameHW,
+  onDrift,
 }: {
   datasetId: string;
   episode: ReviewEpisode;
@@ -402,6 +406,9 @@ function ReviewViewer({
   cropByCameraKey: Record<string, CropBox> | null;
   /** Crop reference space [H, W]; present whenever cropByCameraKey is. */
   storedFrameHW: [number, number] | null;
+  /** Frame-verification drift, surfaced so the parent can BLOCK confirms —
+   *  a drifted display means the counted frame is not the shown frame. */
+  onDrift: (drift: string | null) => void;
 }) {
   const videoRefs = useRef(new Map<string, HTMLVideoElement>());
   const seekTokenRef = useRef(0);
@@ -441,10 +448,35 @@ function ReviewViewer({
        an imperative reset of playback state, not derived render state. */
     setPlaying(false);
     setDrift(null);
-    // Per-episode: a bad episode re-trips the dims guard on its own metadata.
-    setCropDimsError(null);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [episode]);
+
+  // Crop-vs-video dims guard. This must NOT live in onLoadedMetadata: video
+  // src is per-FILE (many episodes share one chunk file, so the event fires
+  // once per session), and the crop spec can arrive after metadata. Re-check
+  // whenever the spec, camera set, or a video's metadata changes; reset when
+  // the SPEC changes (not per episode — that wiped a real mismatch forever).
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- imperative guard over
+       video-element metadata, not derived render state. */
+    setCropDimsError(null);
+    if (cropByCameraKey === null || storedFrameHW === null) return;
+    const [frameH, frameW] = storedFrameHW;
+    for (const key of cameraKeys) {
+      if (cropByCameraKey[key] === undefined) continue;
+      const video = videoRefs.current.get(key);
+      // Metadata not loaded yet -> metadataEpoch re-runs this effect later.
+      if (!video || video.videoWidth === 0) continue;
+      if (video.videoWidth !== frameW || video.videoHeight !== frameH) {
+        setCropDimsError(
+          `${cameraLabel(key)} is ${video.videoWidth}x${video.videoHeight}, ` +
+            `crop boxes expect ${frameW}x${frameH} stored frames`
+        );
+        return;
+      }
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [cropByCameraKey, storedFrameHW, cameraKeys, metadataEpoch]);
 
   // Frame-exact seek: every camera lands on the midpoint of frame i, offset by
   // that camera's own from_timestamp (0 today, but multi-episode video chunks
@@ -479,17 +511,18 @@ function ReviewViewer({
     });
   }, [frame, playing, episode, cameraKeys, primaryKey, primaryFrom, metadataEpoch]);
 
-  const stopAndSnap = useCallback(() => {
+  const stopAndSnap = useCallback((): number | null => {
     playingRef.current = false;
     setPlaying(false);
     const primary = videoRefs.current.get(primaryKey);
-    if (!primary) return;
+    if (!primary) return null;
     const snapped = clamp(
       Math.round((primary.currentTime - primaryFrom) * FPS - 0.5),
       0,
       episode.rawLength - 1
     );
     onFrame(snapped);
+    return snapped;
   }, [episode.rawLength, onFrame, primaryFrom, primaryKey]);
 
   const togglePlay = useCallback(() => {
@@ -501,13 +534,18 @@ function ReviewViewer({
     }
   }, [stopAndSnap]);
 
-  const pause = useCallback(() => {
-    if (playingRef.current) stopAndSnap();
+  const pause = useCallback((): number | null => {
+    if (playingRef.current) return stopAndSnap();
+    return null;
   }, [stopAndSnap]);
 
   useEffect(() => {
     controlsRef.current = { togglePlay, pause };
   }, [controlsRef, togglePlay, pause]);
+
+  useEffect(() => {
+    onDrift(drift);
+  }, [drift, onDrift]);
 
   // Playback: the primary camera drives, the others follow its offset-corrected
   // clock; playback halts at the raw end of the episode segment.
@@ -589,7 +627,7 @@ function ReviewViewer({
           // (or the dims guard tripping) never remounts (= reloads) the video.
           const cropped =
             cropsActive && box !== undefined && storedFrameHW !== null;
-          const [frameH, frameW] = storedFrameHW ?? [0, 0];
+          const frameW = (storedFrameHW ?? [0, 0])[1];
           let containerStyle: React.CSSProperties | undefined;
           let videoStyle: React.CSSProperties | undefined;
           if (cropped) {
@@ -627,19 +665,8 @@ function ReviewViewer({
                   ) {
                     setUnverifiable(true);
                   }
-                  // The crop boxes live in stored-frame pixel space; a video
-                  // with different native dims would be cropped WRONG, so fail
-                  // loud and fall back to full frames.
-                  if (
-                    box !== undefined &&
-                    storedFrameHW !== null &&
-                    (video.videoWidth !== frameW || video.videoHeight !== frameH)
-                  ) {
-                    setCropDimsError(
-                      `${cameraLabel(key)} is ${video.videoWidth}x${video.videoHeight}, ` +
-                        `crop boxes expect ${frameW}x${frameH} stored frames`
-                    );
-                  }
+                  // Crop-dims guard lives in the effect above (src is
+                  // per-file, this event fires once per session).
                   setMetadataEpoch((epoch) => epoch + 1);
                 }}
               />
@@ -849,8 +876,13 @@ function CommitPanel({
   const totalReviews = numConfirmed + numSkipped;
 
   const age = worker ? now - worker.last_seen : null;
+  // useQuery: undefined = still loading, null = no heartbeat row exists.
+  // Rendering the loading flash as "no worker" trains operators to ignore
+  // the one pill that matters when the worker really is dead.
   const workerPill =
-    age === null
+    worker === undefined
+      ? { text: "checking worker…", className: "bg-warm-100 text-ink-muted" }
+      : age === null
       ? {
           text: "no worker has ever checked in",
           className: "bg-coral-light text-coral",
@@ -866,7 +898,7 @@ function CommitPanel({
               className: "bg-gold-light text-gold",
             }
           : {
-              text: `worker offline (${formatAge(age)}) — start \`uv run python -m sir.tools.arena_review_worker\` on iris`,
+              text: `worker offline (${formatAge(age)}) — start tmux \`arena-review-worker\` (host per docs/policy-arena-review-suite-plan.md)`,
               className: "bg-coral-light text-coral",
             };
 
@@ -954,7 +986,10 @@ function CommitPanel({
                   {expanded === job._id ? "hide error" : "show error"}
                 </button>
               )}
-              {job.status === "pending" && (
+              {(job.status === "pending" ||
+                (job.status === "applying" &&
+                  job.started_at !== undefined &&
+                  now - Number(job.started_at) > 10 * 60 * 1000)) && (
                 <button
                   onClick={() => {
                     setError(null);
@@ -963,8 +998,13 @@ function CommitPanel({
                     );
                   }}
                   className="text-ink-muted hover:text-coral cursor-pointer"
+                  title={
+                    job.status === "applying"
+                      ? "Worker claim went stale — reclaim the stuck job, then re-commit"
+                      : undefined
+                  }
                 >
-                  cancel
+                  {job.status === "applying" ? "reclaim stuck job" : "cancel"}
                 </button>
               )}
               {expanded === job._id && (
@@ -1078,6 +1118,7 @@ export default function OutcomeReview({
   const [selectedEpisode, setSelectedEpisode] = useSearchParamNumber("episode");
   const [frame, setFrame] = useState(0);
   const [pending, setPending] = useState<PendingReview>(EMPTY_PENDING);
+  const [viewerDrift, setViewerDrift] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1085,8 +1126,12 @@ export default function OutcomeReview({
   const [showHelp, setShowHelp] = useState(false);
   const controlsRef = useRef<ViewerControls | null>(null);
 
-  // Exported registry row wins; hardcoded map only bridges load/missing rows.
-  // Worker re-validation is the authority either way (see REVIEW_SUBTASK_MARKS).
+  // Exported registry row wins; hardcoded map only bridges MISSING rows.
+  // Convex useQuery is undefined WHILE LOADING and null for a missing row —
+  // only the latter may fall back. Treating "loading" as 0 marks hides
+  // subtask work and lets structurally-invalid labels through, so actions
+  // and the unaddressed filter gate on specReady.
+  const specReady = !task || taskSpec !== undefined;
   const subtaskMarksRequired = task
     ? taskSpec != null
       ? Number(taskSpec.num_subtask_marks)
@@ -1152,6 +1197,11 @@ export default function OutcomeReview({
       const list = byEpisode.get(event.episode_index);
       if (list) list.push(event);
       else byEpisode.set(event.episode_index, [event]);
+    }
+    // "Current" = last by TIMESTAMP, not file order — a bootstrap appended
+    // around live events must not misreport the current label source.
+    for (const list of byEpisode.values()) {
+      list.sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
     }
     return byEpisode;
   }, [labelHistory]);
@@ -1266,11 +1316,12 @@ export default function OutcomeReview({
     if (!episodes) return [];
     let result = episodes;
     if (statusFilter === "unaddressed") {
-      // Addressed-ness is unknown until the applied record settles — an early
-      // queue here would flash fully-treated episodes. A load ERROR falls
-      // through unfiltered (the loud banner explains treated episodes may
-      // show as unaddressed) rather than blanking the queue forever.
-      if (applied === undefined && appliedError === null) return [];
+      // Addressed-ness is unknown until the applied record AND the task spec
+      // settle (isAddressed's subtask-key rule needs subtaskMarksRequired) —
+      // an early queue here would flash fully-treated episodes. A load ERROR
+      // falls through unfiltered (the loud banner explains treated episodes
+      // may show as unaddressed) rather than blanking the queue forever.
+      if ((applied === undefined && appliedError === null) || !specReady) return [];
       if (applied !== undefined) {
         result = result.filter((episode) => !isAddressed(episode.episodeIndex));
       }
@@ -1352,6 +1403,22 @@ export default function OutcomeReview({
 
   // -- Prefill on episode open -------------------------------------------
   const prefilledFor = useRef<number | null>(null);
+
+  // Selection change: IMMEDIATELY clear the previous episode's decision state.
+  // The prefill below waits on async loads (signals, applied record); without
+  // this reset the old episode's tint/chips/marks render over the NEW
+  // episode's video for seconds, and edits made in that gap are discarded.
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- imperative reset of
+       working state on selection change, not derived render state. */
+    setPending(EMPTY_PENDING);
+    setFrame(0);
+    setDirty(false);
+    setSkipArmed(false);
+    setViewerDrift(null);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [selectedEpisode]);
+
   useEffect(() => {
     if (selectedEpisode === null || !currentSignals) return;
     // The applied HF record outranks detected signals in the prefill — wait
@@ -1370,7 +1437,13 @@ export default function OutcomeReview({
         subtaskFrames: review.subtaskFrames ?? [],
         softTruncate: review.softTruncate,
       });
-    } else if (review === undefined && appliedRecord !== undefined) {
+    } else if (
+      // A web SKIP means keep-labels-as-is: the as-is state IS the applied
+      // record when one exists (falling to detected signals here would show
+      // the pre-edit outcome and a stray confirm could revert an applied edit).
+      (review === undefined || review.status === "skipped") &&
+      appliedRecord !== undefined
+    ) {
       setPending({
         outcome: appliedRecord.newOutcome as Outcome,
         markedFrame: appliedRecord.outcomeFrame,
@@ -1405,6 +1478,10 @@ export default function OutcomeReview({
       const position = filteredEpisodes.findIndex(
         (episode) => episode.episodeIndex === fromIndex
       );
+      // Out-of-queue (e.g. a deep-linked addressed episode under the
+      // unaddressed filter): advancing would silently jump to the queue HEAD
+      // and walk already-done work. Stay put instead.
+      if (position === -1) return;
       const next = filteredEpisodes[position + 1];
       if (next) selectEpisode(next.episodeIndex);
     },
@@ -1419,6 +1496,19 @@ export default function OutcomeReview({
     if (prefilledFor.current !== selectedEpisode) {
       setActionError(
         `Episode ${selectedEpisode} is still loading — wait for the outcome prefill.`
+      );
+      return;
+    }
+    if (!specReady) {
+      // Confirming against the fallback mark count could save a structurally
+      // invalid label (e.g. a subtask success with no marks, key omitted).
+      setActionError("Task spec still loading — wait before confirming.");
+      return;
+    }
+    if (viewerDrift !== null) {
+      setActionError(
+        `Video/frame-counter drift detected (${viewerDrift}) — reload before confirming; ` +
+          "the displayed frame may not be the counted frame."
       );
       return;
     }
@@ -1490,8 +1580,10 @@ export default function OutcomeReview({
     saveReview,
     saving,
     selectedEpisode,
+    specReady,
     subtaskMarksRequired,
     task,
+    viewerDrift,
   ]);
 
   const skip = useCallback(async () => {
@@ -1502,6 +1594,10 @@ export default function OutcomeReview({
       setActionError(
         `Episode ${selectedEpisode} is still loading — wait for the outcome prefill.`
       );
+      return;
+    }
+    if (!specReady) {
+      setActionError("Task spec still loading — wait before skipping.");
       return;
     }
     if (pending.subtaskFrames.length > 0 && !skipArmed) {
@@ -1538,6 +1634,7 @@ export default function OutcomeReview({
     saving,
     selectedEpisode,
     skipArmed,
+    specReady,
   ]);
 
   // Stepping while playing would desync the frame counter from the video, so a
@@ -1628,36 +1725,46 @@ export default function OutcomeReview({
       case "f":
       case "t": {
         event.preventDefault();
+        // During playback the `frame` state is FROZEN at the play-start value;
+        // pause() returns the actually-displayed frame — mark there.
+        const markAt = controlsRef.current?.pause() ?? frame;
         const outcome: Outcome =
           key === "s" ? "success" : key === "f" ? "failure" : "timeout";
-        updatePending({ outcome, markedFrame: frame });
+        updatePending({ outcome, markedFrame: markAt });
         setActionError(null);
         return;
       }
       case "m":
-      case "Enter":
+      case "Enter": {
         event.preventDefault();
-        updatePending({ markedFrame: frame });
+        const markAt = controlsRef.current?.pause() ?? frame;
+        updatePending({ markedFrame: markAt });
         setActionError(null);
         return;
+      }
       case "g": {
         event.preventDefault();
+        if (!specReady) {
+          setActionError("Task spec still loading — wait before placing subtask marks.");
+          return;
+        }
         if (subtaskMarksRequired <= 0) {
           setActionError(
             `Task ${task ?? "(unknown)"} defines 0 subtask marks (RealTaskSpec.num_subtask_marks).`
           );
           return;
         }
+        const markAt = controlsRef.current?.pause() ?? frame;
         const marks = pending.subtaskFrames;
-        if (marks.includes(frame)) {
-          updatePending({ subtaskFrames: marks.filter((m) => m !== frame) });
+        if (marks.includes(markAt)) {
+          updatePending({ subtaskFrames: marks.filter((m) => m !== markAt) });
           setActionError(null);
         } else if (marks.length >= subtaskMarksRequired) {
           setActionError(
             `Already have ${subtaskMarksRequired} subtask mark(s); press g on a marked frame to remove one.`
           );
         } else {
-          updatePending({ subtaskFrames: [...marks, frame].sort((a, b) => a - b) });
+          updatePending({ subtaskFrames: [...marks, markAt].sort((a, b) => a - b) });
           setActionError(null);
         }
         return;
@@ -1691,6 +1798,12 @@ export default function OutcomeReview({
         const position = filteredEpisodes.findIndex(
           (episode) => episode.episodeIndex === currentEpisode.episodeIndex
         );
+        if (position === -1) {
+          setActionError(
+            "This episode is not in the current queue; pick one from the list."
+          );
+          return;
+        }
         const previous = filteredEpisodes[position - 1];
         if (previous) selectEpisode(previous.episodeIndex);
         else setActionError("Already at the first episode in the queue.");
@@ -1731,6 +1844,21 @@ export default function OutcomeReview({
       .filter((key): key is string => key !== undefined);
     return selected.length > 0 ? selected : all;
   }, [currentEpisode, taskSpec]);
+
+  // A PARTIAL role match must not pass silently: the task registry says the
+  // review needs these views, and judging outcomes from fewer is a banner-
+  // worthy degradation (e.g. a role hidden by the explorer's key filter).
+  const missingCameraRoles = useMemo(() => {
+    const roles = taskSpec?.review_camera_roles;
+    if (!currentEpisode || roles == null || roles.length === 0) return [];
+    const keysByRole = taskSpec!.camera_keys_by_role;
+    const all = orderCameraKeys(
+      explorerCameraKeys(Object.keys(currentEpisode.perCamera))
+    );
+    return roles.filter(
+      (role) => !all.some((key) => cameraRoleForVideoKey(key, keysByRole) === role)
+    );
+  }, [currentEpisode, taskSpec]);
   const primaryKey = useMemo(
     () => (cameraKeys.length > 0 ? selectPrimaryCameraKey(cameraKeys) : ""),
     [cameraKeys]
@@ -1764,10 +1892,10 @@ export default function OutcomeReview({
   const numLoadedSignals = signals.size;
   const numAddressed = useMemo(
     () =>
-      episodes === null || (applied === undefined && appliedError === null)
+      episodes === null || (applied === undefined && appliedError === null) || !specReady
         ? null
         : episodes.filter((episode) => isAddressed(episode.episodeIndex)).length,
-    [episodes, applied, appliedError, isAddressed]
+    [episodes, applied, appliedError, isAddressed, specReady]
   );
 
   if (!viewer?.isEditor) {
@@ -1812,7 +1940,11 @@ export default function OutcomeReview({
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs font-mono text-ink-muted">
-            {dirty ? "unsaved changes" : "saved ✓"}
+            {dirty
+              ? "unsaved changes"
+              : selectedEpisode !== null && reviewByEpisode.has(selectedEpisode)
+                ? "saved ✓"
+                : "no web review yet"}
           </span>
           <button
             onClick={() => setShowHelp(true)}
@@ -1839,6 +1971,13 @@ export default function OutcomeReview({
         <div className="mx-6 mt-4 rounded-lg border border-gold/40 bg-gold-light px-4 py-3 text-xs text-ink font-mono">
           Label-history ledger failed to load (provenance hidden, reviewing
           unaffected): {historyError}
+        </div>
+      )}
+      {missingCameraRoles.length > 0 && (
+        <div className="mx-6 mt-4 rounded-lg border border-gold/40 bg-gold-light px-4 py-3 text-xs text-ink font-mono">
+          Task expects review camera(s) {missingCameraRoles.join(", ")} but no
+          matching stream was found in this dataset — judging from the
+          remaining views only.
         </div>
       )}
       {signalErrors.size > 0 && (
@@ -2010,6 +2149,11 @@ export default function OutcomeReview({
                         : ""}
                     </span>
                   )}
+                {pending === EMPTY_PENDING && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-warm-100 text-ink-muted animate-pulse">
+                    loading decision…
+                  </span>
+                )}
                 {pending.outcome && (
                   <span
                     className={`px-2 py-0.5 rounded-full text-xs font-medium ${OUTCOME_CHIP[pending.outcome]}`}
@@ -2067,6 +2211,7 @@ export default function OutcomeReview({
                   controlsRef={controlsRef}
                   cropByCameraKey={cropByCameraKey}
                   storedFrameHW={storedFrameHW}
+                  onDrift={setViewerDrift}
                 />
               )}
 
@@ -2086,11 +2231,22 @@ export default function OutcomeReview({
                           <button
                             key={i}
                             disabled={seek === null}
+                            // jumpToFrame (not raw setFrame): it pauses first —
+                            // a seek during playback would be silently reverted
+                            // by the next stopAndSnap.
                             onClick={() =>
                               seek !== null &&
-                              setFrame(Math.min(seek, currentEpisode.rawLength - 1))
+                              jumpToFrame(
+                                clamp(seek, 0, currentEpisode.rawLength - 1)
+                              )
                             }
-                            title={seek !== null ? `Seek to frame ${seek}` : undefined}
+                            title={
+                              seek === null
+                                ? undefined
+                                : seek > currentEpisode.rawLength - 1
+                                  ? `Seek to frame ${currentEpisode.rawLength - 1} (event frame ${seek} is beyond this timeline)`
+                                  : `Seek to frame ${seek}`
+                            }
                             className={`flex items-baseline gap-2 text-left text-[11px] font-mono rounded px-1 -mx-1 ${
                               seek !== null ? "cursor-pointer hover:bg-warm-100" : "cursor-default"
                             } ${current ? "text-ink" : "text-ink-muted"}`}

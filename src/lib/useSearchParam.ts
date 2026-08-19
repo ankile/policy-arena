@@ -4,6 +4,12 @@ function getParam(key: string): string | null {
   return new URLSearchParams(window.location.search).get(key);
 }
 
+// Params that are working STATE, not addressable pages: writing them with
+// pushState makes every episode selection/filter change a history entry, so
+// one Back press mid-review discards unsaved marks and lands on a stale
+// episode. These always replace instead.
+const REPLACE_KEYS = new Set(["episode", "queue", "status", "arm"]);
+
 function setParams(updates: Record<string, string | null>) {
   const params = new URLSearchParams(window.location.search);
   for (const [key, value] of Object.entries(updates)) {
@@ -15,7 +21,11 @@ function setParams(updates: Record<string, string | null>) {
   }
   const qs = params.toString();
   const url = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
-  window.history.pushState(null, "", url);
+  if (Object.keys(updates).every((key) => REPLACE_KEYS.has(key))) {
+    window.history.replaceState(null, "", url);
+  } else {
+    window.history.pushState(null, "", url);
+  }
 }
 
 /** Re-read a param from the URL on popstate (browser back/forward). */

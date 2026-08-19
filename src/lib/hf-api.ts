@@ -856,10 +856,23 @@ export async function fetchLabelHistory(
   for (const [i, line] of text.split("\n").entries()) {
     if (!line.trim()) continue;
     const event = JSON.parse(line) as LabelEvent;
-    for (const key of ["label_kind", "episode_index", "payload", "source", "ts"]) {
-      if (!(key in event)) {
-        throw new Error(`.label_history.jsonl line ${i + 1}: event missing ${key}`);
-      }
+    // Type-check, don't just presence-check: malformed values reach render
+    // paths (Timeline .map, ts.slice) and would white-screen the session or
+    // silently drop provenance (a float episode_index misses every Map get).
+    const bad = (why: string): never => {
+      throw new Error(`.label_history.jsonl line ${i + 1}: ${why}`);
+    };
+    if (typeof event.label_kind !== "string") bad("label_kind not a string");
+    if (!Number.isInteger(event.episode_index)) bad("episode_index not an integer");
+    if (typeof event.payload !== "object" || event.payload === null) bad("payload not an object");
+    if (typeof event.ts !== "string") bad("ts not a string");
+    if (
+      typeof event.source !== "object" ||
+      event.source === null ||
+      typeof event.source.kind !== "string" ||
+      typeof event.source.tool !== "string"
+    ) {
+      bad("source missing kind/tool strings");
     }
     events.push(event);
   }
@@ -899,6 +912,15 @@ export async function fetchAppliedProgress(
   };
   const changed = new Map<number, AppliedRecord>();
   for (const [ep, record] of Object.entries(raw.changed_episodes)) {
+    // These values feed pending state and Timeline rendering — a wrong TYPE
+    // (string frame, non-array marks) white-screens the session, so fail
+    // loud here where the banner is wired.
+    if (typeof record.new_outcome !== "string" || typeof record.outcome_frame !== "number") {
+      throw new Error(`.outcome_edit_progress.json ep ${ep}: malformed record`);
+    }
+    if (record.subtask_frames !== undefined && !Array.isArray(record.subtask_frames)) {
+      throw new Error(`.outcome_edit_progress.json ep ${ep}: subtask_frames not an array`);
+    }
     changed.set(Number(ep), {
       newOutcome: record.new_outcome,
       outcomeFrame: record.outcome_frame,

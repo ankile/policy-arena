@@ -58,6 +58,40 @@ export const save = mutation({
         throw new Error(`A ${args.status} review must not carry outcome fields`);
       }
     }
+    if (args.status === "cleared") {
+      // Clearing an ALREADY-APPLIED decision is a trap: the HF edit stays in
+      // place, the episode folds out of latestForRepo, and the next apply
+      // would re-record lower counts that satisfy the freshness gate over an
+      // un-reverted dataset. Applied decisions are corrected by RE-REVIEWING.
+      const latest = await ctx.db
+        .query("outcomeReviews")
+        .withIndex("by_repo_episode", (q) =>
+          q.eq("dataset_repo", args.dataset_repo).eq("episode_index", args.episode_index)
+        )
+        .collect();
+      const newest = latest
+        .filter((row) => row.status !== "cleared")
+        .sort((a, b) => b.saved_at - a.saved_at)[0];
+      if (newest !== undefined) {
+        const jobs = await ctx.db
+          .query("applyJobs")
+          .withIndex("by_repo", (q) => q.eq("dataset_repo", args.dataset_repo))
+          .collect();
+        const appliedAfter = jobs.some(
+          (job) =>
+            job.status === "applied" &&
+            job.started_at !== undefined &&
+            job.started_at >= newest.saved_at
+        );
+        if (appliedAfter) {
+          throw new Error(
+            "This decision was already applied to HuggingFace — clearing cannot " +
+              "revert it. Re-review the episode (confirm the corrected outcome) " +
+              "and commit again instead."
+          );
+        }
+      }
+    }
     let reviewer: string;
     if (principal === "service") {
       reviewer = args.reviewer_override ?? "service";

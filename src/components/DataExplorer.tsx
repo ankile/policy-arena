@@ -960,6 +960,9 @@ export default function DataExplorer() {
     return (
       <div style={{ animation: "fade-up 0.6s ease-out 0.1s both" }}>
         <DatasetDetail
+          // Defense in depth: a repoId swap without unmount would carry one
+          // dataset's signals/pending into another's same-numbered episode.
+          key={selectedRepoId}
           repoId={selectedRepoId}
           onBack={() => setSelectedRepoId(null)}
         />
