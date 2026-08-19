@@ -340,6 +340,7 @@ class PolicyArenaClient:
         stored_frame_hw: tuple[int, int],
         camera_keys_by_role: dict[str, str],
         crop_boxes: dict[str, tuple[int, int, int, int]],
+        review_camera_roles: tuple[str, ...],
         source: str,
     ) -> str:
         """Export one task's registry-derived review spec (service-only)."""
@@ -355,6 +356,7 @@ class PolicyArenaClient:
                     role: [ConvexInt64(int(v)) for v in box]
                     for role, box in crop_boxes.items()
                 },
+                "review_camera_roles": list(review_camera_roles),
                 "source": source,
             },
         )

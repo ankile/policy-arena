@@ -21,6 +21,7 @@ export const upsert = mutation({
     stored_frame_hw: v.array(v.int64()),
     camera_keys_by_role: v.record(v.string(), v.string()),
     crop_boxes: v.record(v.string(), v.array(v.int64())),
+    review_camera_roles: v.array(v.string()),
     source: v.string(),
   },
   handler: async (ctx, args) => {
@@ -46,6 +47,11 @@ export const upsert = mutation({
         throw new Error(`crop box role ${role} is not a station role`);
       }
     }
+    for (const role of args.review_camera_roles) {
+      if (!(role in args.camera_keys_by_role)) {
+        throw new Error(`review camera role ${role} is not a station role`);
+      }
+    }
     const row = {
       task: args.task,
       task_name: args.task_name,
@@ -53,6 +59,7 @@ export const upsert = mutation({
       stored_frame_hw: args.stored_frame_hw,
       camera_keys_by_role: args.camera_keys_by_role,
       crop_boxes: args.crop_boxes,
+      review_camera_roles: args.review_camera_roles,
       exported_at: Date.now(),
       source: args.source,
     };

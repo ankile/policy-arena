@@ -120,6 +120,10 @@ export default defineSchema({
     // Station role -> effective display crop [x0, y0, x1, y1] in stored-frame
     // pixels, half-open (defaults merged with RealTaskSpec.camera_crop_overrides).
     crop_boxes: v.record(v.string(), v.array(v.int64())),
+    // Default review camera roles in display order (RealTaskSpec.
+    // consumed_camera_roles, e.g. marker_d2 -> ["side_1", "wrist_left"]);
+    // empty/absent = show every stream. Optional so pre-field rows validate.
+    review_camera_roles: v.optional(v.array(v.string())),
     exported_at: v.float64(),
     source: v.string(), // exporter provenance (host + sir git sha)
   }).index("by_task", ["task"]),

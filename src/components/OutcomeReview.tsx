@@ -506,7 +506,24 @@ function ReviewViewer({
     };
   }, [playing, cameraKeys, episode, primaryKey, primaryFrom, primaryTo, stopAndSnap]);
 
-  const gridCols = cameraKeys.length === 1 ? "grid-cols-1" : "grid-cols-2";
+  // All cameras in ONE row, like the cv2 editor's side-by-side composite.
+  const gridCols =
+    ["grid-cols-1", "grid-cols-2", "grid-cols-3", "grid-cols-4"][
+      Math.min(cameraKeys.length, 4) - 1
+    ] ?? "grid-cols-4";
+
+  // cv2-editor decision overlays: frames at/after the pending outcome frame
+  // get a translucent outcome tint (denser strictly-after the mark when
+  // soft-truncate is on); a pending subtask frame gets a solid border + tag.
+  // Suppressed during playback — the frame counter only tracks while scrubbing.
+  const decisionTint =
+    !playing && pending.outcome !== null && pending.markedFrame !== null && frame >= pending.markedFrame
+      ? {
+          color: OUTCOME_HEX[pending.outcome],
+          alpha: pending.softTruncate && frame > pending.markedFrame ? 0.4 : 0.2,
+        }
+      : null;
+  const isSubtaskFrame = !playing && pending.subtaskFrames.includes(frame);
 
   return (
     <div>
@@ -590,6 +607,24 @@ function ReviewViewer({
                   setMetadataEpoch((epoch) => epoch + 1);
                 }}
               />
+              {decisionTint && (
+                <div
+                  className="absolute inset-0 pointer-events-none rounded-lg"
+                  style={{
+                    backgroundColor: decisionTint.color,
+                    opacity: decisionTint.alpha,
+                  }}
+                />
+              )}
+              {isSubtaskFrame && (
+                <div
+                  className="absolute inset-0 pointer-events-none rounded-lg border-[6px] border-purple-600"
+                >
+                  <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-purple-600 text-white text-[10px] font-mono font-medium">
+                    SUBTASK REWARD
+                  </span>
+                </div>
+              )}
               <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/60 text-white text-[11px] font-mono">
                 {cameraLabel(key)}
                 {key === primaryKey ? " ·primary" : ""}
@@ -1145,23 +1180,33 @@ export default function OutcomeReview({
 
   // Addressed = a web review exists OR the applied HF record already carries
   // the episode (changed or skipped — a cv2-era skip is a deliberate
-  // keep-labels-as-is decision, not an omission).
+  // keep-labels-as-is decision, not an omission). On a subtask task a changed
+  // record WITHOUT the subtask_frames key predates subtask review and must
+  // re-queue, exactly like episode_fully_processed in the cv2 editor.
   const isAddressed = useCallback(
-    (episodeIndex: number): boolean =>
-      reviewByEpisode.has(episodeIndex) ||
-      (applied != null &&
-        (applied.changed.has(episodeIndex) || applied.skipped.has(episodeIndex))),
-    [reviewByEpisode, applied]
+    (episodeIndex: number): boolean => {
+      if (reviewByEpisode.has(episodeIndex)) return true;
+      if (applied == null) return false;
+      if (applied.skipped.has(episodeIndex)) return true;
+      const record = applied.changed.get(episodeIndex);
+      if (record === undefined) return false;
+      return subtaskMarksRequired <= 0 || record.subtaskFrames !== null;
+    },
+    [reviewByEpisode, applied, subtaskMarksRequired]
   );
 
   const filteredEpisodes = useMemo(() => {
     if (!episodes) return [];
     let result = episodes;
     if (statusFilter === "unaddressed") {
-      // Addressed-ness is unknown until the applied record settles (or errors
-      // loudly) — an early queue here would flash fully-treated episodes.
-      if (applied === undefined) return [];
-      result = result.filter((episode) => !isAddressed(episode.episodeIndex));
+      // Addressed-ness is unknown until the applied record settles — an early
+      // queue here would flash fully-treated episodes. A load ERROR falls
+      // through unfiltered (the loud banner explains treated episodes may
+      // show as unaddressed) rather than blanking the queue forever.
+      if (applied === undefined && appliedError === null) return [];
+      if (applied !== undefined) {
+        result = result.filter((episode) => !isAddressed(episode.episodeIndex));
+      }
     }
     if (filter !== "all") {
       result = result.filter(
@@ -1602,10 +1647,23 @@ export default function OutcomeReview({
   // -- Render ------------------------------------------------------------
   const cameraKeys = useMemo(() => {
     if (!currentEpisode) return [];
-    return orderCameraKeys(
+    const all = orderCameraKeys(
       explorerCameraKeys(Object.keys(currentEpisode.perCamera))
     );
-  }, [currentEpisode]);
+    // Task-default review cameras (RealTaskSpec.consumed_camera_roles, e.g.
+    // marker_d2 -> side_1 + wrist_left), in the spec's display order. Fall
+    // back to every stream when the spec has no default or nothing matches
+    // (legacy key namespaces).
+    const roles = taskSpec?.review_camera_roles;
+    if (roles == null || roles.length === 0) return all;
+    const keysByRole = taskSpec!.camera_keys_by_role;
+    const selected = roles
+      .map((role) =>
+        all.find((key) => cameraRoleForVideoKey(key, keysByRole) === role)
+      )
+      .filter((key): key is string => key !== undefined);
+    return selected.length > 0 ? selected : all;
+  }, [currentEpisode, taskSpec]);
   const primaryKey = useMemo(
     () => (cameraKeys.length > 0 ? selectPrimaryCameraKey(cameraKeys) : ""),
     [cameraKeys]
@@ -1639,10 +1697,10 @@ export default function OutcomeReview({
   const numLoadedSignals = signals.size;
   const numAddressed = useMemo(
     () =>
-      episodes === null || applied === undefined
+      episodes === null || (applied === undefined && appliedError === null)
         ? null
         : episodes.filter((episode) => isAddressed(episode.episodeIndex)).length,
-    [episodes, applied, isAddressed]
+    [episodes, applied, appliedError, isAddressed]
   );
 
   if (!viewer?.isEditor) {
@@ -1809,12 +1867,14 @@ export default function OutcomeReview({
             ))}
             {episodes !== null && filteredEpisodes.length === 0 && (
               <div className="text-xs text-ink-muted font-body">
-                {statusFilter === "unaddressed" && applied === undefined
+                {statusFilter === "unaddressed" &&
+                applied === undefined &&
+                appliedError === null
                   ? "Checking the applied HF record…"
                   : statusFilter === "unaddressed" &&
-                      numAddressed !== null &&
-                      numAddressed > 0
-                    ? `No unaddressed episodes match — ${numAddressed} already addressed. ` +
+                      episodes.length > 0 &&
+                      episodes.every((episode) => isAddressed(episode.episodeIndex))
+                    ? `All ${episodes.length} episodes are already addressed. ` +
                       `Switch to "All statuses" to revisit them.`
                     : "No episodes match this filter yet."}
               </div>
