@@ -3,6 +3,7 @@ import { api } from "../convex/_generated/api";
 
 import AuthControls from "./components/AuthControls";
 import DataExplorer from "./components/DataExplorer";
+import CoverageDashboard from "./components/CoverageDashboard";
 import EvalSessions from "./components/EvalSessions";
 import Pairings from "./components/Pairings";
 import PolicyDetail from "./components/PolicyDetail";
@@ -73,7 +74,7 @@ function EnvironmentTag({ env }: { env: string }) {
 }
 
 type SortKey = "elo" | "success" | "winRate" | "avgSuccessSteps";
-type Tab = "leaderboard" | "sessions" | "pairings" | "explorer";
+type Tab = "leaderboard" | "sessions" | "pairings" | "explorer" | "coverage";
 
 type TabConfig = { id: Tab; label: string };
 
@@ -115,6 +116,7 @@ function App() {
     { id: "sessions", label: "Eval Sessions" },
     { id: "pairings", label: "Pairings" },
     { id: "explorer", label: "Data Explorer" },
+    { id: "coverage", label: "Coverage" },
   ];
 
   return (
@@ -419,6 +421,7 @@ function App() {
         {activeTab === "pairings" && <Pairings />}
 
         {activeTab === "explorer" && <DataExplorer />}
+        {activeTab === "coverage" && <CoverageDashboard />}
 
         {/* Footer */}
         <footer

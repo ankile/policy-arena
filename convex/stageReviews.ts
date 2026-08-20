@@ -44,13 +44,13 @@ const STATUSES = ["confirmed", "corrected", "uncertain", "draft", "cleared"] as 
 const COMMITTED = ["confirmed", "corrected"] as const;
 
 /** Stable per-reviewer fold key: auth user id for humans, name for service backfills. */
-function reviewerKey(row: { reviewer: string; reviewer_user_id?: string | null }): string {
+export function reviewerKey(row: { reviewer: string; reviewer_user_id?: string | null }): string {
   return row.reviewer_user_id ?? `svc:${row.reviewer}`;
 }
 
 /** Later-wins ordering with a deterministic tiebreak: a replay re-run with an
  * identical saved_at_override must supersede the earlier row, not lose to it. */
-function isNewer(
+export function isNewer(
   a: { saved_at: number; _creationTime: number },
   b: { saved_at: number; _creationTime: number }
 ): boolean {
