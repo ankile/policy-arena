@@ -8,7 +8,20 @@ function getParam(key: string): string | null {
 // pushState makes every episode selection/filter change a history entry, so
 // one Back press mid-review discards unsaved marks and lands on a stale
 // episode. These always replace instead.
-const REPLACE_KEYS = new Set(["episode", "queue", "status", "arm"]);
+const REPLACE_KEYS = new Set([
+  "episode",
+  "queue",
+  "status",
+  "arm",
+  // Stage-review working state (prefixed so a URL crossing the outcome/stage
+  // boundary never mis-filters; Back must not discard in-progress labeling).
+  "sstatus",
+  "sconf",
+  "sflag",
+  "sarm",
+  "schema",
+  "blind",
+]);
 
 function setParams(updates: Record<string, string | null>) {
   const params = new URLSearchParams(window.location.search);

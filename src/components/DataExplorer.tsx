@@ -17,6 +17,7 @@ import {
   resolvedDatasetRole,
 } from "../lib/dataset-classification";
 import OutcomeReview from "./OutcomeReview";
+import StageReview from "./StageReview";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -399,6 +400,12 @@ function DatasetDetail({
 }) {
   const dataset = useQuery(api.datasets.getByRepo, { repo_id: repoId });
   const viewer = useQuery(api.users.viewer);
+  // Stage review is offered only for tasks with an exported live stage spec.
+  const stageSpecs = useQuery(
+    api.stageTaskSpecs.forTask,
+    dataset?.task ? { task: dataset.task } : "skip"
+  );
+  const hasStageSpec = Boolean(stageSpecs?.some((row) => row.live));
   const [selectedIndex, setSelectedIndex] = useSearchParamNumber("episode");
   const [playing, setPlaying] = useState(false);
   const [episodeFilter, setEpisodeFilter] = useSearchParam("outcome", "all");
@@ -589,6 +596,21 @@ function DatasetDetail({
           // The "episode" param means an array position in the explorer and an
           // episode_index in review mode; drop it when crossing the boundary.
           setSelectedIndex(null);
+          setView("explorer");
+        }}
+      />
+    );
+  }
+
+  // Stage-label review (Phase 2) — same boundary semantics as outcome review.
+  if (view === "stage") {
+    return (
+      <StageReview
+        repoId={repoId}
+        task={dataset?.task}
+        onExit={() => {
+          setSelectedIndex(null);
+          clearSearchParams("sstatus", "sconf", "sflag", "sarm", "schema", "blind");
           setView("explorer");
         }}
       />
@@ -858,6 +880,18 @@ function DatasetDetail({
               >
                 Review episodes &rarr;
               </button>
+              {hasStageSpec && (
+                <button
+                  onClick={() => {
+                    setPlaying(false);
+                    setSelectedIndex(null);
+                    setView("stage");
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white border border-gold text-gold hover:bg-gold-light transition-all cursor-pointer"
+                >
+                  Stage review &rarr;
+                </button>
+              )}
             </>
           )}
         </div>
