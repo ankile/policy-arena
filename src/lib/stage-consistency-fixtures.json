@@ -1,5 +1,5 @@
 {
-  "insert_marker_d1": {
+  "insert_marker_d1@s7_v1": {
     "fixtures": [
       {
         "episode_duration_s": null,
@@ -168,6 +168,25 @@
           "early_failure_mode_v2": "no_useful_approach",
           "final_state": "marker_on_table",
           "grasp_acquired": true,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": 0,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "bool_time_mismatch"
+        ],
+        "name": "bool_false_time_present",
+        "row": {
+          "approach_reached": false,
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "marker_on_table",
+          "grasp_acquired": false,
+          "grasp_acquired_time_s": 1.0,
           "grasp_lost": false,
           "marker_fully_seated": false,
           "marker_released": false,
@@ -418,7 +437,7 @@
       "stage_field": "max_stage_v2",
       "success_final_state": "marker_fully_seated_released",
       "task": "insert_marker_d1",
-      "taxonomy_hash": "5f4126d2c967874babe0fdf33689f2ed0ecc04e515ccb7310f1b7de312265fc4",
+      "taxonomy_hash": "00741664923db0e57cb0344a16d0ffb4f03b67e686f925afc17b3914b8e21db2",
       "taxonomy_version": "s7_v1",
       "time_fields": [
         "approach_time_s",
@@ -433,7 +452,7 @@
       ]
     }
   },
-  "marker_d2": {
+  "marker_d2@s7_v1": {
     "fixtures": [
       {
         "episode_duration_s": null,
@@ -602,6 +621,25 @@
           "early_failure_mode_v2": "no_useful_approach",
           "final_state": "marker_on_table",
           "grasp_acquired": true,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": 0,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "bool_time_mismatch"
+        ],
+        "name": "bool_false_time_present",
+        "row": {
+          "approach_reached": false,
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "marker_on_table",
+          "grasp_acquired": false,
+          "grasp_acquired_time_s": 1.0,
           "grasp_lost": false,
           "marker_fully_seated": false,
           "marker_released": false,
@@ -856,7 +894,7 @@
       "stage_field": "max_stage_v2",
       "success_final_state": "marker_fully_seated_released",
       "task": "marker_d2",
-      "taxonomy_hash": "178020ab27a069e19e86fca809bba1f0407423323dd6e2ffc6281ac66c0faf69",
+      "taxonomy_hash": "88b4b19981b57e65ea0d4a283f506af9bf6a8e00f76e27fb859de246e888b247",
       "taxonomy_version": "s7_v1",
       "time_fields": [
         "approach_time_s",
@@ -871,7 +909,7 @@
       ]
     }
   },
-  "routing_d1": {
+  "routing_d1@s10_v1": {
     "fixtures": [
       {
         "episode_duration_s": null,
@@ -1116,6 +1154,61 @@
       },
       {
         "episode_duration_s": null,
+        "expected_codes": [],
+        "name": "clean_any_gate_s6_constituent_1",
+        "row": {
+          "failure_mode": "not_reached_clip",
+          "final_state": "rope_free",
+          "first_clip_seated": false,
+          "max_stage": 6,
+          "regrasped": false,
+          "rope_grasped": true,
+          "rope_grasped_time_s": 1.0,
+          "rope_released": false,
+          "second_clip_seated": true,
+          "second_clip_seated_time_s": 2.0
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "final_state_seat_conflict",
+          "gate_stage_mismatch"
+        ],
+        "name": "all_gate_partial",
+        "row": {
+          "failure_mode": "none",
+          "final_state": "rope_in_both_clips",
+          "first_clip_seated": true,
+          "first_clip_seated_time_s": 2.0,
+          "max_stage": 10,
+          "regrasped": false,
+          "rope_grasped": true,
+          "rope_grasped_time_s": 1.0,
+          "rope_released": false,
+          "second_clip_seated": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "gate_bool_missing"
+        ],
+        "name": "gate_bool_missing",
+        "row": {
+          "failure_mode": "none",
+          "final_state": "rope_in_both_clips",
+          "first_clip_seated": true,
+          "first_clip_seated_time_s": 2.0,
+          "max_stage": 10,
+          "regrasped": false,
+          "rope_released": false,
+          "second_clip_seated": true,
+          "second_clip_seated_time_s": 3.0
+        }
+      },
+      {
+        "episode_duration_s": null,
         "expected_codes": [
           "failure_mode_stage_conflict"
         ],
@@ -1201,6 +1294,41 @@
           "first_clip_seated": false,
           "max_stage": 0,
           "regrasped": false,
+          "rope_grasped": false,
+          "rope_released": false,
+          "second_clip_seated": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [],
+        "name": "clean_historical_achieved_then_lost",
+        "row": {
+          "failure_mode": "first_clip_unseated_after_seating",
+          "final_state": "rope_free",
+          "first_clip_seated": false,
+          "first_clip_seated_time_s": 2.0,
+          "max_stage": 6,
+          "regrasped": false,
+          "rope_grasped": true,
+          "rope_grasped_time_s": 1.0,
+          "rope_released": false,
+          "second_clip_seated": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "bool_time_mismatch"
+        ],
+        "name": "bool_false_time_present",
+        "row": {
+          "failure_mode": "grasp_miss",
+          "final_state": "rope_free",
+          "first_clip_seated": false,
+          "max_stage": 0,
+          "regrasped": false,
+          "regrasped_time_s": 1.0,
           "rope_grasped": false,
           "rope_released": false,
           "second_clip_seated": false
@@ -1616,7 +1744,7 @@
       "stage_field": "max_stage",
       "success_final_state": "rope_in_both_clips",
       "task": "routing_d1",
-      "taxonomy_hash": "125803d525096c99de77a34494b19278fb78baaa647b56b22d88a01233079d7a",
+      "taxonomy_hash": "c48bd7edf419427025cb3513abf95cc6234065db83ad13801b08658aea8be888",
       "taxonomy_version": "s10_v1",
       "time_fields": [
         "rope_grasped_time_s",
@@ -1630,7 +1758,7 @@
       ]
     }
   },
-  "square_d1": {
+  "square_d1@s7_v1": {
     "fixtures": [
       {
         "episode_duration_s": null,
@@ -1799,6 +1927,25 @@
           "failure_mode": "no_useful_approach",
           "final_state": "nut_on_table",
           "grasp_acquired": true,
+          "grasp_lost": false,
+          "max_stage": 0,
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "bool_time_mismatch"
+        ],
+        "name": "bool_false_time_present",
+        "row": {
+          "approach_reached": false,
+          "failure_mode": "no_useful_approach",
+          "final_state": "nut_on_table",
+          "grasp_acquired": false,
+          "grasp_acquired_time_s": 1.0,
           "grasp_lost": false,
           "max_stage": 0,
           "nut_fully_seated": false,
@@ -2047,7 +2194,7 @@
       "stage_field": "max_stage",
       "success_final_state": "nut_fully_seated_released",
       "task": "square_d1",
-      "taxonomy_hash": "4324519b124f59ca0eb7b4308c1db5bcc2841b3322013543726ac8075e6e1558",
+      "taxonomy_hash": "752ce1befc51692c5ac645c1568ebcbbdb034c4f27c7721d558d7a6dd2b4ac2d",
       "taxonomy_version": "s7_v1",
       "time_fields": [
         "approach_time_s",
@@ -2062,7 +2209,7 @@
       ]
     }
   },
-  "square_d2": {
+  "square_d2@s7_v1": {
     "fixtures": [
       {
         "episode_duration_s": null,
@@ -2231,6 +2378,25 @@
           "failure_mode": "no_useful_approach",
           "final_state": "nut_on_table",
           "grasp_acquired": true,
+          "grasp_lost": false,
+          "max_stage": 0,
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "bool_time_mismatch"
+        ],
+        "name": "bool_false_time_present",
+        "row": {
+          "approach_reached": false,
+          "failure_mode": "no_useful_approach",
+          "final_state": "nut_on_table",
+          "grasp_acquired": false,
+          "grasp_acquired_time_s": 1.0,
           "grasp_lost": false,
           "max_stage": 0,
           "nut_fully_seated": false,
@@ -2479,7 +2645,7 @@
       "stage_field": "max_stage",
       "success_final_state": "nut_fully_seated_released",
       "task": "square_d2",
-      "taxonomy_hash": "4324519b124f59ca0eb7b4308c1db5bcc2841b3322013543726ac8075e6e1558",
+      "taxonomy_hash": "752ce1befc51692c5ac645c1568ebcbbdb034c4f27c7721d558d7a6dd2b4ac2d",
       "taxonomy_version": "s7_v1",
       "time_fields": [
         "approach_time_s",

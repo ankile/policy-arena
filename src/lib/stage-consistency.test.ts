@@ -28,20 +28,23 @@ interface TaskFixtures {
   fixtures: Fixture[];
 }
 
+// Keys are `${task}@${taxonomy_version}` so a candidate taxonomy's vectors
+// coexist with the live taxonomy's instead of clobbering them.
 const tasks = Object.entries(fixturesDoc as unknown as Record<string, TaskFixtures>);
 
 test("fixtures file covers the registered tasks", () => {
-  const names = tasks.map(([name]) => name);
-  expect(names).toContain("routing_d1");
-  expect(names).toContain("marker_d2");
-  expect(names).toContain("square_d2");
-  expect(names.length).toBeGreaterThanOrEqual(5);
+  const taskNames = tasks.map(([key]) => key.split("@")[0]);
+  expect(taskNames).toContain("routing_d1");
+  expect(taskNames).toContain("marker_d2");
+  expect(taskNames).toContain("square_d2");
+  expect(taskNames.length).toBeGreaterThanOrEqual(5);
 });
 
-for (const [task, { spec, fixtures }] of tasks) {
-  describe(`oracle fixtures: ${task}@${spec.taxonomy_version}`, () => {
+for (const [key, { spec, fixtures }] of tasks) {
+  describe(`oracle fixtures: ${key}`, () => {
     test("spec shape is interpretable", () => {
-      expect(spec.task).toBe(task);
+      expect(spec.task).toBe(key.split("@")[0]);
+      expect(spec.taxonomy_version).toBe(key.split("@")[1]);
       expect(spec.ladder.levels.length).toBe(spec.ladder.max_stage + 1);
       expect(spec.failure_modes).toContain("none");
       expect(spec.final_states).toContain(spec.success_final_state);

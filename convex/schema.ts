@@ -5,8 +5,9 @@ import { v } from "convex/values";
 export default defineSchema({
   ...authTables,
 
-  // Overrides authTables.users to add the Hugging Face username, which is the
-  // key the ARENA_EDITORS allowlist matches against (see access.ts).
+  // Overrides authTables.users to add the Hugging Face username — the
+  // DISPLAY/audit string; authorization keys on the OIDC sub via
+  // authAccounts.providerAccountId + ARENA_EDITOR_SUBS (see access.ts).
   users: defineTable({
     name: v.optional(v.string()),
     image: v.optional(v.string()),

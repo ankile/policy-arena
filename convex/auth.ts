@@ -4,7 +4,7 @@ import { convexAuth } from "@convex-dev/auth/server";
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
   providers: [
     Huggingface({
-      // "openid profile" only — the allowlist keys on the HF username, and
+      // "openid profile" only — the allowlist keys on the OIDC sub, and
       // omitting "email" means the OAuth app does not need the email scope.
       authorization: { params: { scope: "openid profile" } },
       profile(profile) {

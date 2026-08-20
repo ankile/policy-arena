@@ -185,6 +185,33 @@ export function validateStageLabel(
 
   const gatedLevels = ladder.levels.filter(gated);
 
+  // The achieved-then-lost exception feeds the GATE checks too: max_stage is a
+  // HIGH-WATER mark, so a gate bool achieved and then lost (terminal false,
+  // historical event time retained, matching failure mode active) still counts
+  // as reached. Mirrors the same logic in Python validate_label.
+  const failureMode = String(row[spec.failure_mode_field] ?? "").trim();
+  const historicalBool: string | undefined =
+    spec.constraints.historical_event_failure_modes[failureMode];
+  const achieved = (field: string, terminal: boolean): boolean =>
+    terminal ||
+    (field === historicalBool && timeValue(row[`${field}_time_s`]) !== null);
+  // The high-water reading applies to SINGLE and ANY gates only: an ALL gate
+  // asserts a JOINT state, which a lost constituent falsifies at the terminal
+  // snapshot (reached-then-lost joint states are encoded via the mode's
+  // forbidden-stage set instead). Mirrors Python _gate_true.
+  const gateTrueFor = (
+    lvl: StageSpecLevel,
+    vals: Record<string, boolean>
+  ): boolean => {
+    if (gateReduce(lvl) === "all") return gateSatisfied(lvl, vals);
+    return gateSatisfied(
+      lvl,
+      Object.fromEntries(
+        Object.entries(vals).map(([f, v]) => [f, achieved(f, v)])
+      )
+    );
+  };
+
   // --- gate biconditionals: max_stage >= sid  <=>  gate predicate  <=>  time present ---
   for (const lvl of gatedLevels) {
     const fields = gateBools(lvl);
@@ -201,7 +228,7 @@ export function validateStageLabel(
       }
       continue;
     }
-    const gateTrue = gateSatisfied(lvl, vals as Record<string, boolean>);
+    const gateTrue = gateTrueFor(lvl, vals as Record<string, boolean>);
     const reached = maxStage >= lvl.sid;
     if (gateTrue !== reached) {
       out.push({
@@ -216,7 +243,9 @@ export function validateStageLabel(
     if (tfield && timeFieldSet.has(tfield)) {
       const b = vals[fields[0]];
       const present = timeValue(row[tfield]) !== null;
-      if (b !== present) {
+      const retainedHistorical =
+        fields[0] === historicalBool && b === false && present;
+      if (b !== present && !retainedHistorical) {
         out.push({
           code: "gate_time_mismatch",
           message:
@@ -229,9 +258,8 @@ export function validateStageLabel(
   }
 
   // --- every boolean event paired with a *_time_s: bool <=> time present ---
-  const failureMode = String(row[spec.failure_mode_field] ?? "").trim();
-  const historicalBool: string | undefined =
-    spec.constraints.historical_event_failure_modes[failureMode];
+  // (failureMode / historicalBool computed above the gate loop, which shares
+  // the achieved-then-lost exception.)
   const singleGateFields = new Set(
     gatedLevels.filter((l) => l.gate_field != null).map((l) => l.gate_field as string)
   );

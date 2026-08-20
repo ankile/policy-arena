@@ -33,12 +33,15 @@ async function viewerSub(
   ctx: QueryCtx | MutationCtx,
   userId: Id<"users">
 ): Promise<string | null> {
+  // .first(), not .unique(): this feeds the NON-THROWING viewerIsEditor path
+  // (surfaced by users:viewer, an app-wide query) — a duplicate authAccounts
+  // row must degrade to "not an editor", never take down the viewer query.
   const account = await ctx.db
     .query("authAccounts")
     .withIndex("userIdAndProvider", (q) =>
       q.eq("userId", userId).eq("provider", "huggingface")
     )
-    .unique();
+    .first();
   return account?.providerAccountId ?? null;
 }
 
@@ -65,7 +68,14 @@ export async function requireEditor(
     throw new Error(`HF account "${sub}" is not an allowlisted editor`);
   }
   const user = await ctx.db.get(userId);
-  return user?.username ?? sub;
+  const username = user?.username;
+  if (!username) {
+    // The username is the audit string recorded on every review row; an
+    // allowlisted sub with no username on record would silently write opaque
+    // attributions — fail loud instead (matches the pre-hardening behavior).
+    throw new Error("Signed-in user has no Hugging Face username on record");
+  }
+  return username;
 }
 
 /**
