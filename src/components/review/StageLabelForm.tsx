@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ExportedStageSpec, StageLabelRow, Violation } from "../../../convex/stageConsistency";
 
 // ---------------------------------------------------------------------------
@@ -163,6 +163,40 @@ export function StageLabelForm({
   const stage = typeof row[spec.stage_field] === "number" ? (row[spec.stage_field] as number) : null;
   const boolSet = new Set(spec.bool_fields);
   const timeSet = new Set(spec.time_fields);
+
+  // DISPLAY pairing of bools to their event time. The validator's bool<=>time
+  // contract only couples strict `<bool>_time_s` names (the frozen consistency
+  // convention); semantically-paired names like approach_reached /
+  // approach_time_s are joined here for the FORM only, by longest-prefix match
+  // (convention pairs claimed first, each time claimed at most once, verified
+  // against all five specs' field descriptions 2026-08-20). No validation,
+  // storage, or export changes ride on this map.
+  const { pairedTime, claimedTimes } = useMemo(() => {
+    const paired = new Map<string, string>();
+    const claimed = new Set<string>();
+    for (const bf of spec.bool_fields) {
+      const tf = `${bf}_time_s`;
+      if (timeSet.has(tf)) {
+        paired.set(bf, tf);
+        claimed.add(tf);
+      }
+    }
+    for (const bf of spec.bool_fields) {
+      if (paired.has(bf)) continue;
+      const parts = bf.split("_");
+      for (let k = parts.length - 1; k >= 1; k--) {
+        const tf = `${parts.slice(0, k).join("_")}_time_s`;
+        if (timeSet.has(tf) && !claimed.has(tf)) {
+          paired.set(bf, tf);
+          claimed.add(tf);
+          break;
+        }
+      }
+    }
+    return { pairedTime: paired, claimedTimes: claimed };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- timeSet is
+    // rebuilt each render from spec; the pairing depends only on spec.
+  }, [spec]);
   const selectedLevel =
     stage !== null ? spec.ladder.levels.find((lvl) => lvl.sid === stage) : undefined;
   const [showFullLadder, setShowFullLadder] = useState(false);
@@ -282,8 +316,8 @@ export function StageLabelForm({
         {spec.event_fields.map((f) => {
           if (boolSet.has(f.name)) {
             const bf = f.name;
-            const tf = `${bf}_time_s`;
-            const hasTime = timeSet.has(tf);
+            const tf = pairedTime.get(bf) ?? `${bf}_time_s`;
+            const hasTime = pairedTime.has(bf);
             const boolVal = row[bf] === true;
             const t = hasTime ? timeOf(tf) : null;
             const rowFlagged = flagged.has(bf) || (hasTime && flagged.has(tf));
@@ -333,9 +367,9 @@ export function StageLabelForm({
               </div>
             );
           }
-          // A standalone time field (no bool named without the _time_s suffix).
+          // A standalone time field (no bool claims it, by convention or pairing).
           const tf = f.name;
-          if (spec.bool_fields.some((bf) => `${bf}_time_s` === tf)) {
+          if (claimedTimes.has(tf)) {
             return null; // rendered inline with its bool above
           }
           const t = timeOf(tf);
