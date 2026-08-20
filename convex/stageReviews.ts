@@ -1,11 +1,17 @@
 import { query, mutation } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { requireEditorOrService } from "./access";
-import { validateStageLabel, type ExportedStageSpec } from "./stageConsistency";
+import {
+  canonicalizeStageLabel,
+  validateStageLabel,
+  type ExportedStageSpec,
+} from "./stageConsistency";
 
 /**
- * Human stage-label reviews are APPEND-ONLY: every save inserts a row; readers
+ * Human stage-label reviews are APPEND-ONLY (with one deliberate exception:
+ * consecutive drafts collapse — see below): every save inserts a row; readers
  * fold to the latest row per (dataset_repo, episode_index, taxonomy_version,
  * reviewer). Per-reviewer folding is what makes blinded double-labeling
  * representable — two reviewers each hold a live latest row and disagreement
@@ -16,12 +22,17 @@ import { validateStageLabel, type ExportedStageSpec } from "./stageConsistency";
  *  - confirmed:  the prefill prediction is right as-is
  *  - corrected:  the reviewer edited the label (gold-eligible, like confirmed)
  *  - uncertain:  reviewed but not gold-eligible; violations allowed
- *  - draft:      lossless autosave of in-progress edits; violations allowed
+ *  - draft:      lossless autosave of in-progress edits; violations allowed.
+ *    A draft REPLACES the same reviewer's previous draft (working state, not
+ *    audit trail) so autosave cannot grow the table unboundedly.
  *  - cleared:    undo — the reviewer's row folds out entirely
  *
- * confirmed/corrected saves are gated by the SAME TS rule interpreter the form
- * uses (stageConsistency.ts, fixture-pinned to the Python oracle); Python
- * re-validates authoritatively at gold consolidation.
+ * Every stored label is canonicalized against the spec's field kinds before
+ * insert (stringly-typed CSV replays would otherwise manufacture false
+ * disagreements against web-typed rows), and confirmed/corrected saves are
+ * gated by the SAME TS rule interpreter the form uses (stageConsistency.ts,
+ * fixture-pinned to the Python oracle); Python re-validates authoritatively at
+ * gold consolidation.
  */
 
 const STATUSES = ["confirmed", "corrected", "uncertain", "draft", "cleared"] as const;
@@ -30,6 +41,15 @@ const COMMITTED = ["confirmed", "corrected"] as const;
 /** Stable per-reviewer fold key: auth user id for humans, name for service backfills. */
 function reviewerKey(row: { reviewer: string; reviewer_user_id?: string | null }): string {
   return row.reviewer_user_id ?? `svc:${row.reviewer}`;
+}
+
+/** Later-wins ordering with a deterministic tiebreak: a replay re-run with an
+ * identical saved_at_override must supersede the earlier row, not lose to it. */
+function isNewer(
+  a: { saved_at: number; _creationTime: number },
+  b: { saved_at: number; _creationTime: number }
+): boolean {
+  return a.saved_at > b.saved_at || (a.saved_at === b.saved_at && a._creationTime > b._creationTime);
 }
 
 export const save = mutation({
@@ -57,6 +77,9 @@ export const save = mutation({
     if (!(STATUSES as readonly string[]).includes(args.status)) {
       throw new Error(`Invalid stage review status: ${args.status}`);
     }
+    if (args.episode_index < BigInt(0)) {
+      throw new Error(`episode_index must be non-negative, got ${args.episode_index}`);
+    }
     const specRow = await ctx.db
       .query("stageTaskSpecs")
       .withIndex("by_task_version", (q) =>
@@ -69,17 +92,38 @@ export const save = mutation({
           "a review must reference an exported taxonomy version"
       );
     }
+    const spec = specRow.spec as ExportedStageSpec;
+
+    let label = args.label;
     if (args.status === "cleared") {
-      if (args.label !== undefined) {
+      if (label !== undefined) {
         throw new Error("A cleared review must not carry a label");
       }
     } else {
-      if (args.label === undefined) {
+      if (label === undefined) {
         throw new Error(`A ${args.status} review requires the full label row`);
       }
+      const canonical = canonicalizeStageLabel(spec, label);
+      if (canonical.unknownKeys.length > 0) {
+        throw new Error(
+          `label carries keys outside the spec's editable fields: ` +
+            canonical.unknownKeys.join(", ")
+        );
+      }
+      label = canonical.label;
       if ((COMMITTED as readonly string[]).includes(args.status)) {
-        const spec = specRow.spec as ExportedStageSpec;
-        const violations = validateStageLabel(spec, args.label, args.episode_duration_s);
+        // Time bounds use the AUTHORITATIVE duration from the prefill row when
+        // one exists — a client-supplied (or omitted) duration must not be able
+        // to disable the bounds check the Python oracle will later enforce.
+        const prefills = await ctx.db
+          .query("stagePrefills")
+          .withIndex("by_repo_episode", (q) =>
+            q.eq("dataset_repo", args.dataset_repo).eq("episode_index", args.episode_index)
+          )
+          .collect();
+        const prefill = prefills.find((p) => p.taxonomy_version === args.taxonomy_version);
+        const duration = prefill?.episode_duration_s ?? args.episode_duration_s;
+        const violations = validateStageLabel(spec, label, duration);
         if (violations.length > 0) {
           throw new Error(
             `label is internally inconsistent (${violations.length} violation(s)): ` +
@@ -88,33 +132,69 @@ export const save = mutation({
         }
       }
     }
+
     let reviewer: string;
+    let reviewerUserId: Id<"users"> | undefined;
     if (principal === "service") {
       if (args.reviewer_override === undefined) {
         throw new Error("service saves must carry reviewer_override for attribution");
       }
       reviewer = args.reviewer_override;
+      // Attach the stable user id when the overridden reviewer has a known
+      // account, so a service replay of a human's historical labels folds
+      // under the SAME identity as their live web reviews (otherwise one
+      // person holds two fold keys and double-counts / self-disagrees).
+      const users = await ctx.db.query("users").collect();
+      const matches = users.filter((u) => u.username === reviewer);
+      reviewerUserId = matches.length === 1 ? matches[0]._id : undefined;
     } else {
       if (args.reviewer_override !== undefined || args.saved_at_override !== undefined) {
         throw new Error("reviewer/saved_at overrides are reserved for the service principal");
       }
       reviewer = principal;
+      reviewerUserId = (await getAuthUserId(ctx)) ?? undefined;
     }
-    const userId = await getAuthUserId(ctx);
-    return await ctx.db.insert("stageReviews", {
+
+    const doc = {
       task: args.task,
       dataset_repo: args.dataset_repo,
       episode_index: args.episode_index,
       taxonomy_version: args.taxonomy_version,
       status: args.status,
-      label: args.label,
+      label,
       notes: args.notes,
       prefill_pushed_at: args.prefill_pushed_at,
       blind: args.blind,
       reviewer,
-      reviewer_user_id: userId ?? undefined,
+      reviewer_user_id: reviewerUserId,
       saved_at: principal === "service" ? (args.saved_at_override ?? Date.now()) : Date.now(),
-    });
+    };
+
+    if (args.status === "draft") {
+      // Collapse consecutive drafts: replace this reviewer's latest row when
+      // it is itself a draft (autosave is working state, not audit trail).
+      const rows = (
+        await ctx.db
+          .query("stageReviews")
+          .withIndex("by_repo_episode", (q) =>
+            q.eq("dataset_repo", args.dataset_repo).eq("episode_index", args.episode_index)
+          )
+          .collect()
+      ).filter(
+        (r) =>
+          r.taxonomy_version === args.taxonomy_version &&
+          reviewerKey(r) === (reviewerUserId ?? `svc:${reviewer}`)
+      );
+      let latest: (typeof rows)[number] | undefined;
+      for (const row of rows) {
+        if (latest === undefined || isNewer(row, latest)) latest = row;
+      }
+      if (latest !== undefined && latest.status === "draft") {
+        await ctx.db.replace(latest._id, doc);
+        return latest._id;
+      }
+    }
+    return await ctx.db.insert("stageReviews", doc);
   },
 });
 
@@ -139,7 +219,7 @@ export const latestForRepo = query({
     for (const row of rows) {
       const key = `${row.episode_index}|${row.taxonomy_version}|${reviewerKey(row)}`;
       const prev = latest.get(key);
-      if (prev === undefined || row.saved_at > prev.saved_at) {
+      if (prev === undefined || isNewer(row, prev)) {
         latest.set(key, row);
       }
     }
@@ -165,7 +245,7 @@ export const historyForEpisode = query({
         q.eq("dataset_repo", args.dataset_repo).eq("episode_index", args.episode_index)
       )
       .collect();
-    return rows.sort((a, b) => a.saved_at - b.saved_at);
+    return rows.sort((a, b) => (isNewer(a, b) ? 1 : -1));
   },
 });
 
@@ -201,7 +281,7 @@ export const disagreementsForRepo = query({
     for (const row of rows) {
       const key = `${row.episode_index}|${reviewerKey(row)}`;
       const prev = latest.get(key);
-      if (prev === undefined || row.saved_at > prev.saved_at) {
+      if (prev === undefined || isNewer(row, prev)) {
         latest.set(key, row);
       }
     }

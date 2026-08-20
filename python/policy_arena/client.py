@@ -422,9 +422,25 @@ class PolicyArenaClient:
             totals["replaced"] += int(result["replaced"])
         return totals
 
+    def prune_stale_stage_prefills(
+        self, dataset_repo: str, *, taxonomy_version: str, keep_episode_indices: list[int]
+    ) -> int:
+        """Delete prefills for episodes NOT in this push (wholesale-replace tail)."""
+        result = self._mutation(
+            "stagePrefills:pruneStale",
+            {
+                "dataset_repo": dataset_repo,
+                "taxonomy_version": taxonomy_version,
+                "keep_episode_indices": [ConvexInt64(int(e)) for e in keep_episode_indices],
+            },
+        )
+        return int(result["pruned"])
+
     def fetch_stage_prefills(
         self, dataset_repo: str, *, taxonomy_version: str | None = None
     ) -> list[dict]:
+        """Prefill rows for a repo. NOTE: int64 fields (``episode_index``) come
+        back as ``ConvexInt64`` — use ``.value`` or ``int()`` on ``.value``."""
         args: dict = {"dataset_repo": dataset_repo}
         if taxonomy_version is not None:
             args["taxonomy_version"] = taxonomy_version

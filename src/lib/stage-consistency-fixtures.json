@@ -160,6 +160,24 @@
       {
         "episode_duration_s": null,
         "expected_codes": [
+          "final_state_unknown"
+        ],
+        "name": "final_state_unknown",
+        "row": {
+          "approach_reached": false,
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "not_a_real_state",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": 0,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
           "bool_time_mismatch"
         ],
         "name": "bool_time_mismatch",
@@ -203,6 +221,162 @@
         "row": {
           "approach_reached": false,
           "approach_time_s": 99.0,
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "marker_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": 0,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "success_failure_mismatch",
+          "success_final_state"
+        ],
+        "name": "coercion_stage_leading_zero_string",
+        "row": {
+          "approach_reached": false,
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "marker_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": "07",
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "unparseable_stage"
+        ],
+        "name": "coercion_stage_underscore_string",
+        "row": {
+          "approach_reached": false,
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "marker_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": "1_0",
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "unparseable_stage"
+        ],
+        "name": "coercion_stage_unicode_digit_string",
+        "row": {
+          "approach_reached": false,
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "marker_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": "\uff15",
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [],
+        "name": "coercion_stage_float_truncation",
+        "row": {
+          "approach_reached": false,
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "marker_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": 1.9,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_inf_string",
+        "row": {
+          "approach_reached": false,
+          "approach_time_s": "inf",
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "marker_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": 0,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_hex_string",
+        "row": {
+          "approach_reached": false,
+          "approach_time_s": "0x10",
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "marker_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": 0,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_underscore_string",
+        "row": {
+          "approach_reached": false,
+          "approach_time_s": "1_0",
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "marker_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": 0,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_exponent_string",
+        "row": {
+          "approach_reached": false,
+          "approach_time_s": "1e2",
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "marker_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": 0,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_numeric_string",
+        "row": {
+          "approach_reached": false,
+          "approach_time_s": "2.5",
           "early_failure_mode_v2": "no_useful_approach",
           "final_state": "marker_on_table",
           "grasp_acquired": false,
@@ -613,6 +787,24 @@
       {
         "episode_duration_s": null,
         "expected_codes": [
+          "final_state_unknown"
+        ],
+        "name": "final_state_unknown",
+        "row": {
+          "approach_reached": false,
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "not_a_real_state",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": 0,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
           "bool_time_mismatch"
         ],
         "name": "bool_time_mismatch",
@@ -656,6 +848,162 @@
         "row": {
           "approach_reached": false,
           "approach_time_s": 99.0,
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "marker_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": 0,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "success_failure_mismatch",
+          "success_final_state"
+        ],
+        "name": "coercion_stage_leading_zero_string",
+        "row": {
+          "approach_reached": false,
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "marker_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": "07",
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "unparseable_stage"
+        ],
+        "name": "coercion_stage_underscore_string",
+        "row": {
+          "approach_reached": false,
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "marker_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": "1_0",
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "unparseable_stage"
+        ],
+        "name": "coercion_stage_unicode_digit_string",
+        "row": {
+          "approach_reached": false,
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "marker_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": "\uff15",
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [],
+        "name": "coercion_stage_float_truncation",
+        "row": {
+          "approach_reached": false,
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "marker_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": 1.9,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_inf_string",
+        "row": {
+          "approach_reached": false,
+          "approach_time_s": "inf",
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "marker_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": 0,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_hex_string",
+        "row": {
+          "approach_reached": false,
+          "approach_time_s": "0x10",
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "marker_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": 0,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_underscore_string",
+        "row": {
+          "approach_reached": false,
+          "approach_time_s": "1_0",
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "marker_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": 0,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_exponent_string",
+        "row": {
+          "approach_reached": false,
+          "approach_time_s": "1e2",
+          "early_failure_mode_v2": "no_useful_approach",
+          "final_state": "marker_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "marker_fully_seated": false,
+          "marker_released": false,
+          "max_stage_v2": 0,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_numeric_string",
+        "row": {
+          "approach_reached": false,
+          "approach_time_s": "2.5",
           "early_failure_mode_v2": "no_useful_approach",
           "final_state": "marker_on_table",
           "grasp_acquired": false,
@@ -1081,6 +1429,23 @@
       {
         "episode_duration_s": null,
         "expected_codes": [
+          "final_state_unknown"
+        ],
+        "name": "final_state_unknown",
+        "row": {
+          "failure_mode": "grasp_miss",
+          "final_state": "not_a_real_state",
+          "first_clip_seated": false,
+          "max_stage": 0,
+          "regrasped": false,
+          "rope_grasped": false,
+          "rope_released": false,
+          "second_clip_seated": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
           "bool_time_mismatch"
         ],
         "name": "bool_time_mismatch",
@@ -1349,6 +1714,157 @@
           "regrasped": false,
           "rope_grasped": true,
           "rope_grasped_time_s": 99.0,
+          "rope_released": false,
+          "second_clip_seated": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "failure_mode_stage_conflict",
+          "gate_stage_mismatch"
+        ],
+        "name": "coercion_stage_leading_zero_string",
+        "row": {
+          "failure_mode": "grasp_miss",
+          "final_state": "rope_free",
+          "first_clip_seated": false,
+          "max_stage": "07",
+          "regrasped": false,
+          "rope_grasped": false,
+          "rope_released": false,
+          "second_clip_seated": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "unparseable_stage"
+        ],
+        "name": "coercion_stage_underscore_string",
+        "row": {
+          "failure_mode": "grasp_miss",
+          "final_state": "rope_free",
+          "first_clip_seated": false,
+          "max_stage": "1_0",
+          "regrasped": false,
+          "rope_grasped": false,
+          "rope_released": false,
+          "second_clip_seated": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "unparseable_stage"
+        ],
+        "name": "coercion_stage_unicode_digit_string",
+        "row": {
+          "failure_mode": "grasp_miss",
+          "final_state": "rope_free",
+          "first_clip_seated": false,
+          "max_stage": "\uff15",
+          "regrasped": false,
+          "rope_grasped": false,
+          "rope_released": false,
+          "second_clip_seated": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [],
+        "name": "coercion_stage_float_truncation",
+        "row": {
+          "failure_mode": "grasp_miss",
+          "final_state": "rope_free",
+          "first_clip_seated": false,
+          "max_stage": 1.9,
+          "regrasped": false,
+          "rope_grasped": false,
+          "rope_released": false,
+          "second_clip_seated": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_inf_string",
+        "row": {
+          "failure_mode": "grasp_miss",
+          "final_state": "rope_free",
+          "first_clip_seated": false,
+          "max_stage": 0,
+          "regrasped": false,
+          "rope_grasped": false,
+          "rope_grasped_time_s": "inf",
+          "rope_released": false,
+          "second_clip_seated": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_hex_string",
+        "row": {
+          "failure_mode": "grasp_miss",
+          "final_state": "rope_free",
+          "first_clip_seated": false,
+          "max_stage": 0,
+          "regrasped": false,
+          "rope_grasped": false,
+          "rope_grasped_time_s": "0x10",
+          "rope_released": false,
+          "second_clip_seated": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_underscore_string",
+        "row": {
+          "failure_mode": "grasp_miss",
+          "final_state": "rope_free",
+          "first_clip_seated": false,
+          "max_stage": 0,
+          "regrasped": false,
+          "rope_grasped": false,
+          "rope_grasped_time_s": "1_0",
+          "rope_released": false,
+          "second_clip_seated": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [
+          "gate_time_mismatch"
+        ],
+        "name": "coercion_time_exponent_string",
+        "row": {
+          "failure_mode": "grasp_miss",
+          "final_state": "rope_free",
+          "first_clip_seated": false,
+          "max_stage": 0,
+          "regrasped": false,
+          "rope_grasped": false,
+          "rope_grasped_time_s": "1e2",
+          "rope_released": false,
+          "second_clip_seated": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [
+          "gate_time_mismatch"
+        ],
+        "name": "coercion_time_numeric_string",
+        "row": {
+          "failure_mode": "grasp_miss",
+          "final_state": "rope_free",
+          "first_clip_seated": false,
+          "max_stage": 0,
+          "regrasped": false,
+          "rope_grasped": false,
+          "rope_grasped_time_s": "2.5",
           "rope_released": false,
           "second_clip_seated": false
         }
@@ -1919,6 +2435,24 @@
       {
         "episode_duration_s": null,
         "expected_codes": [
+          "final_state_unknown"
+        ],
+        "name": "final_state_unknown",
+        "row": {
+          "approach_reached": false,
+          "failure_mode": "no_useful_approach",
+          "final_state": "not_a_real_state",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "max_stage": 0,
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
           "bool_time_mismatch"
         ],
         "name": "bool_time_mismatch",
@@ -1962,6 +2496,162 @@
         "row": {
           "approach_reached": false,
           "approach_time_s": 99.0,
+          "failure_mode": "no_useful_approach",
+          "final_state": "nut_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "max_stage": 0,
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "success_failure_mismatch",
+          "success_final_state"
+        ],
+        "name": "coercion_stage_leading_zero_string",
+        "row": {
+          "approach_reached": false,
+          "failure_mode": "no_useful_approach",
+          "final_state": "nut_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "max_stage": "07",
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "unparseable_stage"
+        ],
+        "name": "coercion_stage_underscore_string",
+        "row": {
+          "approach_reached": false,
+          "failure_mode": "no_useful_approach",
+          "final_state": "nut_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "max_stage": "1_0",
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "unparseable_stage"
+        ],
+        "name": "coercion_stage_unicode_digit_string",
+        "row": {
+          "approach_reached": false,
+          "failure_mode": "no_useful_approach",
+          "final_state": "nut_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "max_stage": "\uff15",
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [],
+        "name": "coercion_stage_float_truncation",
+        "row": {
+          "approach_reached": false,
+          "failure_mode": "no_useful_approach",
+          "final_state": "nut_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "max_stage": 1.9,
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_inf_string",
+        "row": {
+          "approach_reached": false,
+          "approach_time_s": "inf",
+          "failure_mode": "no_useful_approach",
+          "final_state": "nut_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "max_stage": 0,
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_hex_string",
+        "row": {
+          "approach_reached": false,
+          "approach_time_s": "0x10",
+          "failure_mode": "no_useful_approach",
+          "final_state": "nut_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "max_stage": 0,
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_underscore_string",
+        "row": {
+          "approach_reached": false,
+          "approach_time_s": "1_0",
+          "failure_mode": "no_useful_approach",
+          "final_state": "nut_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "max_stage": 0,
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_exponent_string",
+        "row": {
+          "approach_reached": false,
+          "approach_time_s": "1e2",
+          "failure_mode": "no_useful_approach",
+          "final_state": "nut_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "max_stage": 0,
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_numeric_string",
+        "row": {
+          "approach_reached": false,
+          "approach_time_s": "2.5",
           "failure_mode": "no_useful_approach",
           "final_state": "nut_on_table",
           "grasp_acquired": false,
@@ -2370,6 +3060,24 @@
       {
         "episode_duration_s": null,
         "expected_codes": [
+          "final_state_unknown"
+        ],
+        "name": "final_state_unknown",
+        "row": {
+          "approach_reached": false,
+          "failure_mode": "no_useful_approach",
+          "final_state": "not_a_real_state",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "max_stage": 0,
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
           "bool_time_mismatch"
         ],
         "name": "bool_time_mismatch",
@@ -2413,6 +3121,162 @@
         "row": {
           "approach_reached": false,
           "approach_time_s": 99.0,
+          "failure_mode": "no_useful_approach",
+          "final_state": "nut_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "max_stage": 0,
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "success_failure_mismatch",
+          "success_final_state"
+        ],
+        "name": "coercion_stage_leading_zero_string",
+        "row": {
+          "approach_reached": false,
+          "failure_mode": "no_useful_approach",
+          "final_state": "nut_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "max_stage": "07",
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "unparseable_stage"
+        ],
+        "name": "coercion_stage_underscore_string",
+        "row": {
+          "approach_reached": false,
+          "failure_mode": "no_useful_approach",
+          "final_state": "nut_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "max_stage": "1_0",
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [
+          "unparseable_stage"
+        ],
+        "name": "coercion_stage_unicode_digit_string",
+        "row": {
+          "approach_reached": false,
+          "failure_mode": "no_useful_approach",
+          "final_state": "nut_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "max_stage": "\uff15",
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": null,
+        "expected_codes": [],
+        "name": "coercion_stage_float_truncation",
+        "row": {
+          "approach_reached": false,
+          "failure_mode": "no_useful_approach",
+          "final_state": "nut_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "max_stage": 1.9,
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_inf_string",
+        "row": {
+          "approach_reached": false,
+          "approach_time_s": "inf",
+          "failure_mode": "no_useful_approach",
+          "final_state": "nut_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "max_stage": 0,
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_hex_string",
+        "row": {
+          "approach_reached": false,
+          "approach_time_s": "0x10",
+          "failure_mode": "no_useful_approach",
+          "final_state": "nut_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "max_stage": 0,
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_underscore_string",
+        "row": {
+          "approach_reached": false,
+          "approach_time_s": "1_0",
+          "failure_mode": "no_useful_approach",
+          "final_state": "nut_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "max_stage": 0,
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_exponent_string",
+        "row": {
+          "approach_reached": false,
+          "approach_time_s": "1e2",
+          "failure_mode": "no_useful_approach",
+          "final_state": "nut_on_table",
+          "grasp_acquired": false,
+          "grasp_lost": false,
+          "max_stage": 0,
+          "nut_fully_seated": false,
+          "nut_released": false,
+          "pregrasp_alignment_reached": false
+        }
+      },
+      {
+        "episode_duration_s": 500.0,
+        "expected_codes": [],
+        "name": "coercion_time_numeric_string",
+        "row": {
+          "approach_reached": false,
+          "approach_time_s": "2.5",
           "failure_mode": "no_useful_approach",
           "final_state": "nut_on_table",
           "grasp_acquired": false,

@@ -83,25 +83,39 @@ export function asBool(v: unknown): boolean | null {
   return null; // includes "", "nan", "none", and anything unrecognized
 }
 
-/** Python _time_value: a present finite-or-±inf timestamp as number, else null. */
+// Strict decimal syntax for STRING-typed timestamps/stages — the SAME grammar
+// the Python validator parses (plain ASCII decimals + exponent; no "inf",
+// underscores, hex, or non-ASCII digits). Keeps the two languages'
+// coercions byte-identical on string inputs (2026-08-19 differential fuzz).
+const DECIMAL_RE = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+const INT_RE = /^[+-]?\d+$/;
+
+/** Prototype-safe record lookup: constraint maps are plain JSON objects, so a
+ * key like "toString"/"constructor" must resolve to undefined, not to
+ * Object.prototype members (which crash downstream .includes/iteration). */
+function lookup<T>(map: Record<string, T>, key: string): T | undefined {
+  return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : undefined;
+}
+
+/** Python _time_value: a present timestamp as number, else null. */
 export function timeValue(v: unknown): number | null {
   if (v === null || v === undefined) return null;
   if (typeof v === "boolean") return null;
   if (typeof v === "number") return Number.isNaN(v) ? null : v;
   const s = String(v).trim().toLowerCase();
   if (s === "" || s === "nan" || s === "none" || s === "null") return null;
-  const f = Number(s);
-  return Number.isNaN(f) ? null : f;
+  if (!DECIMAL_RE.test(s)) return null;
+  return Number(s);
 }
 
-/** Python int(row[stage]) semantics: bools count, floats truncate, integer
- * strings parse; NaN/inf/other strings are unparseable (null). */
+/** Python int(row[stage]) semantics: bools count, floats truncate (±inf/NaN
+ * unparseable), strings parse the strict ASCII-integer grammar. */
 function parseStage(v: unknown): number | null {
   if (typeof v === "boolean") return v ? 1 : 0;
   if (typeof v === "number") return Number.isFinite(v) ? Math.trunc(v) : null;
   if (typeof v === "string") {
     const s = v.trim();
-    if (/^[+-]?\d+$/.test(s)) return parseInt(s, 10);
+    if (INT_RE.test(s)) return parseInt(s, 10);
     return null;
   }
   return null;
@@ -147,6 +161,59 @@ function gateOrderTime(lvl: StageSpecLevel, times: Record<string, number | null>
   return gateReduce(lvl) === "all" ? Math.max(...present) : Math.min(...present);
 }
 
+/** Values whose absence is deliberate (missing cell), as opposed to junk. */
+function isMissingish(v: unknown): boolean {
+  if (v === null || v === undefined) return true;
+  if (typeof v === "number") return Number.isNaN(v);
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    return s === "" || s === "nan" || s === "none" || s === "null";
+  }
+  return false;
+}
+
+/**
+ * Canonicalize a label row against the spec's field kinds BEFORE storage:
+ * stage -> number, bools -> boolean, times -> number, enums/notes -> trimmed
+ * string; missing-ish values are OMITTED. Uncoercible junk is KEPT RAW so the
+ * validator flags it instead of a silent drop. Keys outside `editable_fields`
+ * are returned in `unknownKeys` — the caller must reject them (they would
+ * otherwise ride into gold, and stringly-typed values would manufacture false
+ * reviewer disagreements against web-typed rows).
+ */
+export function canonicalizeStageLabel(
+  spec: ExportedStageSpec,
+  label: StageLabelRow
+): { label: StageLabelRow; unknownKeys: string[] } {
+  const boolSet = new Set(spec.bool_fields);
+  const timeSet = new Set(spec.time_fields);
+  const allowed = new Set(spec.editable_fields);
+  const out: StageLabelRow = {};
+  const unknownKeys: string[] = [];
+  for (const [key, raw] of Object.entries(label)) {
+    if (!allowed.has(key)) {
+      unknownKeys.push(key);
+      continue;
+    }
+    if (isMissingish(raw)) continue;
+    if (key === spec.stage_field) {
+      const stage = parseStage(raw);
+      out[key] = stage !== null ? stage : raw;
+    } else if (boolSet.has(key)) {
+      const b = asBool(raw);
+      out[key] = b !== null ? b : raw;
+    } else if (timeSet.has(key)) {
+      const t = timeValue(raw);
+      out[key] = t !== null ? t : raw;
+    } else if (key === "notes") {
+      out[key] = String(raw);
+    } else {
+      out[key] = String(raw).trim();
+    }
+  }
+  return { label: out, unknownKeys: unknownKeys.sort() };
+}
+
 export function validateStageLabel(
   spec: ExportedStageSpec,
   row: StageLabelRow,
@@ -190,8 +257,10 @@ export function validateStageLabel(
   // historical event time retained, matching failure mode active) still counts
   // as reached. Mirrors the same logic in Python validate_label.
   const failureMode = String(row[spec.failure_mode_field] ?? "").trim();
-  const historicalBool: string | undefined =
-    spec.constraints.historical_event_failure_modes[failureMode];
+  const historicalBool: string | undefined = lookup(
+    spec.constraints.historical_event_failure_modes,
+    failureMode
+  );
   const achieved = (field: string, terminal: boolean): boolean =>
     terminal ||
     (field === historicalBool && timeValue(row[`${field}_time_s`]) !== null);
@@ -360,7 +429,7 @@ export function validateStageLabel(
         fields: [spec.failure_mode_field],
       });
     }
-    const banned = spec.constraints.failure_mode_forbidden_stages[fmS];
+    const banned = lookup(spec.constraints.failure_mode_forbidden_stages, fmS);
     if (banned && banned.includes(maxStage)) {
       out.push({
         code: "failure_mode_stage_conflict",
@@ -376,7 +445,16 @@ export function validateStageLabel(
   const fs = row[spec.final_state_field];
   if (fs !== null && fs !== undefined) {
     const fsS = String(fs).trim();
-    for (const gate of spec.constraints.final_state_requires_gates[fsS] ?? []) {
+    if (fsS && !spec.final_states.includes(fsS)) {
+      // Mirror of failure_mode_unknown (2026-08-19 red-team: a typo'd
+      // final_state previously passed BOTH validators into gold).
+      out.push({
+        code: "final_state_unknown",
+        message: `${spec.final_state_field}=${JSON.stringify(fsS)} is not in the task taxonomy`,
+        fields: [spec.final_state_field],
+      });
+    }
+    for (const gate of lookup(spec.constraints.final_state_requires_gates, fsS) ?? []) {
       if (asBool(row[gate]) !== true) {
         out.push({
           code: "final_state_seat_conflict",
@@ -387,7 +465,7 @@ export function validateStageLabel(
         });
       }
     }
-    const minStage = spec.constraints.final_state_requires_min_stage[fsS];
+    const minStage = lookup(spec.constraints.final_state_requires_min_stage, fsS);
     if (minStage !== undefined && maxStage < minStage) {
       out.push({
         code: "final_state_stage_conflict",

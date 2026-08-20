@@ -92,7 +92,11 @@ export const upsert = mutation({
       for (const row of reviewRows) {
         const key = `${row.episode_index}|${row.reviewer_user_id ?? `svc:${row.reviewer}`}`;
         const prev = latest.get(key);
-        if (prev === undefined || row.saved_at > prev.saved_at) latest.set(key, row);
+        const newer =
+          prev === undefined ||
+          row.saved_at > prev.saved_at ||
+          (row.saved_at === prev.saved_at && row._creationTime > prev._creationTime);
+        if (newer) latest.set(key, row);
       }
       const committed = [...latest.values()].filter(
         (r) => r.status === "confirmed" || r.status === "corrected"
