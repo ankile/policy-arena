@@ -86,6 +86,9 @@ export function ReviewViewer({
   // dropped by the browser, so the seek+verify pass must re-run afterwards or
   // the operator sees a phantom drift warning from the pre-load frame 0.
   const [metadataEpoch, setMetadataEpoch] = useState(0);
+  // Decoded [w, h] per camera key (from loadedmetadata) — refs must not be
+  // read during render, so the equal-height aspect math uses this state.
+  const [videoDims, setVideoDims] = useState<Map<string, [number, number]>>(() => new Map());
 
   const primaryFrom = episode.perCamera[primaryKey].fromTimestamp;
   const primaryTo = episode.perCamera[primaryKey].toTimestamp;
@@ -248,11 +251,22 @@ export function ReviewViewer({
     };
   }, [playing, cameraKeys, episode, primaryKey, primaryFrom, primaryTo, stopAndSnap]);
 
-  // All cameras in ONE row, like the cv2 editor's side-by-side composite.
-  const gridCols =
-    ["grid-cols-1", "grid-cols-2", "grid-cols-3", "grid-cols-4"][
-      Math.min(cameraKeys.length, 4) - 1
-    ] ?? "grid-cols-4";
+  // All cameras in ONE row at EQUAL HEIGHT, like the cv2 editor's side-by-side
+  // composite: each tile's flex-grow is its aspect ratio (basis 0), so widths
+  // distribute proportionally and heights come out identical. Aspect source:
+  // the active crop box, else the video's decoded dimensions (metadataEpoch
+  // re-renders once they load), else the spec's stored-frame shape.
+  const tileAspect = (key: string): number => {
+    const box = cropByCameraKey?.[key];
+    if (cropsActive && box !== undefined) {
+      const [x0, y0, x1, y1] = box;
+      return (x1 - x0) / (y1 - y0);
+    }
+    const dims = videoDims.get(key);
+    if (dims && dims[1] > 0) return dims[0] / dims[1];
+    if (storedFrameHW !== null) return storedFrameHW[1] / storedFrameHW[0];
+    return 4 / 3;
+  };
 
   // Decision overlays are domain-specific (outcome tint / stage event border)
   // and injected by the parent; suppressed during playback — the frame counter
@@ -280,7 +294,7 @@ export function ReviewViewer({
         </div>
       )}
 
-      <div className={`grid ${gridCols} gap-3`}>
+      <div className="flex gap-3">
         {cameraKeys.map((key) => {
           const box = cropByCameraKey?.[key];
           // Stable DOM per camera: cropping is style/class-only so toggling
@@ -304,8 +318,8 @@ export function ReviewViewer({
           return (
             <div
               key={key}
-              className={`relative ${cropped ? "overflow-hidden rounded-lg bg-warm-100" : ""}`}
-              style={containerStyle}
+              className={`relative min-w-0 ${cropped ? "overflow-hidden rounded-lg bg-warm-100" : ""}`}
+              style={{ ...containerStyle, flex: `${tileAspect(key)} 1 0%` }}
             >
               <video
                 ref={setVideoRef(key)}
@@ -327,6 +341,9 @@ export function ReviewViewer({
                   }
                   // Crop-dims guard lives in the effect above (src is
                   // per-file, this event fires once per session).
+                  setVideoDims((prev) =>
+                    new Map(prev).set(key, [video.videoWidth, video.videoHeight])
+                  );
                   setMetadataEpoch((epoch) => epoch + 1);
                 }}
               />
