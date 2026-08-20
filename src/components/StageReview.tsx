@@ -249,6 +249,30 @@ export default function StageReview({
     return map;
   }, [reviews, viewer]);
 
+  // Other reviewers' latest rows — surfaced ONLY under the "Needs
+  // adjudication" filter (an annotator presses uncertain to hand an episode
+  // off; the adjudicator deliberately unblinds to their progress + notes).
+  const otherReviewsByEpisode = useMemo(() => {
+    const map = new Map<number, StageReviewRecord[]>();
+    const username = viewer?.username;
+    for (const row of reviews?.episodes ?? []) {
+      if (username && row.reviewer === username) continue;
+      const ep = Number(row.episode_index);
+      map.set(ep, [
+        ...(map.get(ep) ?? []),
+        {
+          episodeIndex: ep,
+          status: row.status,
+          label: (row.label as StageLabelRow | undefined) ?? null,
+          reviewer: row.reviewer,
+          savedAt: row.saved_at,
+          blind: row.blind ?? false,
+        },
+      ]);
+    }
+    return map;
+  }, [reviews, viewer]);
+
   const historyByEpisode = useMemo(() => {
     const byEpisode = new Map<number, LabelEvent[]>();
     for (const event of labelHistory ?? []) {
@@ -279,7 +303,13 @@ export default function StageReview({
   const filteredEpisodes = useMemo(() => {
     if (!episodes) return [];
     let result = episodes;
-    if (statusFilter !== "all") {
+    if (statusFilter === "adjudicate") {
+      result = result.filter((episode) =>
+        (otherReviewsByEpisode.get(episode.episodeIndex) ?? []).some(
+          (r) => r.status === "uncertain"
+        )
+      );
+    } else if (statusFilter !== "all") {
       result = result.filter((episode) => {
         const own = ownReviewByEpisode.get(episode.episodeIndex);
         if (statusFilter === "unreviewed") return own === undefined || own.status === "draft";
@@ -321,6 +351,7 @@ export default function StageReview({
     ledgerArms,
     armOptions,
     ownReviewByEpisode,
+    otherReviewsByEpisode,
     prefillByEpisode,
     flagCount,
   ]);
@@ -1004,7 +1035,8 @@ export default function StageReview({
             <option value="draft">Drafts</option>
             <option value="confirmed">Confirmed</option>
             <option value="corrected">Corrected (legacy)</option>
-            <option value="uncertain">Uncertain</option>
+            <option value="uncertain">Uncertain (mine)</option>
+            <option value="adjudicate">Needs adjudication (others&apos; uncertain)</option>
             <option value="all">All</option>
           </select>
           <div className="flex gap-2">
@@ -1103,7 +1135,15 @@ export default function StageReview({
                         ? ` · ${ledgerArms.get(episode.episodeIndex)}`
                         : ""}
                     </span>
-                    {own ? (
+                    {statusFilter === "adjudicate" ? (
+                      <span className="text-[10px] font-mono text-gold">
+                        ?{" "}
+                        {(otherReviewsByEpisode.get(episode.episodeIndex) ?? [])
+                          .filter((r) => r.status === "uncertain")
+                          .map((r) => r.reviewer)
+                          .join(", ")}
+                      </span>
+                    ) : own ? (
                       <span
                         className={`text-[10px] font-mono ${
                           own.status === "confirmed" || own.status === "corrected"
@@ -1214,6 +1254,47 @@ export default function StageReview({
                   disabled={saving}
                 />
               )}
+
+              {statusFilter === "adjudicate" &&
+                selectedEpisode !== null &&
+                (otherReviewsByEpisode.get(selectedEpisode) ?? []).map((other) => (
+                  <div
+                    key={other.reviewer}
+                    className="mt-3 rounded-lg border border-gold/40 bg-gold-light px-3 py-2"
+                  >
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-ink">
+                      <span className="font-medium">
+                        {other.reviewer}: {other.status}
+                      </span>
+                      <span className="text-ink-muted">{formatClock(other.savedAt)}</span>
+                      {other.label && spec && (
+                        <span className="text-ink-muted">
+                          S{String(other.label[spec.stage_field] ?? "?")} ·{" "}
+                          {String(other.label[spec.failure_mode_field] ?? "—")} →{" "}
+                          {String(other.label[spec.final_state_field] ?? "—")}
+                        </span>
+                      )}
+                      <div className="flex-1" />
+                      {other.label && (
+                        <button
+                          onClick={() => {
+                            setPending({ ...other.label });
+                            setDirty(true);
+                          }}
+                          className="px-2 py-0.5 rounded text-[10px] font-mono bg-white border border-gold text-gold hover:bg-gold/10 cursor-pointer"
+                          title={`load ${other.reviewer}'s label into the form as your starting point`}
+                        >
+                          load their label
+                        </button>
+                      )}
+                    </div>
+                    {typeof other.label?.notes === "string" && other.label.notes && (
+                      <p className="mt-1 text-[11px] font-body text-ink whitespace-pre-wrap">
+                        {other.label.notes}
+                      </p>
+                    )}
+                  </div>
+                ))}
 
               <LabelHistoryPanel
                 chain={currentChain}
