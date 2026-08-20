@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import {
-  canonicalizeStageLabel,
   validateStageLabel,
   type ExportedStageSpec,
   type StageLabelRow,
@@ -77,9 +76,8 @@ const HELP_KEYS: [string, string][] = [
   ["space", "play / pause"],
   ["0–9", "set the stage rung"],
   ["- / =", "decrement / increment the stage (covers S10)"],
-  ["c", "verdict: confirmed (prediction right as-is) + advance"],
-  ["x", "verdict: corrected (edited label) + advance"],
-  ["u", "verdict: uncertain (not gold-eligible) + advance"],
+  ["c", "confirm: episode fully annotated (gold-eligible) + advance"],
+  ["u", "uncertain: reviewed but not gold-eligible + advance"],
   ["e", "toggle the model-evidence rail"],
   ["n", "next episode (drafts unsaved edits)"],
   ["p / b", "previous episode in the queue"],
@@ -397,11 +395,7 @@ export default function StageReview({
     pushedAt: number;
     durationS: number | null;
   } | null>(null);
-  // The label as loaded at prefill time — 'confirmed' means "right AS-IS", so
-  // a verdict is auto-routed to 'corrected' when pending differs from this
-  // (the cv2 editor auto-nudged the same way; trusting the button quietly
-  // inflated the model-was-right rate).
-  const [baselineLabel, setBaselineLabel] = useState<StageLabelRow | null>(null);
+
   // The blind flag on saved rows is an attestation about the SESSION, not the
   // toggle's momentary position: once unblinded, rows stop claiming blind.
   const everUnblindedRef = useRef(false);
@@ -437,7 +431,6 @@ export default function StageReview({
        (guarded by prefilledFor), same pattern as OutcomeReview's prefill. */
     const loaded = own?.label ? { ...own.label } : prefill ? { ...prefill.label } : {};
     setPending(loaded);
-    setBaselineLabel({ ...loaded });
     setShownPrefill(
       prefill ? { pushedAt: prefill.pushedAt, durationS: prefill.episodeDurationS } : null
     );
@@ -560,7 +553,7 @@ export default function StageReview({
   );
 
   const verdict = useCallback(
-    async (status: "confirmed" | "corrected" | "uncertain") => {
+    async (status: "confirmed" | "uncertain") => {
       if (selectedEpisode === null || saving || !spec) return;
       if (prefilledFor.current !== selectedEpisode || pending === null) {
         setActionError(`Episode ${selectedEpisode} is still loading — wait for the prefill.`);
@@ -596,19 +589,9 @@ export default function StageReview({
         );
         return;
       }
-      const stable = (label: StageLabelRow): string => {
-        const canonical = canonicalizeStageLabel(spec, label).label;
-        return JSON.stringify(
-          Object.fromEntries(Object.entries(canonical).sort(([a], [b]) => (a < b ? -1 : 1)))
-        );
-      };
-      let effectiveStatus: string = status;
-      if (status === "confirmed" && baselineLabel !== null && stable(pending) !== stable(baselineLabel)) {
-        effectiveStatus = "corrected";
-      }
       setSaving(true);
       setActionError(null);
-      const ok = await doSave(selectedEpisode, effectiveStatus, pending);
+      const ok = await doSave(selectedEpisode, status, pending);
       setSaving(false);
       if (ok) {
         setDirty(false);
@@ -620,7 +603,6 @@ export default function StageReview({
       saving,
       spec,
       pending,
-      baselineLabel,
       viewerDrift,
       unverifiable,
       cameraKeys,
@@ -644,7 +626,7 @@ export default function StageReview({
         if (own && (own.status === "confirmed" || own.status === "corrected")) {
           setDraftError(
             `Episode ${selectedEpisode}: unsaved edits over your ${own.status} review were ` +
-              "discarded — committed verdicts change only by re-verdicting (x)."
+              "discarded — committed verdicts change only by re-confirming (c)."
           );
         } else {
           void doSave(selectedEpisode, "draft", pending, { isDraft: true });
@@ -745,10 +727,6 @@ export default function StageReview({
       case "c":
         event.preventDefault();
         void verdict("confirmed");
-        return;
-      case "x":
-        event.preventDefault();
-        void verdict("corrected");
         return;
       case "u":
         event.preventDefault();
@@ -1025,7 +1003,7 @@ export default function StageReview({
             <option value="unreviewed">Unreviewed (+ drafts)</option>
             <option value="draft">Drafts</option>
             <option value="confirmed">Confirmed</option>
-            <option value="corrected">Corrected</option>
+            <option value="corrected">Corrected (legacy)</option>
             <option value="uncertain">Uncertain</option>
             <option value="all">All</option>
           </select>
@@ -1256,18 +1234,6 @@ export default function StageReview({
                 <div className="flex-1" />
                 <button
                   disabled={saving}
-                  onClick={() => void verdict("corrected")}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-medium ${
-                    saving
-                      ? "bg-warm-100 text-ink-muted/50 cursor-not-allowed"
-                      : "bg-gold text-white hover:bg-gold/90 cursor-pointer"
-                  }`}
-                >
-                  corrected
-                  <span className="ml-1.5 font-mono text-[10px] opacity-70">x</span>
-                </button>
-                <button
-                  disabled={saving}
                   onClick={() => void verdict("confirmed")}
                   className={`px-4 py-1.5 rounded-lg text-xs font-medium ${
                     saving
@@ -1275,7 +1241,7 @@ export default function StageReview({
                       : "bg-teal text-white hover:bg-teal/90 cursor-pointer"
                   }`}
                 >
-                  confirmed
+                  confirm — fully annotated
                   <span className="ml-1.5 font-mono text-[10px] opacity-70">c</span>
                 </button>
               </div>

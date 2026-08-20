@@ -19,8 +19,13 @@ import {
  *
  * Status vocabulary matches the cv2 CorrectionUIServer (the incumbent this
  * supersedes), plus draft/cleared:
- *  - confirmed:  the prefill prediction is right as-is
- *  - corrected:  the reviewer edited the label (gold-eligible, like confirmed)
+ *  - confirmed:  the episode is FULLY ANNOTATED (gold-eligible). Whether the
+ *    reviewer edited the prediction is not encoded here — it is derivable
+ *    from the row's label vs the prefill generation it was shown
+ *    (prefill_pushed_at) and from the HF ledger's vlm/human event chain.
+ *  - corrected:  LEGACY (gold-eligible, same as confirmed). The web UI no
+ *    longer emits it (user decision 2026-08-20); it remains accepted for
+ *    service replays of historical cv2 human_labels.csv batches.
  *  - uncertain:  reviewed but not gold-eligible; violations allowed
  *  - draft:      lossless autosave of in-progress edits; violations allowed.
  *    A draft REPLACES the same reviewer's previous draft (working state, not
