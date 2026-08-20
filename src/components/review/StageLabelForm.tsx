@@ -57,6 +57,83 @@ function TimeInput({
   );
 }
 
+/** Time input + frame equivalent + mark/seek/clear — shared by bool-paired
+ *  and standalone time rows so EVERY event time gets the same affordances. */
+function TimeControls({
+  t,
+  fps,
+  frame,
+  flagged,
+  disabled,
+  markDisabled,
+  markTitle,
+  onCommit,
+  onMark,
+  onSeek,
+  canClear,
+  onClear,
+  clearTitle,
+}: {
+  t: number | null;
+  fps: number;
+  frame: number;
+  flagged: boolean;
+  disabled: boolean;
+  markDisabled: boolean;
+  markTitle: string;
+  onCommit: (t: number | null) => void;
+  onMark: () => void;
+  onSeek: (t: number) => void;
+  canClear: boolean;
+  onClear: () => void;
+  clearTitle: string;
+}) {
+  return (
+    <>
+      <TimeInput value={t} flagged={flagged} onCommit={onCommit} />
+      <span className="text-[10px] font-mono text-ink-muted w-10">
+        {t !== null ? `f${Math.round(t * fps)}` : ""}
+      </span>
+      <button
+        disabled={disabled || markDisabled}
+        onClick={onMark}
+        className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
+          markDisabled
+            ? "bg-warm-100 text-ink-muted/40 cursor-not-allowed"
+            : "bg-teal/10 text-teal hover:bg-teal/20 cursor-pointer"
+        }`}
+        title={
+          markDisabled
+            ? "frame drift detected — re-seek until the banner clears"
+            : `${markTitle} (frame ${frame})`
+        }
+      >
+        ◉ mark
+      </button>
+      <button
+        disabled={t === null}
+        onClick={() => t !== null && onSeek(t)}
+        className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
+          t !== null
+            ? "bg-warm-100 text-ink-muted hover:bg-warm-200 cursor-pointer"
+            : "text-ink-muted/30"
+        }`}
+        title={t !== null ? `seek to ${t}s` : undefined}
+      >
+        →
+      </button>
+      <button
+        disabled={disabled || !canClear}
+        onClick={onClear}
+        className="px-1.5 py-0.5 rounded text-[10px] font-mono text-ink-muted hover:text-coral cursor-pointer"
+        title={clearTitle}
+      >
+        ×
+      </button>
+    </>
+  );
+}
+
 export function StageLabelForm({
   spec,
   row,
@@ -197,11 +274,13 @@ export function StageLabelForm({
         </div>
       </div>
 
-      {/* Event bools + paired times */}
+      {/* Event fields, in spec order: bools (with their paired time when the
+          ${bf}_time_s convention names one) and standalone times (e.g.
+          approach_time_s pairing semantically with approach_reached) — every
+          time field gets mark/seek/clear. */}
       <div className="space-y-1">
-        {spec.event_fields
-          .filter((f) => boolSet.has(f.name))
-          .map((f) => {
+        {spec.event_fields.map((f) => {
+          if (boolSet.has(f.name)) {
             const bf = f.name;
             const tf = `${bf}_time_s`;
             const hasTime = timeSet.has(tf);
@@ -228,76 +307,73 @@ export function StageLabelForm({
                   <span className="truncate">{bf}</span>
                 </label>
                 {hasTime && (
-                  <>
-                    <TimeInput
-                      value={t}
-                      flagged={flagged.has(tf)}
-                      onCommit={(next) => onEdit({ [tf]: next ?? undefined })}
-                    />
-                    <span className="text-[10px] font-mono text-ink-muted w-10">
-                      {t !== null ? `f${Math.round(t * spec.fps)}` : ""}
-                    </span>
-                    <button
-                      disabled={disabled || markDisabled}
-                      onClick={() => {
-                        const at = markFrame();
-                        if (at === null) return; // drifted display — refused
-                        onEdit({
-                          [bf]: true,
-                          [tf]: Math.round((at / spec.fps) * 100) / 100,
-                        });
-                      }}
-                      className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
-                        markDisabled
-                          ? "bg-warm-100 text-ink-muted/40 cursor-not-allowed"
-                          : "bg-teal/10 text-teal hover:bg-teal/20 cursor-pointer"
-                      }`}
-                      title={
-                        markDisabled
-                          ? "frame drift detected — re-seek until the banner clears"
-                          : `set ${bf} + time from the displayed frame (${frame})`
-                      }
-                    >
-                      ◉ mark
-                    </button>
-                    <button
-                      disabled={t === null}
-                      onClick={() => t !== null && onSeekTime(t)}
-                      className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
-                        t !== null
-                          ? "bg-warm-100 text-ink-muted hover:bg-warm-200 cursor-pointer"
-                          : "text-ink-muted/30"
-                      }`}
-                      title={t !== null ? `seek to ${t}s` : undefined}
-                    >
-                      →
-                    </button>
-                    <button
-                      disabled={disabled || (row[bf] === undefined && t === null)}
-                      onClick={() => onEdit({ [bf]: false, [tf]: undefined })}
-                      className="px-1.5 py-0.5 rounded text-[10px] font-mono text-ink-muted hover:text-coral cursor-pointer"
-                      title="clear (bool=false, time absent)"
-                    >
-                      ×
-                    </button>
-                  </>
+                  <TimeControls
+                    t={t}
+                    fps={spec.fps}
+                    frame={frame}
+                    flagged={flagged.has(tf)}
+                    disabled={disabled}
+                    markDisabled={markDisabled}
+                    markTitle={`set ${bf} + time from the displayed frame`}
+                    onCommit={(next) => onEdit({ [tf]: next ?? undefined })}
+                    onMark={() => {
+                      const at = markFrame();
+                      if (at === null) return; // drifted display — refused
+                      onEdit({
+                        [bf]: true,
+                        [tf]: Math.round((at / spec.fps) * 100) / 100,
+                      });
+                    }}
+                    onSeek={onSeekTime}
+                    canClear={row[bf] !== undefined || t !== null}
+                    onClear={() => onEdit({ [bf]: false, [tf]: undefined })}
+                    clearTitle="clear (bool=false, time absent)"
+                  />
                 )}
               </div>
             );
-          })}
-        {/* Time fields without a bool partner (rare) */}
-        {spec.time_fields
-          .filter((tf) => !boolSet.has(tf.replace(/_time_s$/, "")))
-          .map((tf) => (
-            <div key={tf} className="flex items-center gap-2 px-2 py-1">
-              <span className="text-[11px] font-mono text-ink flex-1">{tf}</span>
-              <TimeInput
-                value={timeOf(tf)}
+          }
+          // A standalone time field (no bool named without the _time_s suffix).
+          const tf = f.name;
+          if (spec.bool_fields.some((bf) => `${bf}_time_s` === tf)) {
+            return null; // rendered inline with its bool above
+          }
+          const t = timeOf(tf);
+          return (
+            <div
+              key={tf}
+              className={`flex items-center gap-2 rounded-lg px-2 py-1 ${
+                flagged.has(tf) ? "ring-1 ring-coral/50 bg-coral-light/30" : ""
+              }`}
+            >
+              <span
+                className="text-[11px] font-mono text-ink flex-1 min-w-0 truncate"
+                title={f.description}
+              >
+                {tf}
+              </span>
+              <TimeControls
+                t={t}
+                fps={spec.fps}
+                frame={frame}
                 flagged={flagged.has(tf)}
+                disabled={disabled}
+                markDisabled={markDisabled}
+                markTitle={`set ${tf} from the displayed frame`}
                 onCommit={(next) => onEdit({ [tf]: next ?? undefined })}
+                onMark={() => {
+                  const at = markFrame();
+                  if (at === null) return; // drifted display — refused
+                  onEdit({ [tf]: Math.round((at / spec.fps) * 100) / 100 });
+                }}
+                onSeek={onSeekTime}
+                canClear={t !== null}
+                onClear={() => onEdit({ [tf]: undefined })}
+                clearTitle="clear (time absent)"
               />
             </div>
-          ))}
+          );
+        })}
       </div>
 
       {/* Notes */}

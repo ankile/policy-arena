@@ -371,7 +371,7 @@ export function ReviewViewer({
           <span className="font-mono text-[10px] opacity-70">space</span>
         </button>
         <span className="font-mono text-xs text-ink">
-          frame {frame} / {episode.rawLength - 1}
+          frame {frame} / {episode.rawLength - 1} · {(frame / fps).toFixed(2)}s
         </span>
         {hasCrops && cropDimsError === null && (
           <button
