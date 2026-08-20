@@ -489,6 +489,10 @@ class PolicyArenaClient:
             args["taxonomy_version"] = taxonomy_version
         return self.client.query("stageReviews:latestForRepo", args)
 
+    def stage_review_repos_for_task(self, task: str) -> list[str]:
+        """Distinct dataset repos holding stage reviews for a task."""
+        return self.client.query("stageReviews:reposForTask", {"task": task})
+
     def enqueue_apply_job(self, dataset_repo: str, *, dry_run: bool = False) -> str:
         return self._mutation(
             "applyJobs:enqueue", {"dataset_repo": dataset_repo, "dry_run": dry_run}
