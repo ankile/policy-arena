@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import {
+  canonicalizeStageLabel,
   validateStageLabel,
   type ExportedStageSpec,
   type StageLabelRow,
@@ -396,6 +397,11 @@ export default function StageReview({
     pushedAt: number;
     durationS: number | null;
   } | null>(null);
+  // The label as loaded at prefill time — 'confirmed' means "right AS-IS", so
+  // a verdict is auto-routed to 'corrected' when pending differs from this
+  // (the cv2 editor auto-nudged the same way; trusting the button quietly
+  // inflated the model-was-right rate).
+  const [baselineLabel, setBaselineLabel] = useState<StageLabelRow | null>(null);
   // The blind flag on saved rows is an attestation about the SESSION, not the
   // toggle's momentary position: once unblinded, rows stop claiming blind.
   const everUnblindedRef = useRef(false);
@@ -429,13 +435,9 @@ export default function StageReview({
     /* eslint-disable react-hooks/set-state-in-effect -- the prefill is an
        imperative one-shot load of working state once async sources settle
        (guarded by prefilledFor), same pattern as OutcomeReview's prefill. */
-    if (own?.label) {
-      setPending({ ...own.label });
-    } else if (prefill) {
-      setPending({ ...prefill.label });
-    } else {
-      setPending({});
-    }
+    const loaded = own?.label ? { ...own.label } : prefill ? { ...prefill.label } : {};
+    setPending(loaded);
+    setBaselineLabel({ ...loaded });
     setShownPrefill(
       prefill ? { pushedAt: prefill.pushedAt, durationS: prefill.episodeDurationS } : null
     );
@@ -594,9 +596,19 @@ export default function StageReview({
         );
         return;
       }
+      const stable = (label: StageLabelRow): string => {
+        const canonical = canonicalizeStageLabel(spec, label).label;
+        return JSON.stringify(
+          Object.fromEntries(Object.entries(canonical).sort(([a], [b]) => (a < b ? -1 : 1)))
+        );
+      };
+      let effectiveStatus: string = status;
+      if (status === "confirmed" && baselineLabel !== null && stable(pending) !== stable(baselineLabel)) {
+        effectiveStatus = "corrected";
+      }
       setSaving(true);
       setActionError(null);
-      const ok = await doSave(selectedEpisode, status, pending);
+      const ok = await doSave(selectedEpisode, effectiveStatus, pending);
       setSaving(false);
       if (ok) {
         setDirty(false);
@@ -608,6 +620,7 @@ export default function StageReview({
       saving,
       spec,
       pending,
+      baselineLabel,
       viewerDrift,
       unverifiable,
       cameraKeys,
