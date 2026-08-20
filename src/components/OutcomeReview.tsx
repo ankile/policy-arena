@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { RefObject } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useSearchParam, useSearchParamNumber } from "../lib/useSearchParam";
@@ -11,13 +10,25 @@ import {
   fetchLabelHistory,
   fetchLedgerArms,
   fetchReviewEpisodes,
-  getVideoUrl,
   selectPrimaryCameraKey,
   type AppliedProgress,
   type EpisodeFrameSignals,
   type LabelEvent,
   type ReviewEpisode,
 } from "../lib/hf-api";
+import { CommitPanel } from "./review/CommitPanel";
+import { HelpOverlay } from "./review/HelpOverlay";
+import { LabelHistoryPanel } from "./review/LabelHistoryPanel";
+import { describeLabelPayload, sourceLabel } from "./review/labelHistory";
+import { ReviewViewer, type ViewerControls } from "./review/ReviewViewer";
+import {
+  cameraRoleForVideoKey,
+  clamp,
+  formatClock,
+  orderCameraKeys,
+  type CropBox,
+} from "./review/format";
+import { isTypingTarget, useWindowKeydown } from "./review/useWindowKeydown";
 
 // ---------------------------------------------------------------------------
 // Contract notes
@@ -51,21 +62,6 @@ const REVIEW_SUBTASK_MARKS: Record<string, number> = {
   routing_d1: 1,
 };
 
-type CropBox = [number, number, number, number];
-
-/** Port of camera_role_for_video_key in sir/real/camera_utils.py. */
-function cameraRoleForVideoKey(
-  key: string,
-  keysByRole: Record<string, string>
-): string | null {
-  const bare = key.split(".").at(-1) ?? key;
-  if (bare in keysByRole) return bare;
-  for (const [role, serial] of Object.entries(keysByRole)) {
-    if (bare === serial) return role;
-  }
-  return null;
-}
-
 const OUTCOME_CHIP: Record<Outcome, string> = {
   success: "bg-teal-light text-teal",
   failure: "bg-coral-light text-coral",
@@ -86,61 +82,7 @@ const QUEUE_FILTERS: { id: QueueFilter; label: string }[] = [
   { id: "all", label: "All" },
 ];
 
-// Station roles read left-to-right the way the operator looks at the cell.
-const CAMERA_ROLE_ORDER = ["side_1", "side_2", "wrist_left", "wrist_right"];
-
 const SIGNAL_CONCURRENCY = 3;
-
-function clamp(value: number, low: number, high: number): number {
-  return Math.min(high, Math.max(low, value));
-}
-
-function orderCameraKeys(keys: string[]): string[] {
-  const rank = (key: string) => {
-    const bare = key.split(".").at(-1) ?? key;
-    const index = CAMERA_ROLE_ORDER.indexOf(bare);
-    return index === -1 ? CAMERA_ROLE_ORDER.length : index;
-  };
-  return [...keys].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
-}
-
-// -- Label-history rendering (taxonomy-blind: unknown kinds render as JSON) --
-const SOURCE_TOOL_SHORT: Record<string, string> = {
-  "web-review": "web",
-  "cv2-editor": "cv2",
-  "collection-results": "collection",
-};
-
-function sourceLabel(event: LabelEvent): string {
-  const tool = SOURCE_TOOL_SHORT[event.source.tool] ?? event.source.tool;
-  const agent = event.source.agent ? ` ${event.source.agent}` : "";
-  return `${event.source.kind}·${tool}${agent}`;
-}
-
-function describeLabelPayload(
-  kind: string,
-  payload: Record<string, unknown>
-): string {
-  if (payload.action === "skip") return "skip (kept labels)";
-  if (payload.action === "unlabel") return "unlabeled (decision retracted)";
-  if (kind === "outcome" && typeof payload.new_outcome === "string") {
-    let text = `${payload.new_outcome} @ ${payload.outcome_frame}`;
-    if (payload.soft_truncate) text += " ·soft-trunc";
-    const marks = payload.subtask_frames;
-    if (Array.isArray(marks) && marks.length > 0) text += ` ·${marks.length} marks`;
-    return text;
-  }
-  return `${kind}: ${JSON.stringify(payload).slice(0, 60)}`;
-}
-
-function eventSeekFrame(event: LabelEvent): number | null {
-  const frame = event.payload.outcome_frame;
-  return typeof frame === "number" ? frame : null;
-}
-
-function cameraLabel(key: string): string {
-  return key.split(".").at(-1) ?? key;
-}
 
 /**
  * Legality of `n` subtask marks for `outcome` — mirrors
@@ -162,23 +104,6 @@ function subtaskMarkCountError(
     return `a ${outcome.toUpperCase()} episode may carry at most ${required} subtask mark(s), got ${n}`;
   }
   return null;
-}
-
-function formatClock(ms: number): string {
-  return new Date(ms).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatAge(ms: number): string {
-  const seconds = Math.max(0, Math.round(ms / 1000));
-  if (seconds < 90) return `${seconds}s ago`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 90) return `${minutes}m ago`;
-  return `${Math.round(minutes / 60)}h ago`;
 }
 
 // ---------------------------------------------------------------------------
@@ -209,544 +134,6 @@ const EMPTY_PENDING: PendingReview = {
   subtaskFrames: [],
   softTruncate: false,
 };
-
-// ---------------------------------------------------------------------------
-// Timeline strip
-// ---------------------------------------------------------------------------
-
-function Timeline({
-  rawLength,
-  frame,
-  signals,
-  pending,
-  onScrub,
-}: {
-  rawLength: number;
-  frame: number;
-  signals: EpisodeFrameSignals | null;
-  pending: PendingReview;
-  onScrub: (frame: number) => void;
-}) {
-  const barRef = useRef<HTMLDivElement | null>(null);
-  const [dragging, setDragging] = useState(false);
-
-  const pct = (value: number) => `${(value / rawLength) * 100}%`;
-
-  const frameFromClientX = (clientX: number): number => {
-    const bar = barRef.current;
-    if (!bar) return frame;
-    const rect = bar.getBoundingClientRect();
-    if (rect.width <= 0) return frame;
-    const ratio = (clientX - rect.left) / rect.width;
-    return clamp(Math.floor(ratio * rawLength), 0, rawLength - 1);
-  };
-
-  const invalidStart =
-    signals && signals.lastValidFrame < rawLength - 1
-      ? signals.lastValidFrame + 1
-      : null;
-  const truncStart =
-    pending.softTruncate && pending.markedFrame !== null
-      ? pending.markedFrame + 1
-      : null;
-
-  return (
-    <div className="mt-4">
-      <div
-        ref={barRef}
-        className="relative h-12 rounded-lg bg-warm-100 border border-warm-200 cursor-pointer select-none touch-none"
-        onPointerDown={(e) => {
-          e.currentTarget.setPointerCapture(e.pointerId);
-          setDragging(true);
-          onScrub(frameFromClientX(e.clientX));
-        }}
-        onPointerMove={(e) => {
-          if (dragging) onScrub(frameFromClientX(e.clientX));
-        }}
-        onPointerUp={(e) => {
-          e.currentTarget.releasePointerCapture(e.pointerId);
-          setDragging(false);
-        }}
-        onPointerCancel={() => setDragging(false)}
-      >
-        {/* Invalid padding beyond the last valid frame */}
-        {invalidStart !== null && (
-          <div
-            className="absolute top-0 bottom-0 bg-warm-300/60"
-            style={{
-              left: pct(invalidStart),
-              right: 0,
-              backgroundImage:
-                "repeating-linear-gradient(45deg, rgba(138,127,114,0.35) 0 5px, transparent 5px 10px)",
-            }}
-            title={`is_valid==0 padding from frame ${invalidStart}`}
-          />
-        )}
-
-        {/* Region a confirmed soft truncation would invalidate */}
-        {truncStart !== null && truncStart < rawLength && (
-          <div
-            className="absolute top-0 bottom-0"
-            style={{
-              left: pct(truncStart),
-              right: 0,
-              backgroundImage:
-                "repeating-linear-gradient(-45deg, rgba(212,101,74,0.35) 0 5px, transparent 5px 10px)",
-            }}
-            title={`soft truncation would drop frames ${truncStart}..${rawLength - 1}`}
-          />
-        )}
-
-        {/* Existing done==1 onset */}
-        {signals?.doneOnsetFrame != null && (
-          <div
-            className="absolute top-0 bottom-0 border-l border-dashed border-ink-muted"
-            style={{ left: pct(signals.doneOnsetFrame) }}
-            title={`existing outcome frame (done==1 onset) ${signals.doneOnsetFrame}`}
-          />
-        )}
-
-        {/* Existing mid-episode reward spikes (hollow) */}
-        {signals?.rewardSpikeFrames.map((spike) => (
-          <div
-            key={`spike-${spike}`}
-            className="absolute bottom-1 w-2 h-2 rounded-full border border-ink-muted"
-            style={{ left: pct(spike), transform: "translateX(-50%)" }}
-            title={`existing reward spike at frame ${spike}`}
-          />
-        ))}
-
-        {/* Pending subtask marks */}
-        {pending.subtaskFrames.map((mark) => (
-          <div
-            key={`mark-${mark}`}
-            className="absolute bottom-1 w-2.5 h-2.5 rounded-full bg-purple-600"
-            style={{ left: pct(mark), transform: "translateX(-50%)" }}
-            title={`subtask mark at frame ${mark}`}
-          />
-        ))}
-
-        {/* Pending outcome marker */}
-        {pending.markedFrame !== null && pending.outcome !== null && (
-          <>
-            <div
-              className="absolute top-0 bottom-0 w-px"
-              style={{
-                left: pct(pending.markedFrame),
-                backgroundColor: OUTCOME_HEX[pending.outcome],
-              }}
-            />
-            <div
-              className="absolute top-0"
-              style={{
-                left: pct(pending.markedFrame),
-                transform: "translateX(-50%)",
-                width: 0,
-                height: 0,
-                borderLeft: "6px solid transparent",
-                borderRight: "6px solid transparent",
-                borderTop: `9px solid ${OUTCOME_HEX[pending.outcome]}`,
-              }}
-              title={`${pending.outcome} @ frame ${pending.markedFrame}`}
-            />
-          </>
-        )}
-
-        {/* Playhead */}
-        <div
-          className="absolute top-0 bottom-0 w-0.5 bg-ink"
-          style={{ left: pct(frame), transform: "translateX(-50%)" }}
-        />
-      </div>
-      <div className="flex justify-between text-[10px] font-mono text-ink-muted mt-1">
-        <span>0</span>
-        <span>{rawLength - 1}</span>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Camera grid + frame-exact seeking
-// ---------------------------------------------------------------------------
-
-interface ViewerControls {
-  togglePlay: () => void;
-  /** Stop playback and snap the frame counter to the displayed frame.
-   *  Returns the snapped frame when playback WAS running, else null — mark
-   *  handlers must use it: during playback the parent `frame` state is frozen
-   *  at the play-start value and marking there lands frames early. */
-  pause: () => number | null;
-}
-
-function ReviewViewer({
-  datasetId,
-  episode,
-  cameraKeys,
-  primaryKey,
-  frame,
-  onFrame,
-  signals,
-  pending,
-  controlsRef,
-  cropByCameraKey,
-  storedFrameHW,
-  onDrift,
-}: {
-  datasetId: string;
-  episode: ReviewEpisode;
-  cameraKeys: string[];
-  primaryKey: string;
-  frame: number;
-  onFrame: (frame: number) => void;
-  signals: EpisodeFrameSignals | null;
-  pending: PendingReview;
-  controlsRef: RefObject<ViewerControls | null>;
-  /** Station display crops per camera key (stored-frame px), null = no spec. */
-  cropByCameraKey: Record<string, CropBox> | null;
-  /** Crop reference space [H, W]; present whenever cropByCameraKey is. */
-  storedFrameHW: [number, number] | null;
-  /** Frame-verification drift, surfaced so the parent can BLOCK confirms —
-   *  a drifted display means the counted frame is not the shown frame. */
-  onDrift: (drift: string | null) => void;
-}) {
-  const videoRefs = useRef(new Map<string, HTMLVideoElement>());
-  const seekTokenRef = useRef(0);
-  const playingRef = useRef(false);
-  const [playing, setPlaying] = useState(false);
-  const [drift, setDrift] = useState<string | null>(null);
-  const [unverifiable, setUnverifiable] = useState(false);
-  // Station crop display defaults ON to match the cv2 editor's review view.
-  const [cropOn, setCropOn] = useState(true);
-  const [cropDimsError, setCropDimsError] = useState<string | null>(null);
-  const hasCrops =
-    cropByCameraKey !== null &&
-    storedFrameHW !== null &&
-    cameraKeys.some((key) => cropByCameraKey[key] !== undefined);
-  const cropsActive = hasCrops && cropOn && cropDimsError === null;
-  // Bumped when a video reaches HAVE_METADATA. Seeks issued before that are
-  // dropped by the browser, so the seek+verify pass must re-run afterwards or
-  // the operator sees a phantom drift warning from the pre-load frame 0.
-  const [metadataEpoch, setMetadataEpoch] = useState(0);
-
-  const primaryFrom = episode.perCamera[primaryKey].fromTimestamp;
-  const primaryTo = episode.perCamera[primaryKey].toTimestamp;
-
-  const setVideoRef = useCallback(
-    (key: string) => (el: HTMLVideoElement | null) => {
-      if (el) videoRefs.current.set(key, el);
-      else videoRefs.current.delete(key);
-    },
-    []
-  );
-
-  // Playback state is per-episode; a queue advance must never leave the new
-  // episode auto-playing from the previous one's position.
-  useEffect(() => {
-    playingRef.current = false;
-    /* eslint-disable react-hooks/set-state-in-effect -- switching episodes is
-       an imperative reset of playback state, not derived render state. */
-    setPlaying(false);
-    setDrift(null);
-    /* eslint-enable react-hooks/set-state-in-effect */
-  }, [episode]);
-
-  // Crop-vs-video dims guard. This must NOT live in onLoadedMetadata: video
-  // src is per-FILE (many episodes share one chunk file, so the event fires
-  // once per session), and the crop spec can arrive after metadata. Re-check
-  // whenever the spec, camera set, or a video's metadata changes; reset when
-  // the SPEC changes (not per episode — that wiped a real mismatch forever).
-  useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect -- imperative guard over
-       video-element metadata, not derived render state. */
-    setCropDimsError(null);
-    if (cropByCameraKey === null || storedFrameHW === null) return;
-    const [frameH, frameW] = storedFrameHW;
-    for (const key of cameraKeys) {
-      if (cropByCameraKey[key] === undefined) continue;
-      const video = videoRefs.current.get(key);
-      // Metadata not loaded yet -> metadataEpoch re-runs this effect later.
-      if (!video || video.videoWidth === 0) continue;
-      if (video.videoWidth !== frameW || video.videoHeight !== frameH) {
-        setCropDimsError(
-          `${cameraLabel(key)} is ${video.videoWidth}x${video.videoHeight}, ` +
-            `crop boxes expect ${frameW}x${frameH} stored frames`
-        );
-        return;
-      }
-    }
-    /* eslint-enable react-hooks/set-state-in-effect */
-  }, [cropByCameraKey, storedFrameHW, cameraKeys, metadataEpoch]);
-
-  // Frame-exact seek: every camera lands on the midpoint of frame i, offset by
-  // that camera's own from_timestamp (0 today, but multi-episode video chunks
-  // rely on it). The primary camera's landing is VERIFIED, never assumed.
-  useEffect(() => {
-    if (playing) return;
-    for (const key of cameraKeys) {
-      const video = videoRefs.current.get(key);
-      if (!video) continue;
-      video.currentTime =
-        episode.perCamera[key].fromTimestamp + (frame + 0.5) / FPS;
-    }
-    const primary = videoRefs.current.get(primaryKey);
-    if (!primary) return;
-    // Capability is flagged from the loadedmetadata handler (see below) so the
-    // operator sees a banner instead of a silently unverified seek.
-    if (typeof primary.requestVideoFrameCallback !== "function") return;
-    const token = ++seekTokenRef.current;
-    primary.requestVideoFrameCallback((_now, meta) => {
-      if (seekTokenRef.current !== token) return;
-      const exact = (meta.mediaTime - primaryFrom) * FPS;
-      const landed = Math.round(exact);
-      if (Math.abs(exact - landed) > 0.25 || landed !== frame) {
-        setDrift(
-          `requested frame ${frame}, video presented frame ${landed} ` +
-            `(mediaTime ${meta.mediaTime.toFixed(4)}s, from_timestamp ` +
-            `${primaryFrom.toFixed(4)}s, exact ${exact.toFixed(3)})`
-        );
-      } else {
-        setDrift(null);
-      }
-    });
-  }, [frame, playing, episode, cameraKeys, primaryKey, primaryFrom, metadataEpoch]);
-
-  const stopAndSnap = useCallback((): number | null => {
-    playingRef.current = false;
-    setPlaying(false);
-    const primary = videoRefs.current.get(primaryKey);
-    if (!primary) return null;
-    const snapped = clamp(
-      Math.round((primary.currentTime - primaryFrom) * FPS - 0.5),
-      0,
-      episode.rawLength - 1
-    );
-    onFrame(snapped);
-    return snapped;
-  }, [episode.rawLength, onFrame, primaryFrom, primaryKey]);
-
-  const togglePlay = useCallback(() => {
-    if (playingRef.current) {
-      stopAndSnap();
-    } else {
-      playingRef.current = true;
-      setPlaying(true);
-    }
-  }, [stopAndSnap]);
-
-  const pause = useCallback((): number | null => {
-    if (playingRef.current) return stopAndSnap();
-    return null;
-  }, [stopAndSnap]);
-
-  useEffect(() => {
-    controlsRef.current = { togglePlay, pause };
-  }, [controlsRef, togglePlay, pause]);
-
-  useEffect(() => {
-    onDrift(drift);
-  }, [drift, onDrift]);
-
-  // Playback: the primary camera drives, the others follow its offset-corrected
-  // clock; playback halts at the raw end of the episode segment.
-  useEffect(() => {
-    if (!playing) return;
-    const primary = videoRefs.current.get(primaryKey);
-    if (!primary) return;
-    const videos = cameraKeys
-      .map((key) => videoRefs.current.get(key))
-      .filter((v): v is HTMLVideoElement => Boolean(v));
-    for (const video of videos) void video.play();
-
-    let raf = 0;
-    const tick = () => {
-      const elapsed = primary.currentTime - primaryFrom;
-      for (const key of cameraKeys) {
-        const video = videoRefs.current.get(key);
-        if (!video || video === primary) continue;
-        const target = episode.perCamera[key].fromTimestamp + elapsed;
-        if (Math.abs(video.currentTime - target) > 0.1) video.currentTime = target;
-      }
-      if (primary.currentTime >= primaryTo) {
-        stopAndSnap();
-        return;
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(raf);
-      for (const video of videos) video.pause();
-    };
-  }, [playing, cameraKeys, episode, primaryKey, primaryFrom, primaryTo, stopAndSnap]);
-
-  // All cameras in ONE row, like the cv2 editor's side-by-side composite.
-  const gridCols =
-    ["grid-cols-1", "grid-cols-2", "grid-cols-3", "grid-cols-4"][
-      Math.min(cameraKeys.length, 4) - 1
-    ] ?? "grid-cols-4";
-
-  // cv2-editor decision overlays: frames at/after the pending outcome frame
-  // get a translucent outcome tint (denser strictly-after the mark when
-  // soft-truncate is on); a pending subtask frame gets a solid border + tag.
-  // Suppressed during playback — the frame counter only tracks while scrubbing.
-  const decisionTint =
-    !playing && pending.outcome !== null && pending.markedFrame !== null && frame >= pending.markedFrame
-      ? {
-          color: OUTCOME_HEX[pending.outcome],
-          alpha: pending.softTruncate && frame > pending.markedFrame ? 0.4 : 0.2,
-        }
-      : null;
-  const isSubtaskFrame = !playing && pending.subtaskFrames.includes(frame);
-
-  return (
-    <div>
-      {drift && (
-        <div className="mb-3 rounded-lg border border-coral bg-coral-light px-4 py-2 text-xs font-mono text-coral">
-          ⚠ frame drift on {cameraLabel(primaryKey)}: {drift}. Do not trust the
-          displayed frame — re-seek (arrow keys) before marking.
-        </div>
-      )}
-      {unverifiable && (
-        <div className="mb-3 rounded-lg border border-gold bg-gold-light px-4 py-2 text-xs font-mono text-gold">
-          ⚠ this browser has no requestVideoFrameCallback — seek landings cannot
-          be verified. Review in Chrome/Edge before confirming marks.
-        </div>
-      )}
-
-      {cropDimsError && (
-        <div className="mb-3 rounded-lg border border-gold bg-gold-light px-4 py-2 text-xs font-mono text-gold">
-          ⚠ station crops disabled: {cropDimsError}
-        </div>
-      )}
-
-      <div className={`grid ${gridCols} gap-3`}>
-        {cameraKeys.map((key) => {
-          const box = cropByCameraKey?.[key];
-          // Stable DOM per camera: cropping is style/class-only so toggling
-          // (or the dims guard tripping) never remounts (= reloads) the video.
-          const cropped =
-            cropsActive && box !== undefined && storedFrameHW !== null;
-          const frameW = (storedFrameHW ?? [0, 0])[1];
-          let containerStyle: React.CSSProperties | undefined;
-          let videoStyle: React.CSSProperties | undefined;
-          if (cropped) {
-            const [x0, y0, x1, y1] = box;
-            containerStyle = { aspectRatio: `${x1 - x0} / ${y1 - y0}` };
-            videoStyle = {
-              position: "absolute",
-              maxWidth: "none",
-              width: `${(frameW / (x1 - x0)) * 100}%`,
-              left: `${(-x0 / (x1 - x0)) * 100}%`,
-              top: `${(-y0 / (y1 - y0)) * 100}%`,
-            };
-          }
-          return (
-            <div
-              key={key}
-              className={`relative ${cropped ? "overflow-hidden rounded-lg bg-warm-100" : ""}`}
-              style={containerStyle}
-            >
-              <video
-                ref={setVideoRef(key)}
-                src={getVideoUrl(key, episode.perCamera[key].fileIndex, datasetId)}
-                className={cropped ? "" : "w-full rounded-lg bg-warm-100"}
-                style={videoStyle}
-                muted
-                playsInline
-                preload="auto"
-                onLoadedMetadata={(e) => {
-                  const video = e.target as HTMLVideoElement;
-                  video.currentTime =
-                    episode.perCamera[key].fromTimestamp + (frame + 0.5) / FPS;
-                  if (
-                    key === primaryKey &&
-                    typeof video.requestVideoFrameCallback !== "function"
-                  ) {
-                    setUnverifiable(true);
-                  }
-                  // Crop-dims guard lives in the effect above (src is
-                  // per-file, this event fires once per session).
-                  setMetadataEpoch((epoch) => epoch + 1);
-                }}
-              />
-              {decisionTint && (
-                <div
-                  className="absolute inset-0 pointer-events-none rounded-lg"
-                  style={{
-                    backgroundColor: decisionTint.color,
-                    opacity: decisionTint.alpha,
-                  }}
-                />
-              )}
-              {isSubtaskFrame && (
-                <div
-                  className="absolute inset-0 pointer-events-none rounded-lg border-[6px] border-purple-600"
-                >
-                  <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-purple-600 text-white text-[10px] font-mono font-medium">
-                    SUBTASK REWARD
-                  </span>
-                </div>
-              )}
-              <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/60 text-white text-[11px] font-mono">
-                {cameraLabel(key)}
-                {key === primaryKey ? " ·primary" : ""}
-                {cropped ? " ·crop" : ""}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      <Timeline
-        rawLength={episode.rawLength}
-        frame={frame}
-        signals={signals}
-        pending={pending}
-        onScrub={(next) => {
-          if (playingRef.current) stopAndSnap();
-          onFrame(next);
-        }}
-      />
-
-      <div className="flex items-center gap-3 mt-3">
-        <button
-          onClick={togglePlay}
-          className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-teal text-white font-body font-medium text-xs hover:bg-teal/90 transition-colors cursor-pointer"
-        >
-          {playing ? (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="6" y="4" width="4" height="16" rx="1" />
-              <rect x="14" y="4" width="4" height="16" rx="1" />
-            </svg>
-          ) : (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <polygon points="6,4 20,12 6,20" />
-            </svg>
-          )}
-          {playing ? "Pause" : "Play"}
-          <span className="font-mono text-[10px] opacity-70">space</span>
-        </button>
-        <span className="font-mono text-xs text-ink">
-          frame {frame} / {episode.rawLength - 1}
-        </span>
-        {hasCrops && cropDimsError === null && (
-          <button
-            onClick={() => setCropOn((on) => !on)}
-            className={`ml-auto px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all ${
-              cropOn
-                ? "bg-teal/10 text-teal border border-teal/40"
-                : "bg-white border border-warm-200 text-ink-muted hover:border-warm-300"
-            }`}
-            title="Station display crops from the task registry (same view as the cv2 editor)"
-          >
-            station crop {cropOn ? "on" : "off"}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Work queue row
@@ -842,186 +229,6 @@ function QueueRow({
 }
 
 // ---------------------------------------------------------------------------
-// Commit panel
-// ---------------------------------------------------------------------------
-
-function CommitPanel({
-  repoId,
-  numConfirmed,
-  numSkipped,
-  numEpisodes,
-}: {
-  repoId: string;
-  numConfirmed: number;
-  numSkipped: number;
-  numEpisodes: number;
-}) {
-  const jobs = useQuery(api.applyJobs.forRepo, { dataset_repo: repoId });
-  const worker = useQuery(api.applyJobs.workerStatus, {});
-  const enqueue = useMutation(api.applyJobs.enqueue);
-  const cancelJob = useMutation(api.applyJobs.cancel);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 5000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const activeJob = jobs?.find(
-    (job) => job.status === "pending" || job.status === "applying"
-  );
-  const totalReviews = numConfirmed + numSkipped;
-
-  const age = worker ? now - worker.last_seen : null;
-  // useQuery: undefined = still loading, null = no heartbeat row exists.
-  // Rendering the loading flash as "no worker" trains operators to ignore
-  // the one pill that matters when the worker really is dead.
-  const workerPill =
-    worker === undefined
-      ? { text: "checking worker…", className: "bg-warm-100 text-ink-muted" }
-      : age === null
-      ? {
-          text: "no worker has ever checked in",
-          className: "bg-coral-light text-coral",
-        }
-      : age < 90_000
-        ? {
-            text: `worker live ${formatAge(age)}`,
-            className: "bg-teal-light text-teal",
-          }
-        : age < 600_000
-          ? {
-              text: `worker last seen ${formatAge(age)}`,
-              className: "bg-gold-light text-gold",
-            }
-          : {
-              text: `worker offline (${formatAge(age)}) — start tmux \`arena-review-worker\` (host per docs/policy-arena-review-suite-plan.md)`,
-              className: "bg-coral-light text-coral",
-            };
-
-  const statusChip: Record<string, string> = {
-    pending: "bg-gold-light text-gold",
-    applying: "bg-gold-light text-gold",
-    applied: "bg-teal-light text-teal",
-    failed: "bg-coral-light text-coral",
-    cancelled: "bg-warm-100 text-ink-muted",
-  };
-
-  return (
-    <div className="border-t border-warm-200 bg-warm-50 px-6 py-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="font-mono text-xs text-ink">
-          {numConfirmed} confirmed · {numSkipped} skipped · {numEpisodes} episodes
-        </span>
-        <span
-          className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${workerPill.className}`}
-          title={worker ? `${worker.worker_id}${worker.info ? ` · ${worker.info}` : ""}` : undefined}
-        >
-          {workerPill.text}
-        </span>
-        <div className="flex-1" />
-        <button
-          disabled={busy || totalReviews === 0 || Boolean(activeJob)}
-          onClick={() => {
-            setError(null);
-            setBusy(true);
-            enqueue({ dataset_repo: repoId })
-              .catch((err: Error) => setError(err.message))
-              .finally(() => setBusy(false));
-          }}
-          className={`px-4 py-2 rounded-lg text-xs font-medium transition-colors ${
-            busy || totalReviews === 0 || activeJob
-              ? "bg-warm-100 text-ink-muted/50 cursor-not-allowed"
-              : "bg-teal text-white hover:bg-teal/90 cursor-pointer"
-          }`}
-        >
-          {activeJob ? `Job ${activeJob.status}…` : "Commit to HuggingFace"}
-        </button>
-      </div>
-
-      {error && (
-        <div className="mt-3 rounded-lg border border-coral/30 bg-coral-light px-3 py-2 text-xs text-coral font-mono">
-          {error}
-        </div>
-      )}
-
-      {jobs && jobs.length > 0 && (
-        <div className="mt-3 space-y-1.5">
-          {jobs.map((job) => (
-            <div
-              key={job._id}
-              className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-ink-muted"
-            >
-              <span
-                className={`px-1.5 py-0.5 rounded ${statusChip[job.status] ?? "bg-warm-100 text-ink-muted"}`}
-              >
-                {job.status}
-              </span>
-              <span>{formatClock(job.requested_at)}</span>
-              <span>{job.requested_by}</span>
-              {job.num_confirmed != null && (
-                <span>
-                  {Number(job.num_confirmed)} confirmed ·{" "}
-                  {Number(job.num_skipped ?? BigInt(0))} skipped
-                </span>
-              )}
-              {job.hf_commit_sha && (
-                <a
-                  href={`https://huggingface.co/datasets/${repoId}/tree/${job.hf_commit_sha}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-teal hover:underline"
-                >
-                  {job.hf_commit_sha.slice(0, 8)} →
-                </a>
-              )}
-              {job.error && (
-                <button
-                  onClick={() => setExpanded(expanded === job._id ? null : job._id)}
-                  className="text-coral hover:underline cursor-pointer"
-                >
-                  {expanded === job._id ? "hide error" : "show error"}
-                </button>
-              )}
-              {(job.status === "pending" ||
-                (job.status === "applying" &&
-                  job.started_at !== undefined &&
-                  now - Number(job.started_at) > 10 * 60 * 1000)) && (
-                <button
-                  onClick={() => {
-                    setError(null);
-                    cancelJob({ id: job._id }).catch((err: Error) =>
-                      setError(err.message)
-                    );
-                  }}
-                  className="text-ink-muted hover:text-coral cursor-pointer"
-                  title={
-                    job.status === "applying"
-                      ? "Worker claim went stale — reclaim the stuck job, then re-commit"
-                      : undefined
-                  }
-                >
-                  {job.status === "applying" ? "reclaim stuck job" : "cancel"}
-                </button>
-              )}
-              {expanded === job._id && (
-                <pre className="w-full whitespace-pre-wrap rounded bg-white border border-warm-200 p-2 text-[10px] text-coral">
-                  {job.error}
-                  {job.log_tail ? `\n\n${job.log_tail}` : ""}
-                </pre>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Help overlay
 // ---------------------------------------------------------------------------
 
@@ -1041,36 +248,6 @@ const HELP_KEYS: [string, string][] = [
   ["q / Esc", "exit review mode"],
   ["?", "toggle this help"],
 ];
-
-function HelpOverlay({ onClose }: { onClose: () => void }) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-2xl border border-warm-200 shadow-lg p-6 max-w-md w-full"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="font-display text-lg text-ink mb-3">Review shortcuts</h3>
-        <dl className="space-y-1.5">
-          {HELP_KEYS.map(([key, description]) => (
-            <div key={key} className="flex items-baseline gap-3 text-xs">
-              <dt className="font-mono text-ink w-28 flex-shrink-0">{key}</dt>
-              <dd className="text-ink-muted font-body">{description}</dd>
-            </div>
-          ))}
-        </dl>
-        <button
-          onClick={onClose}
-          className="mt-4 px-3 py-1.5 rounded-lg border border-warm-200 text-xs text-ink-muted hover:bg-warm-50 cursor-pointer"
-        >
-          Close
-        </button>
-      </div>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Outcome review (main)
@@ -1660,16 +837,7 @@ export default function OutcomeReview({
 
   // -- Keyboard ----------------------------------------------------------
   function handleKey(event: KeyboardEvent) {
-    const target = event.target as HTMLElement | null;
-    if (
-      target &&
-      (target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.tagName === "SELECT" ||
-        target.isContentEditable)
-    ) {
-      return;
-    }
+    if (isTypingTarget(event)) return;
     if (event.metaKey || event.ctrlKey || event.altKey) return;
 
     const key = event.key;
@@ -1814,15 +982,7 @@ export default function OutcomeReview({
     }
   }
 
-  const keyHandlerRef = useRef<(event: KeyboardEvent) => void>(() => {});
-  useEffect(() => {
-    keyHandlerRef.current = handleKey;
-  });
-  useEffect(() => {
-    const listener = (event: KeyboardEvent) => keyHandlerRef.current(event);
-    window.addEventListener("keydown", listener);
-    return () => window.removeEventListener("keydown", listener);
-  }, []);
+  useWindowKeydown(handleKey);
 
   // -- Render ------------------------------------------------------------
   const cameraKeys = useMemo(() => {
@@ -1887,6 +1047,128 @@ export default function OutcomeReview({
     return map;
   }, [taskSpec, cameraKeys]);
 
+  // cv2-editor decision overlays, injected into the extracted ReviewViewer
+  // (which calls them only while paused): frames at/after the pending outcome
+  // frame get a translucent outcome tint (denser strictly-after the mark when
+  // soft-truncate is on); a pending subtask frame gets a solid border + tag.
+  const renderVideoOverlay = (overlayFrame: number) => {
+    const decisionTint =
+      pending.outcome !== null &&
+      pending.markedFrame !== null &&
+      overlayFrame >= pending.markedFrame
+        ? {
+            color: OUTCOME_HEX[pending.outcome],
+            alpha:
+              pending.softTruncate && overlayFrame > pending.markedFrame ? 0.4 : 0.2,
+          }
+        : null;
+    const isSubtaskFrame = pending.subtaskFrames.includes(overlayFrame);
+    return (
+      <>
+        {decisionTint && (
+          <div
+            className="absolute inset-0 pointer-events-none rounded-lg"
+            style={{
+              backgroundColor: decisionTint.color,
+              opacity: decisionTint.alpha,
+            }}
+          />
+        )}
+        {isSubtaskFrame && (
+          <div className="absolute inset-0 pointer-events-none rounded-lg border-[6px] border-purple-600">
+            <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-purple-600 text-white text-[10px] font-mono font-medium">
+              SUBTASK REWARD
+            </span>
+          </div>
+        )}
+      </>
+    );
+  };
+
+  // Outcome-specific timeline markers (soft-trunc hatch, done onset, reward
+  // spikes, subtask dots, outcome marker) — same nodes the pre-extraction
+  // Timeline rendered inline.
+  const renderTimelineOverlays = (pct: (value: number) => string) => {
+    if (!currentEpisode) return null;
+    const rawLength = currentEpisode.rawLength;
+    const truncStart =
+      pending.softTruncate && pending.markedFrame !== null
+        ? pending.markedFrame + 1
+        : null;
+    return (
+      <>
+        {/* Region a confirmed soft truncation would invalidate */}
+        {truncStart !== null && truncStart < rawLength && (
+          <div
+            className="absolute top-0 bottom-0"
+            style={{
+              left: pct(truncStart),
+              right: 0,
+              backgroundImage:
+                "repeating-linear-gradient(-45deg, rgba(212,101,74,0.35) 0 5px, transparent 5px 10px)",
+            }}
+            title={`soft truncation would drop frames ${truncStart}..${rawLength - 1}`}
+          />
+        )}
+
+        {/* Existing done==1 onset */}
+        {currentSignals?.doneOnsetFrame != null && (
+          <div
+            className="absolute top-0 bottom-0 border-l border-dashed border-ink-muted"
+            style={{ left: pct(currentSignals.doneOnsetFrame) }}
+            title={`existing outcome frame (done==1 onset) ${currentSignals.doneOnsetFrame}`}
+          />
+        )}
+
+        {/* Existing mid-episode reward spikes (hollow) */}
+        {currentSignals?.rewardSpikeFrames.map((spike) => (
+          <div
+            key={`spike-${spike}`}
+            className="absolute bottom-1 w-2 h-2 rounded-full border border-ink-muted"
+            style={{ left: pct(spike), transform: "translateX(-50%)" }}
+            title={`existing reward spike at frame ${spike}`}
+          />
+        ))}
+
+        {/* Pending subtask marks */}
+        {pending.subtaskFrames.map((mark) => (
+          <div
+            key={`mark-${mark}`}
+            className="absolute bottom-1 w-2.5 h-2.5 rounded-full bg-purple-600"
+            style={{ left: pct(mark), transform: "translateX(-50%)" }}
+            title={`subtask mark at frame ${mark}`}
+          />
+        ))}
+
+        {/* Pending outcome marker */}
+        {pending.markedFrame !== null && pending.outcome !== null && (
+          <>
+            <div
+              className="absolute top-0 bottom-0 w-px"
+              style={{
+                left: pct(pending.markedFrame),
+                backgroundColor: OUTCOME_HEX[pending.outcome],
+              }}
+            />
+            <div
+              className="absolute top-0"
+              style={{
+                left: pct(pending.markedFrame),
+                transform: "translateX(-50%)",
+                width: 0,
+                height: 0,
+                borderLeft: "6px solid transparent",
+                borderRight: "6px solid transparent",
+                borderTop: `9px solid ${OUTCOME_HEX[pending.outcome]}`,
+              }}
+              title={`${pending.outcome} @ frame ${pending.markedFrame}`}
+            />
+          </>
+        )}
+      </>
+    );
+  };
+
   const numConfirmed = reviews?.num_confirmed ?? 0;
   const numSkipped = reviews?.num_skipped ?? 0;
   const numLoadedSignals = signals.size;
@@ -1918,7 +1200,13 @@ export default function OutcomeReview({
 
   return (
     <div className="bg-white rounded-2xl border border-warm-200 shadow-sm overflow-hidden">
-      {showHelp && <HelpOverlay onClose={() => setShowHelp(false)} />}
+      {showHelp && (
+        <HelpOverlay
+          title="Review shortcuts"
+          keys={HELP_KEYS}
+          onClose={() => setShowHelp(false)}
+        />
+      )}
 
       {/* Header */}
       <div className="px-6 py-4 border-b border-warm-100 bg-warm-50 flex items-center justify-between gap-4">
@@ -2204,68 +1492,24 @@ export default function OutcomeReview({
                   episode={currentEpisode}
                   cameraKeys={cameraKeys}
                   primaryKey={primaryKey}
+                  fps={FPS}
                   frame={frame}
                   onFrame={setFrame}
-                  signals={currentSignals}
-                  pending={pending}
+                  lastValidFrame={currentSignals?.lastValidFrame ?? null}
                   controlsRef={controlsRef}
                   cropByCameraKey={cropByCameraKey}
                   storedFrameHW={storedFrameHW}
                   onDrift={setViewerDrift}
+                  renderVideoOverlay={renderVideoOverlay}
+                  renderTimelineOverlays={renderTimelineOverlays}
                 />
               )}
 
-              {(() => {
-                const chain = historyByEpisode.get(currentEpisode.episodeIndex);
-                if (!chain || chain.length === 0) return null;
-                return (
-                  <div className="mt-3 rounded-lg border border-warm-200 bg-warm-50 px-3 py-2">
-                    <div className="text-[10px] font-mono uppercase tracking-wide text-ink-muted mb-1">
-                      Label history · {chain.length} event{chain.length === 1 ? "" : "s"}
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      {chain.map((event, i) => {
-                        const seek = eventSeekFrame(event);
-                        const current = i === chain.length - 1;
-                        return (
-                          <button
-                            key={i}
-                            disabled={seek === null}
-                            // jumpToFrame (not raw setFrame): it pauses first —
-                            // a seek during playback would be silently reverted
-                            // by the next stopAndSnap.
-                            onClick={() =>
-                              seek !== null &&
-                              jumpToFrame(
-                                clamp(seek, 0, currentEpisode.rawLength - 1)
-                              )
-                            }
-                            title={
-                              seek === null
-                                ? undefined
-                                : seek > currentEpisode.rawLength - 1
-                                  ? `Seek to frame ${currentEpisode.rawLength - 1} (event frame ${seek} is beyond this timeline)`
-                                  : `Seek to frame ${seek}`
-                            }
-                            className={`flex items-baseline gap-2 text-left text-[11px] font-mono rounded px-1 -mx-1 ${
-                              seek !== null ? "cursor-pointer hover:bg-warm-100" : "cursor-default"
-                            } ${current ? "text-ink" : "text-ink-muted"}`}
-                          >
-                            <span className="shrink-0 text-ink-muted/70">
-                              {event.ts.slice(0, 16).replace("T", " ")}
-                            </span>
-                            <span className="shrink-0">{sourceLabel(event)}</span>
-                            <span className={current ? "font-medium" : ""}>
-                              {describeLabelPayload(event.label_kind, event.payload)}
-                              {current ? "  ← current" : ""}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
+              <LabelHistoryPanel
+                chain={historyByEpisode.get(currentEpisode.episodeIndex) ?? []}
+                rawLength={currentEpisode.rawLength}
+                onSeek={jumpToFrame}
+              />
 
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 {OUTCOMES.map((outcome) => (
