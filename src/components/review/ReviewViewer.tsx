@@ -37,6 +37,7 @@ export function ReviewViewer({
   cropByCameraKey,
   storedFrameHW,
   onDrift,
+  onUnverifiable,
   renderVideoOverlay,
   renderTimelineOverlays,
 }: {
@@ -59,6 +60,9 @@ export function ReviewViewer({
   /** Frame-verification drift, surfaced so the parent can BLOCK confirms —
    *  a drifted display means the counted frame is not the shown frame. */
   onDrift: (drift: string | null) => void;
+  /** Surfaced when the browser lacks requestVideoFrameCallback — parents that
+   *  mint gold timestamps should block committed verdicts on it. */
+  onUnverifiable?: (unverifiable: boolean) => void;
   /** Per-camera decision overlay (tint/border), rendered only while paused. */
   renderVideoOverlay?: (frame: number) => ReactNode;
   /** Domain markers on the timeline strip (receives the pct positioner). */
@@ -195,11 +199,21 @@ export function ReviewViewer({
 
   useEffect(() => {
     controlsRef.current = { togglePlay, pause };
+    // Null on unmount: a stale controls closure would otherwise pause/snap the
+    // PREVIOUS episode's videos when the parent calls pause() after a camera-
+    // less episode replaced the viewer.
+    return () => {
+      controlsRef.current = null;
+    };
   }, [controlsRef, togglePlay, pause]);
 
   useEffect(() => {
     onDrift(drift);
   }, [drift, onDrift]);
+
+  useEffect(() => {
+    onUnverifiable?.(unverifiable);
+  }, [unverifiable, onUnverifiable]);
 
   // Playback: the primary camera drives, the others follow its offset-corrected
   // clock; playback halts at the raw end of the episode segment.

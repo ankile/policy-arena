@@ -94,6 +94,20 @@ export const save = mutation({
     }
     const spec = specRow.spec as ExportedStageSpec;
 
+    // Time bounds use the AUTHORITATIVE duration from the prefill row when one
+    // exists — a client-supplied (or omitted) duration must not be able to
+    // disable the bounds check the Python oracle will later enforce. Resolved
+    // for every save so the stored row keeps its validation context even after
+    // the prefill is pruned by a re-publish.
+    const prefills = await ctx.db
+      .query("stagePrefills")
+      .withIndex("by_repo_episode", (q) =>
+        q.eq("dataset_repo", args.dataset_repo).eq("episode_index", args.episode_index)
+      )
+      .collect();
+    const prefill = prefills.find((p) => p.taxonomy_version === args.taxonomy_version);
+    const resolvedDuration = prefill?.episode_duration_s ?? args.episode_duration_s;
+
     let label = args.label;
     if (args.status === "cleared") {
       if (label !== undefined) {
@@ -112,18 +126,7 @@ export const save = mutation({
       }
       label = canonical.label;
       if ((COMMITTED as readonly string[]).includes(args.status)) {
-        // Time bounds use the AUTHORITATIVE duration from the prefill row when
-        // one exists — a client-supplied (or omitted) duration must not be able
-        // to disable the bounds check the Python oracle will later enforce.
-        const prefills = await ctx.db
-          .query("stagePrefills")
-          .withIndex("by_repo_episode", (q) =>
-            q.eq("dataset_repo", args.dataset_repo).eq("episode_index", args.episode_index)
-          )
-          .collect();
-        const prefill = prefills.find((p) => p.taxonomy_version === args.taxonomy_version);
-        const duration = prefill?.episode_duration_s ?? args.episode_duration_s;
-        const violations = validateStageLabel(spec, label, duration);
+        const violations = validateStageLabel(spec, label, resolvedDuration);
         if (violations.length > 0) {
           throw new Error(
             `label is internally inconsistent (${violations.length} violation(s)): ` +
@@ -165,14 +168,15 @@ export const save = mutation({
       notes: args.notes,
       prefill_pushed_at: args.prefill_pushed_at,
       blind: args.blind,
+      // Persisted so a stored row stays re-validatable even after its prefill
+      // is pruned by a re-publish (the bounds context must ride the row).
+      episode_duration_s: resolvedDuration,
       reviewer,
       reviewer_user_id: reviewerUserId,
       saved_at: principal === "service" ? (args.saved_at_override ?? Date.now()) : Date.now(),
     };
 
     if (args.status === "draft") {
-      // Collapse consecutive drafts: replace this reviewer's latest row when
-      // it is itself a draft (autosave is working state, not audit trail).
       const rows = (
         await ctx.db
           .query("stageReviews")
@@ -189,6 +193,18 @@ export const save = mutation({
       for (const row of rows) {
         if (latest === undefined || isNewer(row, latest)) latest = row;
       }
+      // A draft must never DEMOTE a committed verdict out of the latest-wins
+      // fold (a stray keypress + navigation would silently pull the episode
+      // back into the unreviewed queue and out of gold). Committed decisions
+      // change only by re-verdicting.
+      if (latest !== undefined && (COMMITTED as readonly string[]).includes(latest.status)) {
+        throw new Error(
+          `episode ${args.episode_index} already has a ${latest.status} review — ` +
+            "drafts cannot supersede a committed verdict; re-verdict to change it"
+        );
+      }
+      // Collapse consecutive drafts: replace this reviewer's latest row when
+      // it is itself a draft (autosave is working state, not audit trail).
       if (latest !== undefined && latest.status === "draft") {
         await ctx.db.replace(latest._id, doc);
         return latest._id;
@@ -232,6 +248,19 @@ export const latestForRepo = query({
       num_uncertain: count("uncertain"),
       num_draft: count("draft"),
     };
+  },
+});
+
+/** Distinct dataset repos holding stage reviews for a task — the gold
+ *  consolidator's discovery surface (no hand-maintained repo lists). */
+export const reposForTask = query({
+  args: { task: v.string() },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("stageReviews")
+      .withIndex("by_task", (q) => q.eq("task", args.task))
+      .collect();
+    return [...new Set(rows.map((r) => r.dataset_repo))].sort();
   },
 });
 

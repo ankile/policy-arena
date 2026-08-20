@@ -195,6 +195,13 @@ export function canonicalizeStageLabel(
       unknownKeys.push(key);
       continue;
     }
+    if (key === "notes") {
+      // Notes are free text: only true absence is missing — a reviewer's note
+      // reading exactly "none"/"nan" must not be silently dropped.
+      if (raw === null || raw === undefined || raw === "") continue;
+      out[key] = String(raw);
+      continue;
+    }
     if (isMissingish(raw)) continue;
     if (key === spec.stage_field) {
       const stage = parseStage(raw);
@@ -205,8 +212,6 @@ export function canonicalizeStageLabel(
     } else if (timeSet.has(key)) {
       const t = timeValue(raw);
       out[key] = t !== null ? t : raw;
-    } else if (key === "notes") {
-      out[key] = String(raw);
     } else {
       out[key] = String(raw).trim();
     }

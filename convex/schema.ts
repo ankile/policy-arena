@@ -193,6 +193,8 @@ export default defineSchema({
     notes: v.optional(v.string()),
     prefill_pushed_at: v.optional(v.float64()), // which prefill generation was shown
     blind: v.optional(v.boolean()), // reviewed with policy/arm identity hidden
+    // Bounds context persisted with the row (prefills can be pruned later).
+    episode_duration_s: v.optional(v.float64()),
     reviewer: v.string(),
     reviewer_user_id: v.optional(v.id("users")),
     saved_at: v.float64(),

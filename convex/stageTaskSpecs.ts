@@ -18,8 +18,10 @@ import { requireEditorOrService } from "./access";
 // full shape; this guards against a partial/foreign payload reaching the UI.
 const REQUIRED_SPEC_KEYS = [
   "task",
+  "lifecycle_task",
   "taxonomy_version",
   "taxonomy_hash",
+  "released_field",
   "ladder",
   "failure_modes",
   "final_states",

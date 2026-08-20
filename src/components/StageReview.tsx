@@ -103,13 +103,27 @@ export default function StageReview({
   // -- Taxonomy (schema) selection: live by default, candidates addressable --
   const [schemaParam, setSchemaParam] = useSearchParam("schema", "");
   const liveRow = specRows?.find((row) => row.live) ?? null;
-  const specRow =
-    (schemaParam ? specRows?.find((row) => row.taxonomy_version === schemaParam) : liveRow) ??
-    null;
-  const spec = useMemo<ExportedStageSpec | null>(
-    () => (specRow ? normalizeStageSpec(specRow.spec) : null),
-    [specRow]
+  // A stale/typo'd ?schema= must not strand the surface on a loading card
+  // with no selector on screen — fall back to the live row, loudly.
+  const schemaFellBack = Boolean(
+    schemaParam && specRows !== undefined &&
+      !specRows.some((row) => row.taxonomy_version === schemaParam)
   );
+  const specRow =
+    (schemaParam && !schemaFellBack
+      ? specRows?.find((row) => row.taxonomy_version === schemaParam)
+      : liveRow) ?? null;
+  // A malformed spec payload must render as a banner, not a render-throw that
+  // white-screens the app (there is no ErrorBoundary above us).
+  const specResult = useMemo<{ spec: ExportedStageSpec | null; error: string | null }>(() => {
+    if (!specRow) return { spec: null, error: null };
+    try {
+      return { spec: normalizeStageSpec(specRow.spec), error: null };
+    } catch (err) {
+      return { spec: null, error: (err as Error).message };
+    }
+  }, [specRow]);
+  const spec = specResult.spec;
   const taxonomyVersion = spec?.taxonomy_version ?? null;
 
   const reviews = useQuery(
@@ -318,13 +332,48 @@ export default function StageReview({
   );
   const currentPrefill =
     selectedEpisode !== null ? (prefillByEpisode.get(selectedEpisode) ?? null) : null;
-  const episodeDurationS = currentPrefill?.episodeDurationS ?? null;
 
   useEffect(() => {
     if (selectedEpisode !== null) return;
     const head = filteredEpisodes[0];
     if (head) setSelectedEpisode(head.episodeIndex);
   }, [selectedEpisode, filteredEpisodes, setSelectedEpisode]);
+
+  // -- Cameras (same resolution as OutcomeReview, from the lifecycle spec) -----
+  const cameraKeys = useMemo(() => {
+    if (!currentEpisode) return [];
+    const all = orderCameraKeys(explorerCameraKeys(Object.keys(currentEpisode.perCamera)));
+    const roles = taskSpec?.review_camera_roles;
+    if (roles == null || roles.length === 0) return all;
+    const keysByRole = taskSpec!.camera_keys_by_role;
+    const selected = roles
+      .map((role) => all.find((key) => cameraRoleForVideoKey(key, keysByRole) === role))
+      .filter((key): key is string => key !== undefined);
+    return selected.length > 0 ? selected : all;
+  }, [currentEpisode, taskSpec]);
+  const primaryKey = useMemo(
+    () => (cameraKeys.length > 0 ? selectPrimaryCameraKey(cameraKeys) : ""),
+    [cameraKeys]
+  );
+  const storedFrameHW = useMemo<[number, number] | null>(
+    () =>
+      taskSpec != null
+        ? [Number(taskSpec.stored_frame_hw[0]), Number(taskSpec.stored_frame_hw[1])]
+        : null,
+    [taskSpec]
+  );
+  const cropByCameraKey = useMemo<Record<string, CropBox> | null>(() => {
+    if (taskSpec == null) return null;
+    const keysByRole = taskSpec.camera_keys_by_role;
+    const map: Record<string, CropBox> = {};
+    for (const key of cameraKeys) {
+      const role = cameraRoleForVideoKey(key, keysByRole);
+      const box = role !== null ? taskSpec.crop_boxes[role] : undefined;
+      if (box !== undefined) map[key] = box.map(Number) as CropBox;
+    }
+    return map;
+  }, [taskSpec, cameraKeys]);
+
 
   // -- Working state ------------------------------------------------------------
   const [pending, setPending] = useState<StageLabelRow | null>(null);
@@ -335,6 +384,24 @@ export default function StageReview({
   const [saving, setSaving] = useState(false);
   const [showEvidence, setShowEvidence] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  // Browser cannot verify seek landings (no requestVideoFrameCallback):
+  // committed verdicts are blocked — marks would be unverified gold times.
+  const [unverifiable, setUnverifiable] = useState(false);
+  // A failed background draft save must persist (episode-tagged), not be
+  // wiped by the next episode's reset like actionError is.
+  const [draftError, setDraftError] = useState<string | null>(null);
+  // What the reviewer was actually SHOWN at prefill time — a mid-session
+  // prefill re-publish must not silently repoint prefill_pushed_at/duration.
+  const [shownPrefill, setShownPrefill] = useState<{
+    pushedAt: number;
+    durationS: number | null;
+  } | null>(null);
+  // The blind flag on saved rows is an attestation about the SESSION, not the
+  // toggle's momentary position: once unblinded, rows stop claiming blind.
+  const everUnblindedRef = useRef(false);
+  useEffect(() => {
+    if (!blind) everUnblindedRef.current = true;
+  }, [blind]);
   const controlsRef = useRef<ViewerControls | null>(null);
   const prefilledFor = useRef<number | null>(null);
 
@@ -369,6 +436,9 @@ export default function StageReview({
     } else {
       setPending({});
     }
+    setShownPrefill(
+      prefill ? { pushedAt: prefill.pushedAt, durationS: prefill.episodeDurationS } : null
+    );
     setDirty(false);
     setActionError(null);
     /* eslint-enable react-hooks/set-state-in-effect */
@@ -382,6 +452,13 @@ export default function StageReview({
     prefillByEpisode,
     pending,
   ]);
+
+  // Duration for time-bounds: what was SHOWN at prefill time; for episodes the
+  // pipeline never covered, the raw recording length is still a hard upper
+  // bound (lenient — it includes the reset tail — but it catches a typed 999).
+  const episodeDurationS =
+    shownPrefill?.durationS ??
+    (spec && currentEpisode ? currentEpisode.rawLength / spec.fps : null);
 
   const violations = useMemo(
     () => (spec && pending ? validateStageLabel(spec, pending, episodeDurationS) : []),
@@ -423,34 +500,49 @@ export default function StageReview({
     [currentEpisode]
   );
 
-  const markFrame = useCallback(
-    (): number => controlsRef.current?.pause() ?? frame,
-    [frame]
-  );
+  // C1 (red-team): a mark taken while the displayed frame is unverified/
+  // drifted becomes a wrong gold timestamp that survives after the drift
+  // banner clears — refuse the mark itself, not just the later verdict.
+  const markFrame = useCallback((): number | null => {
+    if (viewerDrift !== null) {
+      setActionError(
+        "Frame drift detected — re-seek (arrow keys) until the banner clears before marking."
+      );
+      return null;
+    }
+    return controlsRef.current?.pause() ?? frame;
+  }, [frame, viewerDrift]);
 
   // -- Save flow ------------------------------------------------------------------
   const doSave = useCallback(
-    async (status: string, label: StageLabelRow | null): Promise<boolean> => {
-      if (selectedEpisode === null || !spec || !task) return false;
+    async (
+      episodeIndex: number,
+      status: string,
+      label: StageLabelRow | null,
+      { isDraft = false }: { isDraft?: boolean } = {}
+    ): Promise<boolean> => {
+      if (!spec || !task) return false;
       try {
         await saveReview({
           task,
           dataset_repo: repoId,
-          episode_index: BigInt(selectedEpisode),
+          episode_index: BigInt(episodeIndex),
           taxonomy_version: spec.taxonomy_version,
           status,
           label: label ?? undefined,
-          prefill_pushed_at: currentPrefill?.pushedAt,
-          blind,
+          prefill_pushed_at: shownPrefill?.pushedAt,
+          blind: blind && !everUnblindedRef.current,
           episode_duration_s: episodeDurationS ?? undefined,
         });
         return true;
       } catch (err) {
-        setActionError((err as Error).message);
+        const message = `Episode ${episodeIndex}: ${(err as Error).message}`;
+        if (isDraft) setDraftError(message);
+        else setActionError(message);
         return false;
       }
     },
-    [selectedEpisode, spec, task, saveReview, repoId, currentPrefill, blind, episodeDurationS]
+    [spec, task, saveReview, repoId, shownPrefill, blind, episodeDurationS]
   );
 
   const advance = useCallback(
@@ -479,6 +571,20 @@ export default function StageReview({
         );
         return;
       }
+      if (status !== "uncertain" && unverifiable) {
+        setActionError(
+          "This browser cannot verify seek landings (no requestVideoFrameCallback) — " +
+            "committed verdicts need Chrome/Edge; you may still save as uncertain."
+        );
+        return;
+      }
+      if (status !== "uncertain" && cameraKeys.length === 0) {
+        setActionError(
+          "No reviewable camera streams — a committed verdict needs the video; " +
+            "save as uncertain instead."
+        );
+        return;
+      }
       // ALL verdicts are validator-gated (uncertain included — matching the
       // cv2 UI, which cleared review_status on a violating row). The escape
       // hatch for "I cannot make this consistent" is the draft autosave.
@@ -490,26 +596,50 @@ export default function StageReview({
       }
       setSaving(true);
       setActionError(null);
-      const ok = await doSave(status, pending);
+      const ok = await doSave(selectedEpisode, status, pending);
       setSaving(false);
       if (ok) {
         setDirty(false);
         advance(selectedEpisode);
       }
     },
-    [selectedEpisode, saving, spec, pending, viewerDrift, violations, doSave, advance]
+    [
+      selectedEpisode,
+      saving,
+      spec,
+      pending,
+      viewerDrift,
+      unverifiable,
+      cameraKeys,
+      violations,
+      doSave,
+      advance,
+    ]
   );
 
   // Navigation with unsaved edits drafts them (lossless; drafts collapse
-  // server-side, so this cannot grow the table unboundedly).
+  // server-side, so this cannot grow the table unboundedly). Two exceptions:
+  // while a verdict save is in flight navigation is refused entirely, and
+  // edits over the reviewer's own COMMITTED verdict are discarded with a
+  // notice — a stray keypress must not demote a committed row to a draft
+  // (the server rejects such drafts too).
   const navigateTo = useCallback(
     (episodeIndex: number) => {
+      if (saving) return;
       if (dirty && pending !== null && selectedEpisode !== null) {
-        void doSave("draft", pending);
+        const own = ownReviewByEpisode.get(selectedEpisode);
+        if (own && (own.status === "confirmed" || own.status === "corrected")) {
+          setDraftError(
+            `Episode ${selectedEpisode}: unsaved edits over your ${own.status} review were ` +
+              "discarded — committed verdicts change only by re-verdicting (x)."
+          );
+        } else {
+          void doSave(selectedEpisode, "draft", pending, { isDraft: true });
+        }
       }
       setSelectedEpisode(episodeIndex);
     },
-    [dirty, pending, selectedEpisode, doSave, setSelectedEpisode]
+    [saving, dirty, pending, selectedEpisode, ownReviewByEpisode, doSave, setSelectedEpisode]
   );
 
   // -- Keyboard ----------------------------------------------------------------
@@ -537,6 +667,10 @@ export default function StageReview({
 
     if (/^[0-9]$/.test(key)) {
       event.preventDefault();
+      // A keystroke before the prefill lands would seed pending with a bare
+      // stage and permanently suppress the prefill (its guard sees a non-null
+      // pending) — the reviewer would label from a blank form unknowingly.
+      if (pending === null) return;
       const stage = parseInt(key, 10);
       if (stage > spec.ladder.max_stage) {
         setActionError(`S${stage} is beyond this ladder (max S${spec.ladder.max_stage}).`);
@@ -578,10 +712,15 @@ export default function StageReview({
       case "-":
       case "=": {
         event.preventDefault();
+        if (pending === null) return; // same prefill-suppression guard as digits
         const current =
-          typeof pending?.[spec.stage_field] === "number"
+          typeof pending[spec.stage_field] === "number"
             ? (pending[spec.stage_field] as number)
-            : -1;
+            : null;
+        if (current === null) {
+          setActionError("No stage set yet — pick a rung (0-9 or the buttons) first.");
+          return;
+        }
         const next = clamp(current + (key === "=" ? 1 : -1), 0, spec.ladder.max_stage);
         edit({ [spec.stage_field]: next });
         return;
@@ -615,6 +754,7 @@ export default function StageReview({
       case "p":
       case "b": {
         event.preventDefault();
+        if (saving) return;
         const position = filteredEpisodes.findIndex(
           (episode) => episode.episodeIndex === currentEpisode.episodeIndex
         );
@@ -632,41 +772,6 @@ export default function StageReview({
     }
   }
   useWindowKeydown(handleKey);
-
-  // -- Cameras (same resolution as OutcomeReview, from the lifecycle spec) -----
-  const cameraKeys = useMemo(() => {
-    if (!currentEpisode) return [];
-    const all = orderCameraKeys(explorerCameraKeys(Object.keys(currentEpisode.perCamera)));
-    const roles = taskSpec?.review_camera_roles;
-    if (roles == null || roles.length === 0) return all;
-    const keysByRole = taskSpec!.camera_keys_by_role;
-    const selected = roles
-      .map((role) => all.find((key) => cameraRoleForVideoKey(key, keysByRole) === role))
-      .filter((key): key is string => key !== undefined);
-    return selected.length > 0 ? selected : all;
-  }, [currentEpisode, taskSpec]);
-  const primaryKey = useMemo(
-    () => (cameraKeys.length > 0 ? selectPrimaryCameraKey(cameraKeys) : ""),
-    [cameraKeys]
-  );
-  const storedFrameHW = useMemo<[number, number] | null>(
-    () =>
-      taskSpec != null
-        ? [Number(taskSpec.stored_frame_hw[0]), Number(taskSpec.stored_frame_hw[1])]
-        : null,
-    [taskSpec]
-  );
-  const cropByCameraKey = useMemo<Record<string, CropBox> | null>(() => {
-    if (taskSpec == null) return null;
-    const keysByRole = taskSpec.camera_keys_by_role;
-    const map: Record<string, CropBox> = {};
-    for (const key of cameraKeys) {
-      const role = cameraRoleForVideoKey(key, keysByRole);
-      const box = role !== null ? taskSpec.crop_boxes[role] : undefined;
-      if (box !== undefined) map[key] = box.map(Number) as CropBox;
-    }
-    return map;
-  }, [taskSpec, cameraKeys]);
 
   // Stage timeline markers: the policy-phase end (episodes keep recording
   // through the physical reset; times beyond it are invalid) + set event times.
@@ -692,11 +797,15 @@ export default function StageReview({
           {spec.time_fields.map((tf) => {
             const t = pending && typeof pending[tf] === "number" ? (pending[tf] as number) : null;
             if (t === null) return null;
+            const dotFrame = Math.min(
+              Math.round(t * spec.fps),
+              currentEpisode.rawLength - 1
+            );
             return (
               <div
                 key={tf}
                 className="absolute bottom-1 w-2 h-2 rounded-full bg-teal"
-                style={{ left: pct(Math.round(t * spec.fps)), transform: "translateX(-50%)" }}
+                style={{ left: pct(dotFrame), transform: "translateX(-50%)" }}
                 title={`${tf} = ${t}s`}
               />
             );
@@ -741,6 +850,22 @@ export default function StageReview({
       </div>
     );
   }
+  if (specResult.error !== null) {
+    return (
+      <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8">
+        <button
+          onClick={onExit}
+          className="text-xs text-ink-muted hover:text-teal mb-4 cursor-pointer"
+        >
+          &larr; Back to explorer
+        </button>
+        <div className="rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-sm text-coral font-mono">
+          Stage spec for {task}@{specRow?.taxonomy_version} is malformed — re-run the
+          exporter: {specResult.error}
+        </div>
+      </div>
+    );
+  }
   if (!task || spec === null) {
     return (
       <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8 text-center text-ink-muted font-body">
@@ -750,8 +875,14 @@ export default function StageReview({
   }
 
   const currentOwn = selectedEpisode !== null ? ownReviewByEpisode.get(selectedEpisode) : undefined;
-  const currentChain =
-    selectedEpisode !== null ? (historyByEpisode.get(selectedEpisode) ?? []) : [];
+  // Blinded double-labeling: ANOTHER reviewer's stage decision in the ledger
+  // would anchor this reviewer far more directly than a prefill — filter
+  // stage-kind events not authored by the signed-in reviewer. Outcome events
+  // stay (outcome is legitimate stage evidence, e.g. success <=> top rung).
+  const fullChain = selectedEpisode !== null ? (historyByEpisode.get(selectedEpisode) ?? []) : [];
+  const currentChain = fullChain.filter(
+    (event) => event.label_kind !== "stage" || event.source.agent === viewer?.username
+  );
 
   return (
     <div className="bg-white rounded-2xl border border-warm-200 shadow-sm overflow-hidden">
@@ -832,6 +963,23 @@ export default function StageReview({
       {loadError && (
         <div className="mx-6 mt-4 rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-sm text-coral font-mono">
           Failed to load episode metadata: {loadError}
+        </div>
+      )}
+      {draftError && (
+        <div className="mx-6 mt-4 rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-xs text-coral font-mono flex items-start justify-between gap-3">
+          <span>{draftError}</span>
+          <button
+            onClick={() => setDraftError(null)}
+            className="shrink-0 underline cursor-pointer"
+          >
+            dismiss
+          </button>
+        </div>
+      )}
+      {schemaFellBack && (
+        <div className="mx-6 mt-4 rounded-lg border border-gold/40 bg-gold-light px-4 py-3 text-xs text-ink font-mono">
+          Unknown taxonomy version "{schemaParam}" in the URL — showing the live
+          taxonomy instead.
         </div>
       )}
       {historyError && (
@@ -1057,6 +1205,7 @@ export default function StageReview({
                   cropByCameraKey={cropByCameraKey}
                   storedFrameHW={storedFrameHW}
                   onDrift={setViewerDrift}
+                  onUnverifiable={setUnverifiable}
                   renderTimelineOverlays={renderTimelineOverlays}
                 />
               )}
@@ -1068,6 +1217,7 @@ export default function StageReview({
                   violations={violations}
                   frame={frame}
                   markFrame={markFrame}
+                  markDisabled={viewerDrift !== null}
                   onEdit={edit}
                   onSeekTime={seekTime}
                   disabled={saving}

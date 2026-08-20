@@ -58,6 +58,25 @@ export function normalizeStageSpec(raw: unknown): ExportedStageSpec {
       fail(`constraints.${key} missing`);
     }
   }
+  // Value types too — a mistyped constraint value would crash the validator at
+  // review time (banned.includes on a number) or silently change semantics.
+  const con = constraints as Record<string, Record<string, unknown>>;
+  for (const [mode, stages] of Object.entries(con.failure_mode_forbidden_stages)) {
+    if (!Array.isArray(stages) || stages.some((n) => typeof n !== "number")) {
+      fail(`forbidden stages for ${mode} is not a number array`);
+    }
+  }
+  for (const [mode, bf] of Object.entries(con.historical_event_failure_modes)) {
+    if (typeof bf !== "string") fail(`historical bool for ${mode} is not a string`);
+  }
+  for (const [state, gates] of Object.entries(con.final_state_requires_gates)) {
+    if (!Array.isArray(gates) || gates.some((g) => typeof g !== "string")) {
+      fail(`gate requirements for ${state} is not a string array`);
+    }
+  }
+  for (const [state, minStage] of Object.entries(con.final_state_requires_min_stage)) {
+    if (typeof minStage !== "number") fail(`min stage for ${state} is not a number`);
+  }
 
   const eventFields = spec.event_fields;
   if (

@@ -63,6 +63,7 @@ export function StageLabelForm({
   violations,
   frame,
   markFrame,
+  markDisabled,
   onEdit,
   onSeekTime,
   disabled,
@@ -72,8 +73,11 @@ export function StageLabelForm({
   violations: Violation[];
   /** Current playhead frame (display only). */
   frame: number;
-  /** Snap-and-return the DISPLAYED frame (ViewerControls.pause() ?? frame). */
-  markFrame: () => number;
+  /** Snap-and-return the DISPLAYED frame (ViewerControls.pause() ?? frame);
+   *  null when the display is unverified (drift) — the mark is refused. */
+  markFrame: () => number | null;
+  /** Frame verification failed — marking is disabled until it clears. */
+  markDisabled: boolean;
   onEdit: (patch: StageLabelRow) => void;
   onSeekTime: (timeS: number) => void;
   disabled: boolean;
@@ -234,16 +238,25 @@ export function StageLabelForm({
                       {t !== null ? `f${Math.round(t * spec.fps)}` : ""}
                     </span>
                     <button
-                      disabled={disabled}
+                      disabled={disabled || markDisabled}
                       onClick={() => {
                         const at = markFrame();
+                        if (at === null) return; // drifted display — refused
                         onEdit({
                           [bf]: true,
                           [tf]: Math.round((at / spec.fps) * 100) / 100,
                         });
                       }}
-                      className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-teal/10 text-teal hover:bg-teal/20 cursor-pointer"
-                      title={`set ${bf} + time from the displayed frame (${frame})`}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
+                        markDisabled
+                          ? "bg-warm-100 text-ink-muted/40 cursor-not-allowed"
+                          : "bg-teal/10 text-teal hover:bg-teal/20 cursor-pointer"
+                      }`}
+                      title={
+                        markDisabled
+                          ? "frame drift detected — re-seek until the banner clears"
+                          : `set ${bf} + time from the displayed frame (${frame})`
+                      }
                     >
                       ◉ mark
                     </button>
