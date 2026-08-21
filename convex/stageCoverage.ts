@@ -17,6 +17,8 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { isNewer, reviewerKey } from "./stageReviews";
+import { effectiveStatus } from "./statusShared";
+import { loadTaskStatusMap } from "./statuses";
 
 function emptyHist(nStages: number): number[] {
   return Array.from({ length: nStages }, () => 0);
@@ -33,15 +35,20 @@ function stageOf(label: Record<string, unknown> | undefined, stageField: string)
 export const tasks = query({
   args: {},
   handler: async (ctx) => {
+    const taskStatuses = await loadTaskStatusMap(ctx);
     const live = (await ctx.db.query("stageTaskSpecs").collect()).filter((s) => s.live);
     return live
-      .map((s) => ({ task: s.task, taxonomy_version: s.taxonomy_version }))
+      .map((s) => ({
+        task: s.task,
+        taxonomy_version: s.taxonomy_version,
+        status: effectiveStatus(undefined, s.task, taskStatuses),
+      }))
       .sort((a, b) => a.task.localeCompare(b.task));
   },
 });
 
 export const forTask = query({
-  args: { task: v.string() },
+  args: { task: v.string(), includeAll: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
     const specRow = (
       await ctx.db
@@ -62,18 +69,31 @@ export const forTask = query({
     const numEpisodes = new Map<string, number | null>(
       datasets.map((d) => [d.repo_id, d.num_episodes == null ? null : Number(d.num_episodes)])
     );
+    // Mainline lens: drop repos whose effective dataset status is not
+    // mainline BEFORE aggregating, so the repo table, stage histograms,
+    // pipeline volumes, and reviewer counts all describe the same visible
+    // set. Repos with prefills/reviews but no datasets row inherit the
+    // task-level status (same resolution as everywhere else).
+    const taskStatuses = await loadTaskStatusMap(ctx);
+    const statusByRepo = new Map(
+      datasets.map((d) => [d.repo_id, effectiveStatus(d.status, d.task, taskStatuses)])
+    );
+    const repoVisible = (repo: string) =>
+      args.includeAll === true ||
+      (statusByRepo.get(repo) ?? effectiveStatus(undefined, args.task, taskStatuses)) ===
+        "mainline";
     const prefills = (
       await ctx.db
         .query("stagePrefills")
         .withIndex("by_task", (q) => q.eq("task", args.task))
         .collect()
-    ).filter((p) => p.taxonomy_version === tax);
+    ).filter((p) => p.taxonomy_version === tax && repoVisible(p.dataset_repo));
     const reviews = (
       await ctx.db
         .query("stageReviews")
         .withIndex("by_task", (q) => q.eq("task", args.task))
         .collect()
-    ).filter((r) => r.taxonomy_version === tax);
+    ).filter((r) => r.taxonomy_version === tax && repoVisible(r.dataset_repo));
 
     // Latest review per (repo, episode, reviewer); cleared folds out.
     const latestPerReviewer = new Map<string, (typeof reviews)[number]>();

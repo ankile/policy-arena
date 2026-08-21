@@ -13,6 +13,7 @@
  */
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { useSearchParam } from "../lib/useSearchParam";
 
 // Frozen anchors from sir/plotting/colors.py STAGE_LADDER_COLORS (S0..S7).
 const STAGE_ANCHORS = [
@@ -104,8 +105,8 @@ function LegendSwatch({ color, label }: { color: string; label: string }) {
 
 type TaskCoverage = NonNullable<ReturnType<typeof useTaskCoverage>>;
 
-function useTaskCoverage(task: string) {
-  return useQuery(api.stageCoverage.forTask, { task });
+function useTaskCoverage(task: string, includeAll: boolean) {
+  return useQuery(api.stageCoverage.forTask, { task, includeAll });
 }
 
 function StageHistBar({
@@ -329,8 +330,8 @@ function TaskSection({ t }: { t: TaskCoverage }) {
   );
 }
 
-function TaskSectionLoader({ task }: { task: string }) {
-  const t = useTaskCoverage(task);
+function TaskSectionLoader({ task, includeAll }: { task: string; includeAll: boolean }) {
+  const t = useTaskCoverage(task, includeAll);
   if (t === undefined) {
     return (
       <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8 text-center text-ink-muted">
@@ -347,14 +348,18 @@ function TaskSectionLoader({ task }: { task: string }) {
 }
 
 export default function CoverageDashboard() {
-  const tasks = useQuery(api.stageCoverage.tasks);
-  if (tasks === undefined) {
+  // Same global mainline/all lens as the other tabs (header toggle owns it).
+  const [showParam] = useSearchParam("show", "mainline");
+  const showAll = showParam === "all";
+  const allTasks = useQuery(api.stageCoverage.tasks);
+  if (allTasks === undefined) {
     return (
       <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8 text-center text-ink-muted">
         Loading coverage…
       </div>
     );
   }
+  const tasks = allTasks.filter((t) => showAll || t.status === "mainline");
   return (
     <div className="grid gap-8" style={{ animation: "fade-up 0.6s ease-out both" }}>
       <p className="text-sm text-ink-muted">
@@ -372,7 +377,11 @@ export default function CoverageDashboard() {
         .
       </p>
       {tasks.map((t) => (
-        <TaskSectionLoader key={`${t.task}@${t.taxonomy_version}`} task={t.task} />
+        <TaskSectionLoader
+          key={`${t.task}@${t.taxonomy_version}`}
+          task={t.task}
+          includeAll={showAll}
+        />
       ))}
     </div>
   );
