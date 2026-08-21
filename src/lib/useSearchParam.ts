@@ -23,6 +23,13 @@ const REPLACE_KEYS = new Set([
   "blind",
 ]);
 
+// pushState/replaceState fire no event, so hook instances holding the same
+// key in OTHER components would keep their stale mount-time value (e.g. the
+// App-level mainline/all toggle updating the URL while EvalSessions kept
+// filtering by the old lens). Every write broadcasts this event so all
+// instances re-read.
+const PARAMS_EVENT = "searchparamschange";
+
 function setParams(updates: Record<string, string | null>) {
   const params = new URLSearchParams(window.location.search);
   for (const [key, value] of Object.entries(updates)) {
@@ -39,14 +46,19 @@ function setParams(updates: Record<string, string | null>) {
   } else {
     window.history.pushState(null, "", url);
   }
+  window.dispatchEvent(new Event(PARAMS_EVENT));
 }
 
-/** Re-read a param from the URL on popstate (browser back/forward). */
+/** Re-read a param from the URL on popstate (back/forward) or any setParams write. */
 function useSyncOnPopState(key: string, setValue: (v: string | null) => void) {
   useEffect(() => {
     const handler = () => setValue(getParam(key));
     window.addEventListener("popstate", handler);
-    return () => window.removeEventListener("popstate", handler);
+    window.addEventListener(PARAMS_EVENT, handler);
+    return () => {
+      window.removeEventListener("popstate", handler);
+      window.removeEventListener(PARAMS_EVENT, handler);
+    };
   }, [key, setValue]);
 }
 
