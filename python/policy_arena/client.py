@@ -55,8 +55,13 @@ class PolicyArenaClient:
         rounds: list[RoundInput],
         notes: str | None = None,
         session_mode: str | None = None,
+        status: str | None = None,
     ) -> str:
-        """Submit evaluation results. Policies are auto-registered."""
+        """Submit evaluation results. Policies are auto-registered.
+
+        ``status`` tags the session at submit time (e.g. "ablation" or
+        "testing") so it never appears in the arena's default mainline view.
+        """
         args = {
             "dataset_repo": dataset_repo,
             "policies": [p.to_dict() for p in policies],
@@ -66,6 +71,8 @@ class PolicyArenaClient:
             args["notes"] = notes
         if session_mode is not None:
             args["session_mode"] = session_mode
+        if status is not None:
+            args["status"] = status
         return self._mutation("evalSessions:submit", args)
 
     def submit_rollout_session(
@@ -283,6 +290,53 @@ class PolicyArenaClient:
             "policies:updateEnvironment",
             {"model_id": model_id, "environment": environment},
         )
+
+    # -- Lifecycle statuses (mainline | retired | ablation | testing) --------
+    # Task-level status is the default for everything under that task; the
+    # per-entity setters below override it, and status="inherit" clears the
+    # override. See convex/statusShared.ts for resolution semantics.
+
+    def set_task_status(
+        self,
+        task: str,
+        status: str,
+        reason: str | None = None,
+        superseded_by: str | None = None,
+    ) -> str:
+        """Declarative upsert: omitted reason/superseded_by are cleared."""
+        args: dict = {"task": task, "status": status}
+        if reason is not None:
+            args["reason"] = reason
+        if superseded_by is not None:
+            args["superseded_by"] = superseded_by
+        return self._mutation("statuses:setTaskStatus", args)
+
+    def list_task_statuses(self) -> list[dict]:
+        return self.client.query("statuses:listTaskStatuses", {})
+
+    def set_policy_status(
+        self, model_id: str, status: str, status_reason: str | None = None
+    ) -> str:
+        args: dict = {"model_id": model_id, "status": status}
+        if status_reason is not None:
+            args["status_reason"] = status_reason
+        return self._mutation("policies:setStatus", args)
+
+    def set_session_status(
+        self, session_id: str, status: str, status_reason: str | None = None
+    ) -> str:
+        args: dict = {"id": session_id, "status": status}
+        if status_reason is not None:
+            args["status_reason"] = status_reason
+        return self._mutation("evalSessions:setStatus", args)
+
+    def set_dataset_status(
+        self, repo_id: str, status: str, status_reason: str | None = None
+    ) -> str:
+        args: dict = {"repo_id": repo_id, "status": status}
+        if status_reason is not None:
+            args["status_reason"] = status_reason
+        return self._mutation("datasets:setStatus", args)
 
     def get_leaderboard(self) -> list[dict]:
         """Get current leaderboard."""

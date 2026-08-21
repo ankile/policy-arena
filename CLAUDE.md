@@ -74,7 +74,8 @@ DataExplorer's stats write-back fires only for signed-in allowlisted editors.
 
 ### Convex Backend (`convex/`)
 
-- `schema.ts` — Database schema (policies, evalSessions, roundResults, eloHistory, datasets)
+- `schema.ts` — Database schema (policies, evalSessions, roundResults, eloHistory, datasets, taskStatuses)
+- `statusShared.ts` / `statuses.ts` — Lifecycle statuses (see below)
 - `evalSessions.ts` — Eval session submission and ELO computation
 - `policies.ts` — Policy CRUD operations
 - `recommendations.ts` — Opponent recommendation logic
@@ -96,6 +97,27 @@ DataExplorer's stats write-back fires only for signed-in allowlisted editors.
 - `backfill_rollout_sessions.py` — Backfill rollout session data
 - `backfill_pi05_rollout_sessions.py` — Backfill Pi0.5 rollout sessions
 - `backfill_stats.py` — Backfill computed statistics
+
+## Lifecycle Statuses (added 2026-08-20)
+
+Every task line, policy, eval session, and dataset has a lifecycle status:
+`mainline | retired | ablation | testing`. Resolution is
+**per-entity override ?? task-level status ?? mainline**
+(`convex/statusShared.ts`; task rows live in the `taskStatuses` table because
+`taskSpecs`/`stageTaskSpecs` are `db.replace`d by the Python exporters).
+
+- The UI defaults to a **Mainline** lens (`?show=all` reveals everything);
+  the header toggle applies to Leaderboard, Sessions, Pairings, and the
+  Data Explorer list. Editors get a "Task statuses" manager panel plus
+  per-entity override selects on detail views.
+- `recommendations:getOpponents` / `getPairCounts` only return effectively
+  mainline policies — the eval planner never proposes retired ones.
+- Python: `set_task_status` / `set_policy_status` / `set_session_status` /
+  `set_dataset_status` on the client; `submit_eval_session(..., status=...)`
+  tags an ablation/testing session at submit time.
+- `statuses:seedDefaults` (internal, idempotent) seeds a row per observed task
+  string; it ran 2026-08-20 (mainline = marker_d2, square_d2, routing_d1) and
+  also migrated the legacy `evalSessions.excluded` flag into `status`.
 
 ## Design
 

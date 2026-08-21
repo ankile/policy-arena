@@ -45,6 +45,8 @@ export default function Pairings() {
   const [policyA, setPolicyARaw] = useSearchParam("policyA", "all");
   const [policyB, setPolicyBRaw] = useSearchParam("policyB", "all");
   const [expandedRound, setExpandedRound] = useSearchParamNullable("pRound");
+  const [showParam] = useSearchParam("show", "mainline");
+  const showAll = showParam === "all";
 
   const setPolicyA = (v: string) => {
     clearSearchParams("pRound");
@@ -55,14 +57,17 @@ export default function Pairings() {
     setPolicyBRaw(v);
   };
 
-  const envList = useQuery(api.policies.environments);
+  const envList = useQuery(api.policies.environmentsDetailed);
   const policyNames = useQuery(api.policies.listNames);
 
-  const filteredPolicies = policyNames
-    ? selectedEnv === "all"
-      ? policyNames
-      : policyNames.filter((p) => p.environment === selectedEnv)
-    : [];
+  const visibleEnvs = (envList ?? []).filter(
+    (e) => showAll || e.status === "mainline"
+  );
+  const filteredPolicies = (policyNames ?? []).filter(
+    (p) =>
+      (showAll || p.effective_status === "mainline") &&
+      (selectedEnv === "all" || p.environment === selectedEnv)
+  );
 
   // Query rounds only when a specific policy A is selected
   const rounds = useQuery(
@@ -135,9 +140,9 @@ export default function Pairings() {
       {/* Filter bar */}
       <div className="flex items-center gap-4 flex-wrap">
         {/* Environment pills */}
-        {envList && envList.length > 1 && (
+        {visibleEnvs.length > 1 && (
           <div className="flex gap-2 flex-wrap">
-            {["all", ...envList].map((env) => (
+            {["all", ...visibleEnvs.map((e) => e.environment)].map((env) => (
               <button
                 key={env}
                 onClick={() => {

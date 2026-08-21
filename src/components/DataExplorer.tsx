@@ -18,6 +18,7 @@ import {
 } from "../lib/dataset-classification";
 import OutcomeReview from "./OutcomeReview";
 import StageReview from "./StageReview";
+import { StatusBadge, StatusSelect } from "./StatusBadge";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -412,6 +413,7 @@ function DatasetDetail({
   // "view" (not "mode") because EvalSessions already owns the "mode" param.
   const [view, setView] = useSearchParam("view", "explorer");
   const updateStats = useMutation(api.datasets.updateStats);
+  const setDatasetStatus = useMutation(api.datasets.setStatus);
 
   // -- Staged state --
   const [baseEpisodes, setBaseEpisodes] = useState<Omit<EpisodeMetadata, "success">[]>([]);
@@ -690,6 +692,18 @@ function DatasetDetail({
                   />
                   <TrainableBadge trainable={dataset.trainable} />
                   <EnvironmentTag env={dataset.environment} />
+                  <StatusBadge
+                    status={dataset.effective_status}
+                    reason={dataset.status_reason}
+                  />
+                  {viewer?.isEditor && (
+                    <StatusSelect
+                      value={dataset.status ?? "inherit"}
+                      onChange={(v) =>
+                        setDatasetStatus({ repo_id: repoId, status: v })
+                      }
+                    />
+                  )}
                 </div>
               )}
             </div>
@@ -968,6 +982,8 @@ export default function DataExplorer() {
   const [roleFilter, setRoleFilter] = useSearchParam("role", "all");
   const [trainableFilter, setTrainableFilter] = useSearchParam("trainable", "all");
   const [taskFilter, setTaskFilter] = useSearchParam("task", "all");
+  const [showParam] = useSearchParam("show", "mainline");
+  const showAll = showParam === "all";
   const [selectedRepoId, setSelectedRepoIdRaw] = useSearchParamNullable("dataset");
 
   const setSelectedRepoId = (id: string | null) => {
@@ -1029,13 +1045,18 @@ export default function DataExplorer() {
     );
   }
 
+  // Mainline/all lens applies before every other filter and count.
+  const visibleDatasets = showAll
+    ? datasets
+    : datasets.filter((d) => d.effective_status === "mainline");
+
   // Compute unique tasks for filter pills
-  const allTasks = [...new Set(datasets.map((d) => d.task))].sort();
+  const allTasks = [...new Set(visibleDatasets.map((d) => d.task))].sort();
 
   // Compute source type counts and episode counts (from all datasets before task filter)
   const sourceTypeCounts = new Map<string, number>();
   const sourceTypeEpisodeCounts = new Map<string, number>();
-  for (const d of datasets) {
+  for (const d of visibleDatasets) {
     sourceTypeCounts.set(d.source_type, (sourceTypeCounts.get(d.source_type) ?? 0) + 1);
     const eps = d.num_episodes != null ? Number(d.num_episodes) : 0;
     sourceTypeEpisodeCounts.set(d.source_type, (sourceTypeEpisodeCounts.get(d.source_type) ?? 0) + eps);
@@ -1044,8 +1065,8 @@ export default function DataExplorer() {
   // Apply task filter
   const filteredDatasets =
     taskFilter === "all"
-      ? datasets
-      : datasets.filter((d) => d.task === taskFilter);
+      ? visibleDatasets
+      : visibleDatasets.filter((d) => d.task === taskFilter);
 
   return (
     <div
@@ -1062,11 +1083,11 @@ export default function DataExplorer() {
           {SOURCE_TYPE_FILTERS.map((filter) => {
             const count =
               filter.id === "all"
-                ? datasets.length
+                ? visibleDatasets.length
                 : sourceTypeCounts.get(filter.id) ?? 0;
             const epCount =
               filter.id === "all"
-                ? datasets.reduce((s, d) => s + (d.num_episodes != null ? Number(d.num_episodes) : 0), 0)
+                ? visibleDatasets.reduce((s, d) => s + (d.num_episodes != null ? Number(d.num_episodes) : 0), 0)
                 : sourceTypeEpisodeCounts.get(filter.id) ?? 0;
             const isActive = sourceFilter === filter.id;
             return (
@@ -1259,6 +1280,12 @@ export default function DataExplorer() {
                     />
                     <TrainableBadge trainable={dataset.trainable} />
                     <EnvironmentTag env={dataset.environment} />
+                    {showAll && (
+                      <StatusBadge
+                        status={dataset.effective_status}
+                        reason={dataset.status_reason}
+                      />
+                    )}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-ink-muted">
                     {dataset.num_episodes != null && Number(dataset.num_episodes) > 0 && (

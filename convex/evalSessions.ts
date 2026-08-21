@@ -3,6 +3,12 @@ import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { requireEditorOrService } from "./access";
 import { computeEloUpdate } from "./elo";
+import { loadTaskStatusMap } from "./statuses";
+import {
+  effectiveStatus,
+  statusValidator,
+  statusOrInheritValidator,
+} from "./statusShared";
 
 function uniqueRoundIndexes(rounds: Array<{ round_index: bigint }>): Set<number> {
   const indexes = new Set<number>();
@@ -22,6 +28,7 @@ export const submit = mutation({
     dataset_repo: v.string(),
     notes: v.optional(v.string()),
     session_mode: v.optional(v.string()),
+    status: v.optional(statusValidator), // e.g. tag an ablation eval at submit time
     policies: v.array(
       v.object({
         name: v.string(),
@@ -94,6 +101,7 @@ export const submit = mutation({
       policy_ids: policyIds,
       notes: args.notes,
       session_mode: args.session_mode,
+      status: args.status,
     });
 
     // 3. Insert round results
@@ -206,6 +214,7 @@ export const list = query({
       .query("evalSessions")
       .order("desc")
       .collect();
+    const taskStatuses = await loadTaskStatusMap(ctx);
 
     return Promise.all(
       sessions.map(async (session) => {
@@ -219,10 +228,12 @@ export const list = query({
           .query("datasets")
           .withIndex("by_repo", (q) => q.eq("repo_id", session.dataset_repo))
           .unique();
+        const task = dataset?.task ?? null;
         return {
           ...session,
           policyNames,
-          task: dataset?.task ?? null,
+          task,
+          effective_status: effectiveStatus(session.status, task, taskStatuses),
           derivedDatasetRepos: dataset?.derived_repo_ids ?? [],
         };
       })
@@ -839,6 +850,25 @@ export const addRounds = mutation({
       }
     }
 
+    return args.id;
+  },
+});
+
+export const setStatus = mutation({
+  args: {
+    id: v.id("evalSessions"),
+    status: statusOrInheritValidator,
+    status_reason: v.optional(v.string()),
+    serviceToken: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireEditorOrService(ctx, args.serviceToken);
+    const session = await ctx.db.get(args.id);
+    if (!session) throw new Error("Session not found");
+    await ctx.db.patch(args.id, {
+      status: args.status === "inherit" ? undefined : args.status,
+      status_reason: args.status === "inherit" ? undefined : args.status_reason,
+    });
     return args.id;
   },
 });

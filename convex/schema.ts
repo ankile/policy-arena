@@ -1,9 +1,24 @@
 import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { statusValidator } from "./statusShared";
 
 export default defineSchema({
   ...authTables,
+
+  // Hand-managed task/line lifecycle status (see statusShared.ts). Lives in
+  // its own table because taskSpecs/stageTaskSpecs are db.replace()d wholesale
+  // by the Python exporters and would destroy hand-set fields. Per-entity
+  // `status` overrides on policies/evalSessions/datasets take precedence;
+  // tasks without a row are mainline.
+  taskStatuses: defineTable({
+    task: v.string(), // matches policies.environment / datasets.task
+    status: statusValidator,
+    reason: v.optional(v.string()),
+    superseded_by: v.optional(v.string()), // e.g. insert_marker_d1_v0 -> insert_marker_d1
+    updated_at: v.float64(),
+    updated_by: v.string(),
+  }).index("by_task", ["task"]),
 
   // Overrides authTables.users to add the Hugging Face username — the
   // DISPLAY/audit string; authorization keys on the OIDC sub via
@@ -27,6 +42,8 @@ export default defineSchema({
     model_url: v.optional(v.string()),
     training_url: v.optional(v.string()),
     environment: v.string(),
+    status: v.optional(statusValidator), // override; absent = inherit from task
+    status_reason: v.optional(v.string()),
     elo: v.float64(),
     wins: v.int64(),
     losses: v.int64(),
@@ -41,8 +58,8 @@ export default defineSchema({
     policy_ids: v.array(v.id("policies")),
     notes: v.optional(v.string()),
     session_mode: v.optional(v.string()),  // "manual" | "pool-sample" | "calibrate" | "rollout"
-    excluded: v.optional(v.boolean()),
-    exclusion_reason: v.optional(v.string()),
+    status: v.optional(statusValidator), // override; absent = inherit from task
+    status_reason: v.optional(v.string()),
   }),
 
   roundResults: defineTable({
@@ -211,6 +228,8 @@ export default defineSchema({
     source_type: v.string(), // "teleop" | "rollout" | "dagger" | "eval"
     dataset_role: v.optional(v.string()), // "aggregate_parent" | "training_view" | "eval_session" | "rollout"
     trainable: v.optional(v.boolean()),
+    status: v.optional(statusValidator), // override; absent = inherit from task
+    status_reason: v.optional(v.string()),
     environment: v.string(),
     num_episodes: v.optional(v.int64()),
     total_duration_seconds: v.optional(v.float64()),

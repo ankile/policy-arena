@@ -1,6 +1,8 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { requireEditorOrService } from "./access";
+import { loadTaskStatusMap } from "./statuses";
+import { effectiveStatus, statusOrInheritValidator } from "./statusShared";
 
 export const register = mutation({
   args: {
@@ -103,10 +105,20 @@ export const deleteByRepo = mutation({
 export const getByRepo = query({
   args: { repo_id: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const dataset = await ctx.db
       .query("datasets")
       .withIndex("by_repo", (q) => q.eq("repo_id", args.repo_id))
       .unique();
+    if (!dataset) return null;
+    const taskStatuses = await loadTaskStatusMap(ctx);
+    return {
+      ...dataset,
+      effective_status: effectiveStatus(
+        dataset.status,
+        dataset.task,
+        taskStatuses
+      ),
+    };
   },
 });
 
@@ -193,6 +205,36 @@ export const list = query({
     if (args.trainable !== undefined) {
       datasets = datasets.filter((d) => d.trainable === args.trainable);
     }
-    return datasets.sort((a, b) => b._creationTime - a._creationTime);
+    const taskStatuses = await loadTaskStatusMap(ctx);
+    return datasets
+      .map((d) => ({
+        ...d,
+        effective_status: effectiveStatus(d.status, d.task, taskStatuses),
+      }))
+      .sort((a, b) => b._creationTime - a._creationTime);
+  },
+});
+
+export const setStatus = mutation({
+  args: {
+    repo_id: v.string(),
+    status: statusOrInheritValidator,
+    status_reason: v.optional(v.string()),
+    serviceToken: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireEditorOrService(ctx, args.serviceToken);
+    const dataset = await ctx.db
+      .query("datasets")
+      .withIndex("by_repo", (q) => q.eq("repo_id", args.repo_id))
+      .unique();
+    if (!dataset) {
+      throw new Error(`Dataset not found: ${args.repo_id}`);
+    }
+    await ctx.db.patch(dataset._id, {
+      status: args.status === "inherit" ? undefined : args.status,
+      status_reason: args.status === "inherit" ? undefined : args.status_reason,
+    });
+    return dataset._id;
   },
 });

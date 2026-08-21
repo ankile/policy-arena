@@ -1,11 +1,29 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { requireEditorOrService } from "./access";
+import { loadTaskStatusMap } from "./statuses";
+import { effectiveStatus, statusOrInheritValidator } from "./statusShared";
 
+// Legacy string-list variant — the deployed frontend calls this until the
+// environmentsDetailed cutover ships; remove once Vercel is redeployed.
 export const environments = query({
   handler: async (ctx) => {
     const policies = await ctx.db.query("policies").collect();
     return [...new Set(policies.map((p) => p.environment))].sort();
+  },
+});
+
+export const environmentsDetailed = query({
+  args: {},
+  handler: async (ctx) => {
+    const policies = await ctx.db.query("policies").collect();
+    const taskStatuses = await loadTaskStatusMap(ctx);
+    return [...new Set(policies.map((p) => p.environment))].sort().map(
+      (environment) => ({
+        environment,
+        status: effectiveStatus(undefined, environment, taskStatuses),
+      })
+    );
   },
 });
 
@@ -21,6 +39,7 @@ export const leaderboard = query({
     } else {
       policies = await ctx.db.query("policies").collect();
     }
+    const taskStatuses = await loadTaskStatusMap(ctx);
 
     const enriched = await Promise.all(
       policies.map(async (policy) => {
@@ -46,7 +65,18 @@ export const leaderboard = query({
               )
             : null;
 
-        return { ...policy, successRate, avgSuccessSteps, totalRollouts: total, totalSuccesses: successes };
+        return {
+          ...policy,
+          effective_status: effectiveStatus(
+            policy.status,
+            policy.environment,
+            taskStatuses
+          ),
+          successRate,
+          avgSuccessSteps,
+          totalRollouts: total,
+          totalSuccesses: successes,
+        };
       })
     );
 
@@ -57,14 +87,54 @@ export const leaderboard = query({
 export const listNames = query({
   handler: async (ctx) => {
     const policies = await ctx.db.query("policies").collect();
-    return policies.map((p) => ({ _id: p._id, name: p.name, environment: p.environment }));
+    const taskStatuses = await loadTaskStatusMap(ctx);
+    return policies.map((p) => ({
+      _id: p._id,
+      name: p.name,
+      environment: p.environment,
+      effective_status: effectiveStatus(p.status, p.environment, taskStatuses),
+    }));
   },
 });
 
 export const get = query({
   args: { id: v.id("policies") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
+    const policy = await ctx.db.get(args.id);
+    if (!policy) return null;
+    const taskStatuses = await loadTaskStatusMap(ctx);
+    return {
+      ...policy,
+      effective_status: effectiveStatus(
+        policy.status,
+        policy.environment,
+        taskStatuses
+      ),
+    };
+  },
+});
+
+export const setStatus = mutation({
+  args: {
+    model_id: v.string(),
+    status: statusOrInheritValidator,
+    status_reason: v.optional(v.string()),
+    serviceToken: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireEditorOrService(ctx, args.serviceToken);
+    const policy = await ctx.db
+      .query("policies")
+      .withIndex("by_model_id", (q) => q.eq("model_id", args.model_id))
+      .unique();
+    if (!policy) {
+      throw new Error(`Policy not found: ${args.model_id}`);
+    }
+    await ctx.db.patch(policy._id, {
+      status: args.status === "inherit" ? undefined : args.status,
+      status_reason: args.status === "inherit" ? undefined : args.status_reason,
+    });
+    return policy._id;
   },
 });
 

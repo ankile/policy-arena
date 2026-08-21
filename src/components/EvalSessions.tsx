@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { StatusBadge, StatusSelect } from "./StatusBadge";
 import type { Id } from "../../convex/_generated/dataModel";
 import {
   fetchEpisodeSubset,
@@ -259,9 +260,13 @@ const SESSION_MODE_FILTERS: { id: SessionModeFilter; label: string }[] = [
 
 export default function EvalSessions() {
   const sessions = useQuery(api.evalSessions.list);
+  const viewer = useQuery(api.users.viewer);
+  const setSessionStatus = useMutation(api.evalSessions.setStatus);
   const [expandedSession, setExpandedSessionRaw] = useSearchParamNullable("session");
   const [modeFilter, setModeFilter] = useSearchParam("mode", "all");
   const [taskFilter, setTaskFilter] = useSearchParam("task", "all");
+  const [showParam] = useSearchParam("show", "mainline");
+  const showAll = showParam === "all";
 
   const setExpandedSession = (id: string | null) => {
     if (id === null) clearSearchParams("round");
@@ -293,10 +298,15 @@ export default function EvalSessions() {
     );
   }
 
+  // Mainline/all lens applies before every other filter and count.
+  const statusVisible = showAll
+    ? sessions
+    : sessions.filter((s) => s.effective_status === "mainline");
+
   const modeFiltered =
     modeFilter === "all"
-      ? sessions
-      : sessions.filter((s) => (s.session_mode ?? "manual") === modeFilter);
+      ? statusVisible
+      : statusVisible.filter((s) => (s.session_mode ?? "manual") === modeFilter);
 
   const filteredSessions =
     taskFilter === "all"
@@ -305,7 +315,7 @@ export default function EvalSessions() {
 
   // Count sessions per mode for the filter badges
   const modeCounts = new Map<string, number>();
-  for (const s of sessions) {
+  for (const s of statusVisible) {
     const mode = s.session_mode ?? "manual";
     modeCounts.set(mode, (modeCounts.get(mode) ?? 0) + 1);
   }
@@ -328,7 +338,7 @@ export default function EvalSessions() {
           {SESSION_MODE_FILTERS.map((filter) => {
             const count =
               filter.id === "all"
-                ? sessions.length
+                ? statusVisible.length
                 : modeCounts.get(filter.id) ?? 0;
             const isActive = modeFilter === filter.id;
             return (
@@ -426,6 +436,10 @@ export default function EvalSessions() {
                   {Number(session.num_rounds)} rounds
                 </span>
                 <SessionModeTag mode={session.session_mode ?? "manual"} />
+                <StatusBadge
+                  status={session.effective_status}
+                  reason={session.status_reason}
+                />
                 <a
                   href={`?tab=explorer&dataset=${encodeURIComponent(session.dataset_repo)}`}
                   className="hover:text-teal transition-colors font-mono"
@@ -473,6 +487,25 @@ export default function EvalSessions() {
           {session.notes && expandedSession === (session._id as string) && (
             <div className="px-6 pb-2">
               <p className="text-xs text-ink-muted italic">{session.notes}</p>
+            </div>
+          )}
+
+          {/* Editor status override */}
+          {viewer?.isEditor && expandedSession === (session._id as string) && (
+            <div className="px-6 pb-3 flex items-center gap-2 text-xs text-ink-muted">
+              <span className="uppercase tracking-widest text-[10px] font-medium">
+                Status
+              </span>
+              <StatusSelect
+                value={session.status ?? "inherit"}
+                onChange={(v) =>
+                  setSessionStatus({ id: session._id, status: v })
+                }
+              />
+              <StatusBadge
+                status={session.effective_status}
+                reason={session.status_reason}
+              />
             </div>
           )}
 

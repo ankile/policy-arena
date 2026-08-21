@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 
@@ -7,6 +8,8 @@ import CoverageDashboard from "./components/CoverageDashboard";
 import EvalSessions from "./components/EvalSessions";
 import Pairings from "./components/Pairings";
 import PolicyDetail from "./components/PolicyDetail";
+import { StatusBadge } from "./components/StatusBadge";
+import TaskStatusManager from "./components/TaskStatusManager";
 import { useSearchParam, useSearchParamNullable, clearSearchParams } from "./lib/useSearchParam";
 
 function winRate(wins: number, losses: number): number {
@@ -83,8 +86,13 @@ function App() {
   const [selectedEnv, setSelectedEnv] = useSearchParam("env", "all");
   const [expandedPolicy, setExpandedPolicy] = useSearchParamNullable("policy");
   const [sortBy, setSortBy] = useSearchParam("sort", "elo") as [SortKey, (v: string) => void];
+  // Global mainline/all lens — deliberately NOT cleared on tab switch.
+  const [showParam, setShowParam] = useSearchParam("show", "mainline");
+  const showAll = showParam === "all";
+  const [managerOpen, setManagerOpen] = useState(false);
 
-  const envList = useQuery(api.policies.environments);
+  const viewer = useQuery(api.users.viewer);
+  const envList = useQuery(api.policies.environmentsDetailed);
   const policies = useQuery(
     api.policies.leaderboard,
     selectedEnv === "all" ? {} : { environment: selectedEnv },
@@ -95,7 +103,14 @@ function App() {
     setActiveTabRaw(tab);
   };
 
-  const sortedPolicies = [...(policies ?? [])].sort((a, b) => {
+  const visibleEnvs = (envList ?? []).filter(
+    (e) => showAll || e.status === "mainline"
+  );
+  const visiblePolicies = (policies ?? []).filter(
+    (p) => showAll || p.effective_status === "mainline"
+  );
+
+  const sortedPolicies = [...visiblePolicies].sort((a, b) => {
     if (sortBy === "success") {
       return (b.successRate ?? -1) - (a.successRate ?? -1);
     }
@@ -162,35 +177,73 @@ function App() {
           </p>
         </header>
 
-        {/* Tab navigation */}
+        {/* Tab navigation + mainline/all lens */}
         <div
-          className="flex gap-1 mb-8 bg-warm-100 rounded-xl p-1 w-fit"
+          className="flex items-center justify-between gap-3 mb-8 flex-wrap"
           style={{ animation: "fade-up 0.6s ease-out 0.1s both" }}
         >
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-5 py-2 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer ${
-                activeTab === tab.id
-                  ? "bg-white text-ink shadow-sm"
-                  : "text-ink-muted hover:text-ink"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+          <div className="flex gap-1 bg-warm-100 rounded-xl p-1 w-fit">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-5 py-2 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer ${
+                  activeTab === tab.id
+                    ? "bg-white text-ink shadow-sm"
+                    : "text-ink-muted hover:text-ink"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1 bg-warm-100 rounded-xl p-1">
+              {(
+                [
+                  { id: "mainline", label: "Mainline" },
+                  { id: "all", label: "All" },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => setShowParam(opt.id)}
+                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer ${
+                    showParam === opt.id
+                      ? "bg-white text-ink shadow-sm"
+                      : "text-ink-muted hover:text-ink"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {viewer?.isEditor && (
+              <button
+                onClick={() => setManagerOpen((o) => !o)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
+                  managerOpen
+                    ? "bg-teal text-white border-teal shadow-sm"
+                    : "bg-white text-ink-muted border-warm-200 hover:border-teal/40 hover:text-ink"
+                }`}
+              >
+                Task statuses
+              </button>
+            )}
+          </div>
         </div>
+
+        {managerOpen && viewer?.isEditor && <TaskStatusManager />}
 
         {activeTab === "leaderboard" && (
           <>
             {/* Environment filter */}
-            {envList && envList.length > 1 && (
+            {visibleEnvs.length > 1 && (
               <div
                 className="flex gap-2 mb-6 flex-wrap"
                 style={{ animation: "fade-up 0.6s ease-out 0.12s both" }}
               >
-                {["all", ...envList].map((env) => (
+                {["all", ...visibleEnvs.map((e) => e.environment)].map((env) => (
                   <button
                     key={env}
                     onClick={() => setSelectedEnv(env)}
@@ -330,8 +383,14 @@ function App() {
                             <div className="font-body font-semibold text-ink text-[15px] truncate" title={policy.name}>
                               {policy.name}
                             </div>
-                            <div className="mt-1">
+                            <div className="mt-1 flex items-center gap-1.5">
                               <EnvironmentTag env={policy.environment} />
+                              {showAll && (
+                                <StatusBadge
+                                  status={policy.effective_status}
+                                  reason={policy.status_reason}
+                                />
+                              )}
                             </div>
                           </div>
                           <svg

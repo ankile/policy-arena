@@ -28,6 +28,8 @@ import type * as stageCoverage from "../stageCoverage.js";
 import type * as stagePrefills from "../stagePrefills.js";
 import type * as stageReviews from "../stageReviews.js";
 import type * as stageTaskSpecs from "../stageTaskSpecs.js";
+import type * as statusShared from "../statusShared.js";
+import type * as statuses from "../statuses.js";
 import type * as taskSpecs from "../taskSpecs.js";
 import type * as users from "../users.js";
 
@@ -58,6 +60,8 @@ declare const fullApi: ApiFromModules<{
   stagePrefills: typeof stagePrefills;
   stageReviews: typeof stageReviews;
   stageTaskSpecs: typeof stageTaskSpecs;
+  statusShared: typeof statusShared;
+  statuses: typeof statuses;
   taskSpecs: typeof taskSpecs;
   users: typeof users;
 }>;

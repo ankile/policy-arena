@@ -1,5 +1,7 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
+import { loadTaskStatusMap } from "./statuses";
+import { effectiveStatus } from "./statusShared";
 
 export const getPairCounts = query({
   args: {
@@ -16,6 +18,12 @@ export const getPairCounts = query({
     } else {
       policies = await ctx.db.query("policies").collect();
     }
+    // The eval planner consumes this — retired/ablation/testing policies must
+    // not be proposed as opponents.
+    const taskStatuses = await loadTaskStatusMap(ctx);
+    policies = policies.filter(
+      (p) => effectiveStatus(p.status, p.environment, taskStatuses) === "mainline"
+    );
 
     // Build policy_id -> model_id map
     const idToModelId = new Map<string, string>();
@@ -70,6 +78,12 @@ export const getOpponents = query({
   },
   handler: async (ctx, args) => {
     let policies = await ctx.db.query("policies").collect();
+
+    // Only mainline policies are eligible opponents (see getPairCounts note).
+    const taskStatuses = await loadTaskStatusMap(ctx);
+    policies = policies.filter(
+      (p) => effectiveStatus(p.status, p.environment, taskStatuses) === "mainline"
+    );
 
     // Filter by environment if specified
     if (args.environment) {

@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import RolloutSection from "./RolloutSection";
+import { StatusBadge, StatusSelect } from "./StatusBadge";
 import { useSearchParamNullable } from "../lib/useSearchParam";
 
 function CollapsibleSection({
@@ -73,6 +74,8 @@ export default function PolicyDetail({
     api.roundResults.getSuccessRateHistory,
     { policy_id: policyId }
   );
+  const viewer = useQuery(api.users.viewer);
+  const setPolicyStatus = useMutation(api.policies.setStatus);
 
   const [rolloutsParam, setRolloutsParam] = useSearchParamNullable("rollouts");
   const rolloutsOpen = rolloutsParam !== null;
@@ -122,6 +125,27 @@ export default function PolicyDetail({
             <div className="flex gap-2">
               <dt className="text-ink-muted w-24 shrink-0">Draws</dt>
               <dd className="font-mono text-ink">{Number(policy.draws)}</dd>
+            </div>
+            <div className="flex gap-2 items-center">
+              <dt className="text-ink-muted w-24 shrink-0">Status</dt>
+              <dd className="flex items-center gap-2">
+                {policy.effective_status === "mainline" ? (
+                  <span className="text-ink-muted">mainline</span>
+                ) : (
+                  <StatusBadge
+                    status={policy.effective_status}
+                    reason={policy.status_reason}
+                  />
+                )}
+                {viewer?.isEditor && (
+                  <StatusSelect
+                    value={policy.status ?? "inherit"}
+                    onChange={(v) =>
+                      setPolicyStatus({ model_id: policy.model_id, status: v })
+                    }
+                  />
+                )}
+              </dd>
             </div>
           </dl>
 
