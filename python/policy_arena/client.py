@@ -423,17 +423,27 @@ class PolicyArenaClient:
         return totals
 
     def prune_stale_stage_prefills(
-        self, dataset_repo: str, *, taxonomy_version: str, keep_episode_indices: list[int]
+        self,
+        dataset_repo: str,
+        *,
+        taxonomy_version: str,
+        keep_episode_indices: list[int],
+        task: str | None = None,
     ) -> int:
-        """Delete prefills for episodes NOT in this push (wholesale-replace tail)."""
-        result = self._mutation(
-            "stagePrefills:pruneStale",
-            {
-                "dataset_repo": dataset_repo,
-                "taxonomy_version": taxonomy_version,
-                "keep_episode_indices": [ConvexInt64(int(e)) for e in keep_episode_indices],
-            },
-        )
+        """Delete prefills for episodes NOT in this push (wholesale-replace tail).
+
+        Pass ``task`` so a repo hypothetically holding two tasks' prefills under
+        one shared taxonomy string ("s7_v1" is shared by four lines) can never
+        have the other task's rows deleted.
+        """
+        args: dict = {
+            "dataset_repo": dataset_repo,
+            "taxonomy_version": taxonomy_version,
+            "keep_episode_indices": [ConvexInt64(int(e)) for e in keep_episode_indices],
+        }
+        if task is not None:
+            args["task"] = task
+        result = self._mutation("stagePrefills:pruneStale", args)
         return int(result["pruned"])
 
     def fetch_stage_prefills(

@@ -103,6 +103,10 @@ export const pruneStale = mutation({
     serviceToken: v.optional(v.string()),
     dataset_repo: v.string(),
     taxonomy_version: v.string(),
+    // Guards cross-task deletion: four tasks share taxonomy "s7_v1", so a
+    // repo ever holding two tasks' prefills would otherwise let one line's
+    // wholesale-replace silently delete the other's rows.
+    task: v.optional(v.string()),
     keep_episode_indices: v.array(v.int64()),
   },
   handler: async (ctx, args) => {
@@ -121,6 +125,7 @@ export const pruneStale = mutation({
     let pruned = 0;
     for (const row of rows) {
       if (row.taxonomy_version !== args.taxonomy_version) continue;
+      if (args.task !== undefined && row.task !== args.task) continue;
       if (!keep.has(row.episode_index.toString())) {
         await ctx.db.delete(row._id);
         pruned += 1;

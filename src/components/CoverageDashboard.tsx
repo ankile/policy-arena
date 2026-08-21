@@ -41,7 +41,10 @@ function lerpHex(a: string, b: string, t: number): string {
 /** Stage colour for an n-rung ladder, sampling the frozen anchor ramp. */
 function stageColor(stage: number, nStages: number): string {
   if (nStages === STAGE_ANCHORS.length) return STAGE_ANCHORS[stage];
-  const pos = (stage / (nStages - 1)) * (STAGE_ANCHORS.length - 1);
+  // A degenerate 1-rung ladder would divide by zero (NaN -> undefined anchor
+  // -> render crash with no ErrorBoundary above us); pin it to the top anchor.
+  const denom = Math.max(nStages - 1, 1);
+  const pos = (stage / denom) * (STAGE_ANCHORS.length - 1);
   const lo = Math.floor(pos);
   const hi = Math.min(lo + 1, STAGE_ANCHORS.length - 1);
   return lerpHex(STAGE_ANCHORS[lo], STAGE_ANCHORS[hi], pos - lo);
@@ -86,7 +89,6 @@ function StackedBar({ segments, total }: { segments: Segment[]; total: number })
             {s.value / denom > 0.055 ? s.label : ""}
           </div>
         ))}
-      {total > segments.reduce((a, s) => a + s.value, 0) && <div className="flex-1" />}
     </div>
   );
 }
@@ -100,11 +102,10 @@ function LegendSwatch({ color, label }: { color: string; label: string }) {
   );
 }
 
-type Overview = NonNullable<ReturnType<typeof useCoverage>>;
-type TaskCoverage = Overview["tasks"][number];
+type TaskCoverage = NonNullable<ReturnType<typeof useTaskCoverage>>;
 
-function useCoverage() {
-  return useQuery(api.stageCoverage.overview);
+function useTaskCoverage(task: string) {
+  return useQuery(api.stageCoverage.forTask, { task });
 }
 
 function StageHistBar({
@@ -147,12 +148,13 @@ function TaskSection({ t }: { t: TaskCoverage }) {
   const totals = t.repos.reduce(
     (acc, r) => ({
       episodes: acc.episodes + (r.num_episodes ?? 0),
+      unregistered: acc.unregistered + (r.num_episodes === null ? 1 : 0),
       prefill: acc.prefill + r.n_prefill,
       committed: acc.committed + r.n_committed,
       uncertain: acc.uncertain + r.n_uncertain,
       flagged: acc.flagged + r.n_flagged,
     }),
-    { episodes: 0, prefill: 0, committed: 0, uncertain: 0, flagged: 0 }
+    { episodes: 0, unregistered: 0, prefill: 0, committed: 0, uncertain: 0, flagged: 0 }
   );
   return (
     <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8">
@@ -162,7 +164,9 @@ function TaskSection({ t }: { t: TaskCoverage }) {
       </div>
       <p className="mb-5 text-sm text-ink-muted">
         {totals.episodes.toLocaleString()} episodes across {t.repos.length} dataset
-        {t.repos.length === 1 ? "" : "s"} · {totals.prefill.toLocaleString()} pipeline-labeled ·{" "}
+        {t.repos.length === 1 ? "" : "s"}
+        {totals.unregistered > 0 ? ` (${totals.unregistered} unregistered — episode totals incomplete)` : ""} ·{" "}
+        {totals.prefill.toLocaleString()} pipeline-labeled ·{" "}
         {totals.committed} human-committed · {totals.uncertain} uncertain ·{" "}
         {totals.flagged} prefills with consistency flags
       </p>
@@ -183,8 +187,13 @@ function TaskSection({ t }: { t: TaskCoverage }) {
         </thead>
         <tbody>
           {t.repos.map((r) => {
-            const total = r.num_episodes ?? r.n_committed + r.n_vlm_only;
-            const unlabeled = Math.max(total - r.n_committed - r.n_vlm_only, 0);
+            const labeled = r.n_committed + r.n_vlm_only;
+            // A registered episode count SMALLER than the labeled count means
+            // stale/broken registration — surface it instead of clamping the
+            // bar into a clean-looking 100%.
+            const mismatch = r.num_episodes !== null && r.num_episodes < labeled;
+            const total = r.num_episodes !== null && !mismatch ? r.num_episodes : labeled;
+            const unlabeled = total - labeled;
             return (
               <tr key={r.repo} className="border-t border-warm-200/60">
                 <td className="py-1.5 pr-3">
@@ -198,6 +207,14 @@ function TaskSection({ t }: { t: TaskCoverage }) {
                   {r.n_uncertain > 0 && (
                     <span className="ml-2 rounded-full bg-gold/15 px-2 py-0.5 text-[10px] text-ink-soft">
                       {r.n_uncertain} uncertain
+                    </span>
+                  )}
+                  {mismatch && (
+                    <span
+                      className="ml-2 rounded-full bg-coral/15 px-2 py-0.5 text-[10px] text-coral"
+                      title={`registered num_episodes (${r.num_episodes}) < labeled episodes (${labeled}) — stale dataset registration`}
+                    >
+                      count mismatch
                     </span>
                   )}
                 </td>
@@ -312,17 +329,32 @@ function TaskSection({ t }: { t: TaskCoverage }) {
   );
 }
 
+function TaskSectionLoader({ task }: { task: string }) {
+  const t = useTaskCoverage(task);
+  if (t === undefined) {
+    return (
+      <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8 text-center text-ink-muted">
+        Loading {task}…
+      </div>
+    );
+  }
+  if (t === null || t.repos.length === 0) {
+    return (
+      <div className="text-xs text-ink-muted">No arena stage data yet for {task}.</div>
+    );
+  }
+  return <TaskSection t={t} />;
+}
+
 export default function CoverageDashboard() {
-  const overview = useCoverage();
-  if (overview === undefined) {
+  const tasks = useQuery(api.stageCoverage.tasks);
+  if (tasks === undefined) {
     return (
       <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8 text-center text-ink-muted">
         Loading coverage…
       </div>
     );
   }
-  const withData = overview.tasks.filter((t) => t.repos.length > 0);
-  const withoutData = overview.tasks.filter((t) => t.repos.length === 0);
   return (
     <div className="grid gap-8" style={{ animation: "fade-up 0.6s ease-out both" }}>
       <p className="text-sm text-ink-muted">
@@ -339,14 +371,9 @@ export default function CoverageDashboard() {
         </a>
         .
       </p>
-      {withData.map((t) => (
-        <TaskSection key={`${t.task}@${t.taxonomy_version}`} t={t} />
+      {tasks.map((t) => (
+        <TaskSectionLoader key={`${t.task}@${t.taxonomy_version}`} task={t.task} />
       ))}
-      {withoutData.length > 0 && (
-        <div className="text-xs text-ink-muted">
-          No arena stage data yet for: {withoutData.map((t) => t.task).join(", ")}
-        </div>
-      )}
     </div>
   );
 }

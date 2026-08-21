@@ -176,6 +176,7 @@ export default defineSchema({
     source: v.string(),
   })
     .index("by_repo", ["dataset_repo"])
+    .index("by_task", ["task"])
     .index("by_repo_episode", ["dataset_repo", "episode_index"]),
 
   // Append-only human stage reviews (multi-reviewer). Latest row per
