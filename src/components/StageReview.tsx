@@ -8,10 +8,14 @@ import {
 } from "../../convex/stageConsistency";
 import {
   explorerCameraKeys,
+  fetchAppliedProgress,
+  fetchEpisodeFrameSignals,
   fetchLabelHistory,
   fetchLedgerArms,
   fetchReviewEpisodes,
   selectPrimaryCameraKey,
+  type AppliedProgress,
+  type EpisodeFrameSignals,
   type LabelEvent,
   type ReviewEpisode,
 } from "../lib/hf-api";
@@ -69,6 +73,23 @@ const CONFIDENCE_DOT: Record<string, string> = {
   low: "bg-coral",
 };
 
+const OUTCOME_CHIP: Record<string, string> = {
+  success: "bg-teal-light text-teal",
+  failure: "bg-coral-light text-coral",
+  timeout: "bg-gold-light text-gold",
+};
+
+/**
+ * The outcome-editor decision for an episode. Stage labeling is GATED on the
+ * outcome flow having run first: `null` outcome under source "detected" means
+ * the decision was keep-as-is (a skip) and the dataset's own frame signals are
+ * still loading for the selected episode.
+ */
+interface ResolvedOutcome {
+  outcome: string | null;
+  source: "review" | "applied" | "detected";
+}
+
 const HELP_KEYS: [string, string][] = [
   ["← / →", "step 1 frame (shift: 10)"],
   ["[ / ]", "step 30 frames"],
@@ -89,15 +110,22 @@ export default function StageReview({
   repoId,
   task,
   onExit,
+  onOpenOutcomeReview,
 }: {
   repoId: string;
   task?: string;
   onExit: () => void;
+  /** Jump to outcome review for this dataset (episode param carries over). */
+  onOpenOutcomeReview: () => void;
 }) {
   const viewer = useQuery(api.users.viewer);
   const specRows = useQuery(api.stageTaskSpecs.forTask, task ? { task } : "skip");
   const taskSpec = useQuery(api.taskSpecs.forTask, task ? { task } : "skip");
   const saveReview = useMutation(api.stageReviews.save);
+  // Stage labeling is gated on the outcome-editor flow: every episode must
+  // carry an outcome decision (web review, or the applied HF record) BEFORE it
+  // may be stage-labeled — and a successful outcome seeds the stage prefill.
+  const outcomeReviews = useQuery(api.reviews.latestForRepo, { dataset_repo: repoId });
 
   // -- Taxonomy (schema) selection: live by default, candidates addressable --
   const [schemaParam, setSchemaParam] = useSearchParam("schema", "");
@@ -210,6 +238,81 @@ export default function StageReview({
     };
   }, [repoId, blind]);
 
+  // -- Outcome gate: the applied HF outcome-edit record (cv2-era + worker
+  // applies) complements the web outcome-review ledger. Tri-state like
+  // OutcomeReview: undefined = loading, null = never treated.
+  const [applied, setApplied] = useState<AppliedProgress | null | undefined>(undefined);
+  const [appliedError, setAppliedError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    /* eslint-disable react-hooks/set-state-in-effect -- imperative fetch-state reset. */
+    setApplied(undefined);
+    setAppliedError(null);
+    /* eslint-enable react-hooks/set-state-in-effect */
+    fetchAppliedProgress(repoId)
+      .then((progress) => {
+        if (!cancelled) setApplied(progress);
+      })
+      .catch((err: Error) => {
+        // Fail CLOSED but loud: episodes whose only outcome decision lives in
+        // the unreadable applied record stay gated until it loads.
+        if (!cancelled) setAppliedError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [repoId]);
+
+  // Frame signals, fetched lazily for the SELECTED episode only — needed to
+  // resolve the outcome of a keep-as-is (skip) decision, whose recorded
+  // outcome is whatever the dataset's own reward/done signals say.
+  const [outcomeSignals, setOutcomeSignals] = useState<Map<number, EpisodeFrameSignals>>(
+    () => new Map()
+  );
+  const [outcomeSignalErrors, setOutcomeSignalErrors] = useState<Map<number, string>>(
+    () => new Map()
+  );
+
+  const outcomeByEpisode = useMemo(() => {
+    const map = new Map<number, { status: string; newOutcome: string | null }>();
+    for (const row of outcomeReviews?.episodes ?? []) {
+      map.set(Number(row.episode_index), {
+        status: row.status,
+        newOutcome: (row.new_outcome as string | undefined) ?? null,
+      });
+    }
+    return map;
+  }, [outcomeReviews]);
+
+  // Ready once both outcome sources settled (an applied-record load ERROR
+  // counts as settled: the gate then fails closed with a loud banner).
+  const outcomeGateReady =
+    outcomeReviews !== undefined && (applied !== undefined || appliedError !== null);
+
+  // The episode's outcome decision, or null when the outcome flow has not been
+  // run on it yet (⇒ stage labeling is blocked for that episode).
+  const resolveOutcome = useCallback(
+    (episodeIndex: number): ResolvedOutcome | null => {
+      const web = outcomeByEpisode.get(episodeIndex);
+      if (web?.status === "confirmed" && web.newOutcome !== null) {
+        return { outcome: web.newOutcome, source: "review" };
+      }
+      const appliedRecord = applied?.changed.get(episodeIndex);
+      if (appliedRecord !== undefined) {
+        return { outcome: appliedRecord.newOutcome, source: "applied" };
+      }
+      if (web !== undefined || applied?.skipped.has(episodeIndex)) {
+        // keep-as-is decision — the outcome is the dataset's detected signals
+        return {
+          outcome: outcomeSignals.get(episodeIndex)?.detectedOutcome ?? null,
+          source: "detected",
+        };
+      }
+      return null;
+    },
+    [outcomeByEpisode, applied, outcomeSignals]
+  );
+
   // -- Convex rows -> typed views ---------------------------------------------
   const prefillByEpisode = useMemo(() => {
     const map = new Map<number, StagePrefillView>();
@@ -300,9 +403,23 @@ export default function StageReview({
     [prefillByEpisode]
   );
 
+  // Episodes the outcome flow has not addressed yet — gated out of the queue.
+  const awaitingOutcome = useMemo(() => {
+    if (!episodes || !outcomeGateReady) return [];
+    return episodes
+      .filter((episode) => resolveOutcome(episode.episodeIndex) === null)
+      .map((episode) => episode.episodeIndex);
+  }, [episodes, outcomeGateReady, resolveOutcome]);
+
   const filteredEpisodes = useMemo(() => {
     if (!episodes) return [];
-    let result = episodes;
+    // The outcome gate must settle before the queue exists at all — an
+    // ungated flash would let a verdict land on an episode that later turns
+    // out to lack its outcome decision.
+    if (!outcomeGateReady) return [];
+    let result = episodes.filter(
+      (episode) => resolveOutcome(episode.episodeIndex) !== null
+    );
     if (statusFilter === "adjudicate") {
       result = result.filter((episode) =>
         (otherReviewsByEpisode.get(episode.episodeIndex) ?? []).some(
@@ -343,6 +460,8 @@ export default function StageReview({
     });
   }, [
     episodes,
+    outcomeGateReady,
+    resolveOutcome,
     statusFilter,
     confFilter,
     flagFilter,
@@ -362,6 +481,45 @@ export default function StageReview({
   );
   const currentPrefill =
     selectedEpisode !== null ? (prefillByEpisode.get(selectedEpisode) ?? null) : null;
+
+  // undefined = outcome gate still loading; null = outcome flow never ran on
+  // this episode (stage labeling blocked).
+  const currentResolvedOutcome =
+    selectedEpisode !== null && outcomeGateReady
+      ? resolveOutcome(selectedEpisode)
+      : undefined;
+  const currentOutcomeSignalError =
+    selectedEpisode !== null ? (outcomeSignalErrors.get(selectedEpisode) ?? null) : null;
+
+  // A keep-as-is (skip) decision needs the episode's own frame signals to name
+  // its outcome — fetch them for the selected episode only (per-file cached).
+  useEffect(() => {
+    if (
+      !currentEpisode ||
+      currentResolvedOutcome?.source !== "detected" ||
+      currentResolvedOutcome.outcome !== null ||
+      outcomeSignalErrors.has(currentEpisode.episodeIndex)
+    ) {
+      return;
+    }
+    let cancelled = false;
+    fetchEpisodeFrameSignals(repoId, currentEpisode.dataPath, currentEpisode.episodeIndex)
+      .then((result) => {
+        if (!cancelled) {
+          setOutcomeSignals((prev) => new Map(prev).set(currentEpisode.episodeIndex, result));
+        }
+      })
+      .catch((err: Error) => {
+        if (!cancelled) {
+          setOutcomeSignalErrors((prev) =>
+            new Map(prev).set(currentEpisode.episodeIndex, err.message)
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentEpisode, currentResolvedOutcome, outcomeSignalErrors, repoId]);
 
   useEffect(() => {
     if (selectedEpisode !== null) return;
@@ -426,6 +584,10 @@ export default function StageReview({
     pushedAt: number;
     durationS: number | null;
   } | null>(null);
+  // The form was seeded from a SUCCESS outcome decision (top rung + success
+  // final state + failure mode none) — surfaced as a chip so the reviewer
+  // knows why those fields arrived pre-set.
+  const [inheritedSuccess, setInheritedSuccess] = useState(false);
 
   // The blind flag on saved rows is an attestation about the SESSION, not the
   // toggle's momentary position: once unblinded, rows stop claiming blind.
@@ -445,14 +607,28 @@ export default function StageReview({
     setDirty(false);
     setViewerDrift(null);
     setActionError(null);
+    setInheritedSuccess(false);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [selectedEpisode, taxonomyVersion]);
 
-  // Prefill precedence: own latest row > pipeline prediction > empty.
+  // Prefill precedence: own latest row > pipeline prediction > empty; a
+  // SUCCESS outcome decision then overlays the deterministic triple (top rung,
+  // success final state, failure mode none) — timings stay manual.
   useEffect(() => {
     if (selectedEpisode === null || spec === null) return;
     // Both Convex sources must settle before prefilling (undefined = loading).
     if (reviews === undefined || prefillRows === undefined || viewer === undefined) return;
+    // The outcome gate must settle too: the prefill depends on the decision.
+    if (!outcomeGateReady) return;
+    const resolved = resolveOutcome(selectedEpisode);
+    if (resolved === null) return; // gated — the notice card renders instead
+    if (
+      resolved.source === "detected" &&
+      resolved.outcome === null &&
+      !outcomeSignalErrors.has(selectedEpisode)
+    ) {
+      return; // keep-as-is decision, signals still loading
+    }
     if (prefilledFor.current === selectedEpisode && pending !== null) return;
     prefilledFor.current = selectedEpisode;
     const own = ownReviewByEpisode.get(selectedEpisode);
@@ -461,7 +637,16 @@ export default function StageReview({
        imperative one-shot load of working state once async sources settle
        (guarded by prefilledFor), same pattern as OutcomeReview's prefill. */
     const loaded = own?.label ? { ...own.label } : prefill ? { ...prefill.label } : {};
+    // Success inheritance: the human outcome decision outranks the pipeline
+    // prediction on the triple, but never the reviewer's own saved row.
+    const inherit = own === undefined && resolved.outcome === "success";
+    if (inherit) {
+      loaded[spec.stage_field] = spec.ladder.success_level;
+      loaded[spec.final_state_field] = spec.success_final_state;
+      loaded[spec.failure_mode_field] = "none";
+    }
     setPending(loaded);
+    setInheritedSuccess(inherit);
     setShownPrefill(
       prefill ? { pushedAt: prefill.pushedAt, durationS: prefill.episodeDurationS } : null
     );
@@ -474,6 +659,9 @@ export default function StageReview({
     reviews,
     prefillRows,
     viewer,
+    outcomeGateReady,
+    resolveOutcome,
+    outcomeSignalErrors,
     ownReviewByEpisode,
     prefillByEpisode,
     pending,
@@ -586,6 +774,13 @@ export default function StageReview({
   const verdict = useCallback(
     async (status: "confirmed" | "uncertain") => {
       if (selectedEpisode === null || saving || !spec) return;
+      if (!outcomeGateReady || resolveOutcome(selectedEpisode) === null) {
+        setActionError(
+          `Episode ${selectedEpisode} has no outcome decision yet — the outcome ` +
+            "review flow must run before stage labeling."
+        );
+        return;
+      }
       if (prefilledFor.current !== selectedEpisode || pending === null) {
         setActionError(`Episode ${selectedEpisode} is still loading — wait for the prefill.`);
         return;
@@ -633,6 +828,8 @@ export default function StageReview({
       selectedEpisode,
       saving,
       spec,
+      outcomeGateReady,
+      resolveOutcome,
       pending,
       viewerDrift,
       unverifiable,
@@ -1015,6 +1212,28 @@ export default function StageReview({
           arm filter unavailable — ledger parse failed: {ledgerError}
         </div>
       )}
+      {appliedError && (
+        <div className="mx-6 mt-4 rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-xs text-coral font-mono">
+          Failed to load the applied outcome-edit record — episodes whose only
+          outcome decision lives there stay gated until it loads: {appliedError}
+        </div>
+      )}
+      {awaitingOutcome.length > 0 && (
+        <div className="mx-6 mt-4 rounded-lg border border-gold/40 bg-gold-light px-4 py-3 text-xs text-ink font-mono flex items-center justify-between gap-3">
+          <span>
+            {awaitingOutcome.length} episode(s) have no outcome decision yet and
+            are hidden from the stage queue — outcome review runs first (ep{" "}
+            {awaitingOutcome.slice(0, 8).join(", ")}
+            {awaitingOutcome.length > 8 ? ", …" : ""}).
+          </span>
+          <button
+            onClick={onOpenOutcomeReview}
+            className="shrink-0 px-2 py-1 rounded-lg text-xs font-medium bg-white border border-gold text-gold hover:bg-gold/10 cursor-pointer"
+          >
+            Open outcome review &rarr;
+          </button>
+        </div>
+      )}
 
       <div
         className={`grid gap-0 ${
@@ -1087,6 +1306,7 @@ export default function StageReview({
           <div className="text-[11px] font-mono text-ink-muted">
             {Number(reviews?.num_confirmed ?? 0) + Number(reviews?.num_corrected ?? 0)} committed ·{" "}
             {prefillByEpisode.size} predictions · {filteredEpisodes.length} in queue
+            {awaitingOutcome.length > 0 && ` · ${awaitingOutcome.length} outcome-gated`}
           </div>
           <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
             {episodes === null && !loadError && (
@@ -1095,11 +1315,18 @@ export default function StageReview({
                 Loading episodes…
               </div>
             )}
+            {episodes !== null && !outcomeGateReady && (
+              <div className="flex items-center gap-2 text-xs text-ink-muted">
+                <div className="w-4 h-4 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
+                Checking outcome-review coverage…
+              </div>
+            )}
             {filteredEpisodes.map((episode) => {
               const prefill = prefillByEpisode.get(episode.episodeIndex);
               const own = ownReviewByEpisode.get(episode.episodeIndex);
               const stage = prefill?.label[spec.stage_field];
               const flags = flagCount(episode.episodeIndex);
+              const outcome = resolveOutcome(episode.episodeIndex)?.outcome ?? null;
               return (
                 <button
                   key={episode.episodeIndex}
@@ -1122,6 +1349,16 @@ export default function StageReview({
                           }`}
                           title={`${prefill.confidence} confidence`}
                         />
+                      )}
+                      {outcome !== null && (
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                            OUTCOME_CHIP[outcome] ?? "bg-warm-100 text-ink-muted"
+                          }`}
+                          title={`outcome decision: ${outcome}`}
+                        >
+                          {outcome[0]}
+                        </span>
                       )}
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-warm-100 text-ink">
                         {stage != null ? `S${stage}` : "—"}
@@ -1161,9 +1398,11 @@ export default function StageReview({
                 </button>
               );
             })}
-            {episodes !== null && filteredEpisodes.length === 0 && (
+            {episodes !== null && outcomeGateReady && filteredEpisodes.length === 0 && (
               <div className="text-xs text-ink-muted font-body">
-                No episodes match this filter.
+                {awaitingOutcome.length === episodes.length && episodes.length > 0
+                  ? "Every episode is awaiting outcome review — run it first."
+                  : "No episodes match this filter."}
               </div>
             )}
           </div>
@@ -1175,6 +1414,24 @@ export default function StageReview({
             <div className="py-16 text-center text-ink-muted font-body">
               Select an episode from the queue to review it.
             </div>
+          ) : currentResolvedOutcome === null ? (
+            // Outcome gate: this episode has never been through the outcome
+            // editor flow — stage labeling is blocked until it has.
+            <div className="py-16 text-center font-body">
+              <p className="text-ink">
+                Episode {currentEpisode.episodeIndex} has no outcome decision yet.
+              </p>
+              <p className="mt-1 text-sm text-ink-muted">
+                The outcome review flow must run before stage labeling — a
+                successful outcome then pre-fills the stage form automatically.
+              </p>
+              <button
+                onClick={onOpenOutcomeReview}
+                className="mt-4 px-4 py-1.5 rounded-lg text-xs font-medium bg-teal text-white hover:bg-teal/90 cursor-pointer"
+              >
+                Open outcome review &rarr;
+              </button>
+            </div>
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-3 mb-3">
@@ -1184,6 +1441,30 @@ export default function StageReview({
                 {pending === null && (
                   <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-warm-100 text-ink-muted animate-pulse">
                     loading label…
+                  </span>
+                )}
+                {currentResolvedOutcome !== undefined &&
+                  (currentResolvedOutcome.outcome !== null ? (
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        OUTCOME_CHIP[currentResolvedOutcome.outcome] ??
+                        "bg-warm-100 text-ink-muted"
+                      }`}
+                      title={`outcome decision (source: ${currentResolvedOutcome.source})`}
+                    >
+                      outcome {currentResolvedOutcome.outcome}
+                    </span>
+                  ) : currentOutcomeSignalError === null ? (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-warm-100 text-ink-muted animate-pulse">
+                      resolving outcome…
+                    </span>
+                  ) : null)}
+                {inheritedSuccess && spec && (
+                  <span
+                    className="px-2 py-0.5 rounded-full text-xs font-medium bg-teal/10 text-teal"
+                    title="Stage, final state, and failure mode were seeded from the SUCCESS outcome decision — mark the event timings, then confirm."
+                  >
+                    S{spec.ladder.success_level} inherited from outcome
                   </span>
                 )}
                 {currentOwn && (
@@ -1211,6 +1492,13 @@ export default function StageReview({
                 </button>
               </div>
 
+              {currentOutcomeSignalError !== null && (
+                <div className="mb-3 rounded-lg border border-gold/40 bg-gold-light px-3 py-2 text-xs text-ink font-mono">
+                  This keep-as-is outcome could not be resolved from frame
+                  signals — labeling proceeds without the success prefill:{" "}
+                  {currentOutcomeSignalError}
+                </div>
+              )}
               {actionError && (
                 <div className="mb-3 rounded-lg border border-coral/30 bg-coral-light px-3 py-2 text-xs text-coral font-mono">
                   {actionError}

@@ -615,6 +615,9 @@ function DatasetDetail({
           clearSearchParams("sstatus", "sconf", "sflag", "sarm", "schema", "blind");
           setView("explorer");
         }}
+        // The "episode" param means episode_index in BOTH review views, so it
+        // carries over — the outcome editor opens on the gated episode.
+        onOpenOutcomeReview={() => setView("review")}
       />
     );
   }
