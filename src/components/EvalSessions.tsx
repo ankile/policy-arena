@@ -149,9 +149,6 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
                     {policy.name}
                   </div>
                   <div className="flex items-center gap-3 text-xs">
-                    <span className="text-ink-muted font-mono shrink-0">
-                      ELO {Math.round(policy.elo)}
-                    </span>
                     <span className="font-mono text-ink shrink-0">
                       {successRate.toFixed(0)}%
                       <span className="text-[11px] text-ink-muted font-body ml-1">

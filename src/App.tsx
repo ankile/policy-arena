@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
+import { computeArenaStats, visibleSessions } from "./lib/arenaRatings";
 
 import AuthControls from "./components/AuthControls";
 import DataExplorer from "./components/DataExplorer";
@@ -97,6 +98,17 @@ function App() {
     api.policies.leaderboard,
     selectedEnv === "all" ? {} : { environment: selectedEnv },
   );
+  const sessionOutcomes = useQuery(api.ratings.sessionOutcomes);
+
+  // Bradley-Terry ratings + W/D/L + success stats fit LIVE over exactly the
+  // sessions the current lens shows — retagging a session re-rates instantly.
+  const arenaStats = useMemo(
+    () =>
+      sessionOutcomes
+        ? computeArenaStats(visibleSessions(sessionOutcomes, showAll))
+        : null,
+    [sessionOutcomes, showAll],
+  );
 
   const setActiveTab = (tab: string) => {
     clearSearchParams("policy", "session", "mode", "round", "source", "task", "dataset", "episode", "outcome", "env", "sort", "policyA", "policyB", "pRound", "rollouts");
@@ -106,25 +118,43 @@ function App() {
   const visibleEnvs = (envList ?? []).filter(
     (e) => showAll || e.status === "mainline"
   );
-  const visiblePolicies = (policies ?? []).filter(
-    (p) => showAll || p.effective_status === "mainline"
-  );
+  const visiblePolicies = (policies ?? [])
+    .filter((p) => showAll || p.effective_status === "mainline")
+    .map((p) => {
+      const id = p._id as string;
+      const rating = arenaStats?.ratings.get(id) ?? null;
+      const wdl = arenaStats?.wdl.get(id) ?? { wins: 0, draws: 0, losses: 0 };
+      const succ = arenaStats?.success.get(id) ?? null;
+      return {
+        ...p,
+        rating,
+        wdl,
+        successRate:
+          succ && succ.rollouts > 0 ? succ.successes / succ.rollouts : null,
+        totalRollouts: succ?.rollouts ?? 0,
+        totalSuccesses: succ?.successes ?? 0,
+        avgSuccessSteps: succ?.avgSuccessSteps ?? null,
+      };
+    });
 
   const sortedPolicies = [...visiblePolicies].sort((a, b) => {
     if (sortBy === "success") {
       return (b.successRate ?? -1) - (a.successRate ?? -1);
     }
     if (sortBy === "winRate") {
-      return winRate(Number(b.wins), Number(b.losses)) - winRate(Number(a.wins), Number(a.losses));
+      return winRate(b.wdl.wins, b.wdl.losses) - winRate(a.wdl.wins, a.wdl.losses);
     }
     if (sortBy === "avgSuccessSteps") {
       const aSteps = a.avgSuccessSteps ?? Number.POSITIVE_INFINITY;
       const bSteps = b.avgSuccessSteps ?? Number.POSITIVE_INFINITY;
       return aSteps - bSteps;
     }
-    return b.elo - a.elo;
+    return (b.rating ?? -Infinity) - (a.rating ?? -Infinity);
   });
-  const maxElo = sortedPolicies.length > 0 ? sortedPolicies[0].elo : 0;
+  const maxRating = sortedPolicies.reduce<number | null>(
+    (best, p) => (p.rating != null && (best === null || p.rating > best) ? p.rating : best),
+    null,
+  );
 
   const tabs: TabConfig[] = [
     { id: "leaderboard", label: "Leaderboard" },
@@ -269,13 +299,15 @@ function App() {
                   label: "Policies",
                   value: sortedPolicies.length.toString(),
                 },
-                { label: "Top ELO", value: maxElo ? maxElo.toString() : "—" },
+                {
+                  label: "Top Rating",
+                  value: maxRating != null ? Math.round(maxRating).toString() : "—",
+                },
                 {
                   label: "Comparisons",
                   value: Math.round(sortedPolicies
                     .reduce(
-                      (a, p) =>
-                        a + Number(p.wins) + Number(p.losses) + Number(p.draws),
+                      (a, p) => a + p.wdl.wins + p.wdl.losses + p.wdl.draws,
                       0
                     ) / 2).toString(),
                 },
@@ -295,7 +327,7 @@ function App() {
             </div>
 
             {/* Leaderboard */}
-            {policies === undefined ? (
+            {policies === undefined || sessionOutcomes === undefined ? (
               <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8">
                 <div className="flex items-center justify-center gap-3 text-ink-muted">
                   <div className="w-5 h-5 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
@@ -324,7 +356,7 @@ function App() {
                     onClick={() => setSortBy("elo")}
                     className={`text-[11px] uppercase tracking-widest font-medium cursor-pointer ${sortBy === "elo" ? "text-teal" : "text-ink-muted hover:text-ink"}`}
                   >
-                    ELO {sortBy === "elo" && "▼"}
+                    Rating {sortBy === "elo" && "▼"}
                   </button>
                   <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
                     W / D / L
@@ -410,30 +442,30 @@ function App() {
                           </svg>
                         </div>
 
-                        {/* ELO */}
+                        {/* Rating */}
                         <div className="font-mono text-sm font-medium text-ink">
-                          {Math.round(policy.elo)}
+                          {policy.rating != null ? Math.round(policy.rating) : "—"}
                         </div>
 
                         {/* W / D / L */}
                         <div className="font-mono text-sm text-ink-muted">
                           <span className="text-emerald-bar">
-                            {Number(policy.wins)}
+                            {policy.wdl.wins}
                           </span>
                           <span className="text-warm-300 mx-1">/</span>
                           <span className="text-ink-muted">
-                            {Number(policy.draws)}
+                            {policy.wdl.draws}
                           </span>
                           <span className="text-warm-300 mx-1">/</span>
                           <span className="text-rose-bar">
-                            {Number(policy.losses)}
+                            {policy.wdl.losses}
                           </span>
                         </div>
 
                         {/* Win Rate */}
                         <WinRateBar
-                          wins={Number(policy.wins)}
-                          losses={Number(policy.losses)}
+                          wins={policy.wdl.wins}
+                          losses={policy.wdl.losses}
                         />
 
                         {/* Success Rate */}
@@ -487,7 +519,7 @@ function App() {
           className="mt-8 text-center text-xs text-ink-muted/60"
           style={{ animation: "fade-up 0.6s ease-out 0.9s both" }}
         >
-          ELO ratings computed from pairwise policy evaluations
+          Bradley-Terry ratings fit live from pairwise policy evaluations in the current view
         </footer>
       </div>
     </div>

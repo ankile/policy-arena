@@ -44,10 +44,6 @@ export default defineSchema({
     environment: v.string(),
     status: v.optional(statusValidator), // override; absent = inherit from task
     status_reason: v.optional(v.string()),
-    elo: v.float64(),
-    wins: v.int64(),
-    losses: v.int64(),
-    draws: v.int64(),
   })
     .index("by_model_id", ["model_id"])
     .index("by_environment", ["environment"]),
@@ -72,12 +68,6 @@ export default defineSchema({
   })
     .index("by_session", ["session_id"])
     .index("by_policy", ["policy_id"]),
-
-  eloHistory: defineTable({
-    policy_id: v.id("policies"),
-    elo: v.float64(),
-    session_id: v.id("evalSessions"),
-  }).index("by_policy", ["policy_id"]),
 
   // Append-only human outcome reviews (web port of sir/tools/outcome_editor).
   // Latest row per (dataset_repo, episode_index) wins; "cleared" undoes.

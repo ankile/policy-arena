@@ -7,7 +7,6 @@ export const clearAll = internalMutation({
   handler: async (ctx) => {
     const tables = [
       "roundResults",
-      "eloHistory",
       "evalSessions",
       "policies",
     ] as const;

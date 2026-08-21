@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import RolloutSection from "./RolloutSection";
 import { StatusBadge, StatusSelect } from "./StatusBadge";
-import { useSearchParamNullable } from "../lib/useSearchParam";
+import { ratingTrajectory, visibleSessions } from "../lib/arenaRatings";
+import { useSearchParam, useSearchParamNullable } from "../lib/useSearchParam";
 
 function CollapsibleSection({
   title,
@@ -61,9 +62,7 @@ export default function PolicyDetail({
   const sessions = useQuery(api.evalSessions.getByPolicy, {
     policy_id: policyId,
   });
-  const eloHistory = useQuery(api.eloHistory.getByPolicy, {
-    policy_id: policyId,
-  });
+  const sessionOutcomes = useQuery(api.ratings.sessionOutcomes);
   const recentResults = useQuery(api.roundResults.getRecentByPolicy, {
     policy_id: policyId,
   });
@@ -76,6 +75,21 @@ export default function PolicyDetail({
   );
   const viewer = useQuery(api.users.viewer);
   const setPolicyStatus = useMutation(api.policies.setStatus);
+  const [showParam] = useSearchParam("show", "mainline");
+  const showAll = showParam === "all";
+
+  // Rating-as-of-then: one order-independent fit per chronological prefix,
+  // over the same session set the current lens rates on.
+  const trajectory = useMemo(
+    () =>
+      sessionOutcomes
+        ? ratingTrajectory(
+            visibleSessions(sessionOutcomes, showAll),
+            policyId as string
+          )
+        : [],
+    [sessionOutcomes, showAll, policyId]
+  );
 
   const [rolloutsParam, setRolloutsParam] = useSearchParamNullable("rollouts");
   const rolloutsOpen = rolloutsParam !== null;
@@ -122,10 +136,6 @@ export default function PolicyDetail({
                 </dd>
               </div>
             )}
-            <div className="flex gap-2">
-              <dt className="text-ink-muted w-24 shrink-0">Draws</dt>
-              <dd className="font-mono text-ink">{Number(policy.draws)}</dd>
-            </div>
             <div className="flex gap-2 items-center">
               <dt className="text-ink-muted w-24 shrink-0">Status</dt>
               <dd className="flex items-center gap-2">
@@ -149,22 +159,24 @@ export default function PolicyDetail({
             </div>
           </dl>
 
-          {/* ELO History */}
-          {eloHistory && eloHistory.length > 0 && (
+          {/* Rating History (Bradley-Terry fit per chronological prefix) */}
+          {trajectory.length > 0 && (
             <div className="mt-4">
-              <h3 className="text-sm font-medium text-ink mb-2">ELO History</h3>
+              <h3 className="text-sm font-medium text-ink mb-2">
+                Rating History
+              </h3>
               <div className="flex items-end gap-1 h-12">
-                {eloHistory.map((entry, i) => {
-                  const min = Math.min(...eloHistory.map((e) => e.elo));
-                  const max = Math.max(...eloHistory.map((e) => e.elo));
+                {trajectory.map((entry) => {
+                  const min = Math.min(...trajectory.map((e) => e.rating));
+                  const max = Math.max(...trajectory.map((e) => e.rating));
                   const range = max - min || 1;
-                  const height = 20 + ((entry.elo - min) / range) * 80;
+                  const height = 20 + ((entry.rating - min) / range) * 80;
                   return (
                     <div
-                      key={i}
+                      key={entry.sessionId}
                       className="flex-1 bg-teal/30 rounded-t hover:bg-teal/50 transition-colors"
                       style={{ height: `${height}%` }}
-                      title={`ELO: ${Math.round(entry.elo)}`}
+                      title={`Rating ${Math.round(entry.rating)} — ${new Date(entry.creationTime).toLocaleDateString()}`}
                     />
                   );
                 })}

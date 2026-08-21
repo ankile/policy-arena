@@ -4,15 +4,6 @@ import { requireEditorOrService } from "./access";
 import { loadTaskStatusMap } from "./statuses";
 import { effectiveStatus, statusOrInheritValidator } from "./statusShared";
 
-// Legacy string-list variant — the deployed frontend calls this until the
-// environmentsDetailed cutover ships; remove once Vercel is redeployed.
-export const environments = query({
-  handler: async (ctx) => {
-    const policies = await ctx.db.query("policies").collect();
-    return [...new Set(policies.map((p) => p.environment))].sort();
-  },
-});
-
 export const environmentsDetailed = query({
   args: {},
   handler: async (ctx) => {
@@ -41,46 +32,18 @@ export const leaderboard = query({
     }
     const taskStatuses = await loadTaskStatusMap(ctx);
 
-    const enriched = await Promise.all(
-      policies.map(async (policy) => {
-        const results = await ctx.db
-          .query("roundResults")
-          .withIndex("by_policy", (q) => q.eq("policy_id", policy._id))
-          .collect();
-
-        const total = results.length;
-        const successes = results.filter((r) => r.success).length;
-        const successRate = total > 0 ? successes / total : null;
-
-        const successfulWithFrames = results.filter(
-          (r) => r.success && r.num_frames != null
-        );
-        const avgSuccessSteps =
-          successfulWithFrames.length > 0
-            ? Math.round(
-                successfulWithFrames.reduce(
-                  (sum, r) => sum + Number(r.num_frames!),
-                  0
-                ) / successfulWithFrames.length
-              )
-            : null;
-
-        return {
-          ...policy,
-          effective_status: effectiveStatus(
-            policy.status,
-            policy.environment,
-            taskStatuses
-          ),
-          successRate,
-          avgSuccessSteps,
-          totalRollouts: total,
-          totalSuccesses: successes,
-        };
-      })
-    );
-
-    return enriched.sort((a, b) => b.elo - a.elo);
+    // Identity/metadata only — ratings, W/D/L, and success stats are fit
+    // client-side from ratings:sessionOutcomes so they track the active lens.
+    return policies
+      .map((policy) => ({
+        ...policy,
+        effective_status: effectiveStatus(
+          policy.status,
+          policy.environment,
+          taskStatuses
+        ),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   },
 });
 
@@ -190,15 +153,6 @@ export const deletePolicy = mutation({
       );
     }
 
-    // Delete any ELO history entries
-    const eloHistory = await ctx.db
-      .query("eloHistory")
-      .withIndex("by_policy", (q) => q.eq("policy_id", policy._id))
-      .collect();
-    for (const e of eloHistory) {
-      await ctx.db.delete(e._id);
-    }
-
     await ctx.db.delete(policy._id);
     return { deleted: policy._id, model_id: args.model_id };
   },
@@ -236,10 +190,6 @@ export const register = mutation({
       model_url: args.model_url,
       training_url: args.training_url,
       environment: args.environment,
-      elo: 1500,
-      wins: BigInt(0),
-      losses: BigInt(0),
-      draws: BigInt(0),
     });
   },
 });

@@ -1,6 +1,27 @@
 # Policy Arena
 
-A leaderboard web app for comparing robot policies via ELO ratings derived from head-to-head evaluations.
+A leaderboard web app for comparing robot policies via Bradley-Terry ratings fit from head-to-head evaluations.
+
+## Ratings (Bradley-Terry, since 2026-08-20)
+
+Ratings are **fit on read, never stored**. `convex/bradleyTerry.ts` (pure,
+shared by frontend and Convex functions) fits a Bradley-Terry model by
+minorization-maximization over the SET of pairwise round outcomes — order-
+independent and deterministic, displayed as `1500 + 400·log10(p)` with the
+view's mean at 1500. Draws count half a win each; a small pseudo-game prior
+keeps all-win policies finite.
+
+- `ratings:sessionOutcomes` returns compact per-session pair outcomes +
+  per-policy success aggregates; the frontend filters by the current lens
+  (mainline/all) and fits live (`src/lib/arenaRatings.ts`) — ratings, W/D/L,
+  success rates, and the PolicyDetail rating trajectory are always
+  self-consistent with the visible session set.
+- `recommendations:getOpponents` runs the same fit server-side over
+  effectively-mainline sessions (the `elo` response key is kept for Python
+  API compatibility).
+- There is NO stored elo/wins/losses/draws and NO eloHistory table anymore;
+  submit/delete/removePolicy do plain writes with no replay. Unit tests:
+  `src/lib/bradleyTerry.test.ts`.
 
 ## CRITICAL: Convex Deployment
 
@@ -74,15 +95,14 @@ DataExplorer's stats write-back fires only for signed-in allowlisted editors.
 
 ### Convex Backend (`convex/`)
 
-- `schema.ts` — Database schema (policies, evalSessions, roundResults, eloHistory, datasets, taskStatuses)
+- `schema.ts` — Database schema (policies, evalSessions, roundResults, datasets, taskStatuses)
 - `statusShared.ts` / `statuses.ts` — Lifecycle statuses (see below)
-- `evalSessions.ts` — Eval session submission and ELO computation
+- `bradleyTerry.ts` / `ratings.ts` — Rating model + per-session outcome query (see Ratings above)
+- `evalSessions.ts` — Eval session submission
 - `policies.ts` — Policy CRUD operations
 - `recommendations.ts` — Opponent recommendation logic
 - `pairings.ts` — Policy pairing queries
 - `roundResults.ts` — Round result queries
-- `eloHistory.ts` — ELO history tracking
-- `elo.ts` — ELO rating computation
 - `datasets.ts` — Dataset register mutation and list query
 
 ### Python Client (`python/policy_arena/`)
