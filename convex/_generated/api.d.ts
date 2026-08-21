@@ -24,6 +24,7 @@ import type * as reviews from "../reviews.js";
 import type * as roundResults from "../roundResults.js";
 import type * as seed from "../seed.js";
 import type * as stageConsistency from "../stageConsistency.js";
+import type * as stageCoverage from "../stageCoverage.js";
 import type * as stagePrefills from "../stagePrefills.js";
 import type * as stageReviews from "../stageReviews.js";
 import type * as stageTaskSpecs from "../stageTaskSpecs.js";
@@ -53,6 +54,7 @@ declare const fullApi: ApiFromModules<{
   roundResults: typeof roundResults;
   seed: typeof seed;
   stageConsistency: typeof stageConsistency;
+  stageCoverage: typeof stageCoverage;
   stagePrefills: typeof stagePrefills;
   stageReviews: typeof stageReviews;
   stageTaskSpecs: typeof stageTaskSpecs;
