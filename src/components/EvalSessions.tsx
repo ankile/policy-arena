@@ -259,6 +259,8 @@ export default function EvalSessions() {
   const sessions = useQuery(api.evalSessions.list);
   const viewer = useQuery(api.users.viewer);
   const setSessionStatus = useMutation(api.evalSessions.setStatus);
+  const setSessionOperator = useMutation(api.evalSessions.setOperator);
+  const operators = useQuery(api.operators.list);
   const [expandedSession, setExpandedSessionRaw] = useSearchParamNullable("session");
   const [modeFilter, setModeFilter] = useSearchParam("mode", "all");
   const [taskFilter, setTaskFilter] = useSearchParam("task", "all");
@@ -437,6 +439,14 @@ export default function EvalSessions() {
                   status={session.effective_status}
                   reason={session.status_reason}
                 />
+                {session.operator && (
+                  <span
+                    className="inline-block px-2 py-0.5 rounded-full bg-warm-100 text-ink-muted text-[11px] font-mono"
+                    title="Operator — who physically ran this eval"
+                  >
+                    op: {session.operator}
+                  </span>
+                )}
                 <a
                   href={`?tab=explorer&dataset=${encodeURIComponent(session.dataset_repo)}`}
                   className="hover:text-teal transition-colors font-mono"
@@ -503,6 +513,23 @@ export default function EvalSessions() {
                 status={session.effective_status}
                 reason={session.status_reason}
               />
+              <span className="uppercase tracking-widest text-[10px] font-medium ml-4">
+                Operator
+              </span>
+              <select
+                value={session.operator ?? ""}
+                onChange={(e) =>
+                  setSessionOperator({ id: session._id, operator: e.target.value })
+                }
+                className="rounded-lg border border-warm-200 bg-white px-2 py-1 text-xs text-ink cursor-pointer"
+              >
+                {!session.operator && <option value="">unset</option>}
+                {(operators ?? []).map((op) => (
+                  <option key={op.hf_username} value={op.hf_username}>
+                    {op.hf_username}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
 

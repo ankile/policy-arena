@@ -80,6 +80,20 @@ internal.applyWorker.run)`; there is NO polling worker anymore.
 - Offline runner for debugging: `bun scripts/apply_local.ts <snapshot_dir>
   <config.json> <out_dir>` runs the pipeline on a local snapshot, no network.
 
+## Eval-session operators (added 2026-08-21)
+
+`evalSessions.operator` records WHO physically ran the eval, as an **HF
+username** validated against the `operators` table (`operators:list/add`,
+internal `operators:seed`). Stored as a username (not a users id) so
+operators can be recorded before they ever sign in; once they authenticate
+via HF OAuth, `users.username` joins the string to their account. Registered:
+`ankile`, `rtbhowmik` (rtbhowmik's OIDC sub `669ecd73eab5069c62b91d17` is
+already in `ARENA_EDITOR_SUBS`). All 124 pre-existing sessions were
+backfilled to `ankile` on 2026-08-21 (`evalSessions:backfillDefaultOperator`);
+correct non-ankile ones by hand via the editor select in Eval Sessions or
+`client.set_session_operator`. `submit_eval_session(..., operator=...)` sets
+it at submit time — new eval tooling SHOULD pass it.
+
 ## Authentication (added 2026-08-18)
 
 Reads (queries) are public. **Every mutation is auth-gated** via

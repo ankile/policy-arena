@@ -56,7 +56,20 @@ export default defineSchema({
     session_mode: v.optional(v.string()),  // "manual" | "pool-sample" | "calibrate" | "rollout"
     status: v.optional(statusValidator), // override; absent = inherit from task
     status_reason: v.optional(v.string()),
+    // Who physically ran the eval — an HF USERNAME from the `operators`
+    // registry (validated at write). Stored as the username (not a users id)
+    // so it can be recorded before the person ever signs in; once they log in
+    // via HF OAuth, users.username makes the join to their account.
+    operator: v.optional(v.string()),
   }),
+
+  // Registry of known eval operators (HF usernames). Sessions validate their
+  // `operator` against this table; the UI select is populated from it.
+  operators: defineTable({
+    hf_username: v.string(),
+    added_at: v.float64(),
+    added_by: v.string(),
+  }).index("by_username", ["hf_username"]),
 
   roundResults: defineTable({
     session_id: v.id("evalSessions"),

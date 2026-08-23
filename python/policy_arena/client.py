@@ -56,11 +56,15 @@ class PolicyArenaClient:
         notes: str | None = None,
         session_mode: str | None = None,
         status: str | None = None,
+        operator: str | None = None,
     ) -> str:
         """Submit evaluation results. Policies are auto-registered.
 
         ``status`` tags the session at submit time (e.g. "ablation" or
         "testing") so it never appears in the arena's default mainline view.
+        ``operator`` is the HF username of the human who physically ran the
+        eval (must exist in the arena's ``operators`` registry — see
+        :meth:`add_operator`).
         """
         args = {
             "dataset_repo": dataset_repo,
@@ -73,7 +77,21 @@ class PolicyArenaClient:
             args["session_mode"] = session_mode
         if status is not None:
             args["status"] = status
+        if operator is not None:
+            args["operator"] = operator
         return self._mutation("evalSessions:submit", args)
+
+    def set_session_operator(self, session_id: str, operator: str) -> str:
+        """Set the operator (HF username, from the operators registry) on a session."""
+        return self._mutation("evalSessions:setOperator", {"id": session_id, "operator": operator})
+
+    def add_operator(self, hf_username: str) -> str:
+        """Register an eval operator (HF username) in the arena's operators registry."""
+        return self._mutation("operators:add", {"hf_username": hf_username})
+
+    def list_operators(self) -> list[dict]:
+        """List registered eval operators."""
+        return self.client.query("operators:list", {})
 
     def submit_rollout_session(
         self,

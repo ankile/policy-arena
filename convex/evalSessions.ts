@@ -1,4 +1,5 @@
 import { query, mutation, internalMutation } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { requireEditorOrService } from "./access";
@@ -21,6 +22,20 @@ function uniqueRoundIndexes(rounds: Array<{ round_index: bigint }>): Set<number>
   return indexes;
 }
 
+async function requireKnownOperator(ctx: MutationCtx, operator: string): Promise<string> {
+  const username = operator.trim();
+  const row = await ctx.db
+    .query("operators")
+    .withIndex("by_username", (q) => q.eq("hf_username", username))
+    .unique();
+  if (!row) {
+    throw new Error(
+      `Unknown operator ${JSON.stringify(username)} — add them first via operators:add`
+    );
+  }
+  return username;
+}
+
 export const submit = mutation({
   args: {
     serviceToken: v.optional(v.string()),
@@ -28,6 +43,9 @@ export const submit = mutation({
     notes: v.optional(v.string()),
     session_mode: v.optional(v.string()),
     status: v.optional(statusValidator), // e.g. tag an ablation eval at submit time
+    // HF username of the human who ran the eval (validated against the
+    // `operators` registry; see schema.ts for the auth-join rationale).
+    operator: v.optional(v.string()),
     policies: v.array(
       v.object({
         name: v.string(),
@@ -53,6 +71,8 @@ export const submit = mutation({
   },
   handler: async (ctx, args) => {
     await requireEditorOrService(ctx, args.serviceToken);
+    const operator =
+      args.operator !== undefined ? await requireKnownOperator(ctx, args.operator) : undefined;
     // 1. Register/upsert all policies
     const modelIdToPolicy = new Map<string, Id<"policies">>();
     for (const p of args.policies) {
@@ -97,6 +117,7 @@ export const submit = mutation({
       notes: args.notes,
       session_mode: args.session_mode,
       status: args.status,
+      operator,
     });
 
     // 3. Insert round results
@@ -425,6 +446,41 @@ export const setStatus = mutation({
       status_reason: args.status === "inherit" ? undefined : args.status_reason,
     });
     return args.id;
+  },
+});
+
+export const setOperator = mutation({
+  args: {
+    id: v.id("evalSessions"),
+    operator: v.string(),
+    serviceToken: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireEditorOrService(ctx, args.serviceToken);
+    const session = await ctx.db.get(args.id);
+    if (!session) throw new Error("Session not found");
+    const operator = await requireKnownOperator(ctx, args.operator);
+    await ctx.db.patch(args.id, { operator });
+    return args.id;
+  },
+});
+
+/** One-time default: stamp operator on every session missing one (run via
+ * `npx convex run evalSessions:backfillDefaultOperator '{"operator": "ankile"}'`;
+ * sessions run by someone else are then corrected by hand via setOperator). */
+export const backfillDefaultOperator = internalMutation({
+  args: { operator: v.string() },
+  handler: async (ctx, args) => {
+    const operator = await requireKnownOperator(ctx, args.operator);
+    const sessions = await ctx.db.query("evalSessions").collect();
+    let stamped = 0;
+    for (const session of sessions) {
+      if (session.operator === undefined) {
+        await ctx.db.patch(session._id, { operator });
+        stamped += 1;
+      }
+    }
+    return { stamped, total: sessions.length };
   },
 });
 
