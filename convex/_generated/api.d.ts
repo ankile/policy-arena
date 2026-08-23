@@ -9,7 +9,18 @@
  */
 
 import type * as access from "../access.js";
+import type * as apply_frames from "../apply/frames.js";
+import type * as apply_hf from "../apply/hf.js";
+import type * as apply_labelHistory from "../apply/labelHistory.js";
+import type * as apply_ledgers from "../apply/ledgers.js";
+import type * as apply_parquetIO from "../apply/parquetIO.js";
+import type * as apply_pipeline from "../apply/pipeline.js";
+import type * as apply_progress from "../apply/progress.js";
+import type * as apply_pyjson from "../apply/pyjson.js";
+import type * as apply_results from "../apply/results.js";
+import type * as apply_stats from "../apply/stats.js";
 import type * as applyJobs from "../applyJobs.js";
+import type * as applyWorker from "../applyWorker.js";
 import type * as auth from "../auth.js";
 import type * as bradleyTerry from "../bradleyTerry.js";
 import type * as datasets from "../datasets.js";
@@ -41,7 +52,18 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   access: typeof access;
+  "apply/frames": typeof apply_frames;
+  "apply/hf": typeof apply_hf;
+  "apply/labelHistory": typeof apply_labelHistory;
+  "apply/ledgers": typeof apply_ledgers;
+  "apply/parquetIO": typeof apply_parquetIO;
+  "apply/pipeline": typeof apply_pipeline;
+  "apply/progress": typeof apply_progress;
+  "apply/pyjson": typeof apply_pyjson;
+  "apply/results": typeof apply_results;
+  "apply/stats": typeof apply_stats;
   applyJobs: typeof applyJobs;
+  applyWorker: typeof applyWorker;
   auth: typeof auth;
   bradleyTerry: typeof bradleyTerry;
   datasets: typeof datasets;

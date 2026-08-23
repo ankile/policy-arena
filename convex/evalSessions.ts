@@ -1,4 +1,4 @@
-import { query, mutation } from "./_generated/server";
+import { query, mutation, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { requireEditorOrService } from "./access";
@@ -484,5 +484,61 @@ export const getByPolicy = query({
     );
 
     return sessions.sort((a, b) => b._creationTime - a._creationTime);
+  },
+});
+
+/**
+ * Sync a session's roundResults with corrected episode outcomes after an
+ * outcome-review apply (native applyWorker path). Ratings are fit on read
+ * (bradleyTerry.ts), so patching success/num_frames in place fully replaces
+ * the legacy delete-and-resubmit replay (sir/tools/arena_resubmit.py) while
+ * preserving the session's identity and history.
+ */
+export const correctOutcomes = internalMutation({
+  args: {
+    dataset_repo: v.string(),
+    corrections: v.array(
+      v.object({
+        episode_index: v.int64(),
+        success: v.boolean(),
+        num_frames: v.int64(),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const sessions = await ctx.db.query("evalSessions").order("desc").collect();
+    const session = sessions.find((s) => s.dataset_repo === args.dataset_repo);
+    if (!session) return { session_found: false, updated: 0 };
+
+    const byEpisode = new Map(
+      args.corrections.map((c) => [Number(c.episode_index), c])
+    );
+    const results = await ctx.db
+      .query("roundResults")
+      .withIndex("by_session", (q) => q.eq("session_id", session._id))
+      .collect();
+    let updated = 0;
+    for (const result of results) {
+      const corrected = byEpisode.get(Number(result.episode_index));
+      if (corrected === undefined) {
+        throw new Error(
+          `Episode ${result.episode_index} in session ${session._id} has no ` +
+            `corrected outcome from the dataset parquet`
+        );
+      }
+      const patch: { success?: boolean; num_frames?: bigint } = {};
+      if (result.success !== corrected.success) patch.success = corrected.success;
+      if (
+        result.num_frames === undefined ||
+        Number(result.num_frames) !== Number(corrected.num_frames)
+      ) {
+        patch.num_frames = corrected.num_frames;
+      }
+      if (Object.keys(patch).length > 0) {
+        await ctx.db.patch(result._id, patch);
+        updated += 1;
+      }
+    }
+    return { session_found: true, updated };
   },
 });

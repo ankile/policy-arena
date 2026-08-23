@@ -13,8 +13,11 @@
   "dependencies": {
     "@auth/core": "^0.41.3",
     "@convex-dev/auth": "^0.0.95",
+    "@huggingface/hub": "^2.15.0",
+    "apache-arrow": "^21.2.0",
     "convex": "^1.31.7",
     "hyparquet": "^1.25.0",
+    "parquet-wasm": "^0.7.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

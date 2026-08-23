@@ -1,13 +1,17 @@
-import { query, mutation } from "./_generated/server";
+import { query, mutation, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import { requireEditor, requireEditorOrService } from "./access";
 
 /**
- * Apply jobs bridge web-captured outcome reviews to HuggingFace: an editor
- * enqueues a job for a repo; the Python arena_review_worker (service
- * principal) claims it, materializes the progress record, runs the existing
- * outcome_editor apply+push path, and reports back. Status machine:
- * pending → applying → applied | failed; pending → cancelled.
+ * Apply jobs bridge web-captured outcome reviews to HuggingFace. Since
+ * 2026-08-21 the apply runs NATIVELY as a scheduled Convex action
+ * (applyWorker:run, see convex/apply/) — enqueue schedules it immediately;
+ * no external worker polling is required. The legacy Python
+ * arena_review_worker `claim` path is kept as a fallback (set the
+ * APPLY_NATIVE=0 deployment env var to disable native scheduling); claims
+ * are atomic, so both paths can coexist without double-applying.
+ * Status machine: pending → applying → applied | failed; pending → cancelled.
  */
 
 const ACTIVE_STATUSES = ["pending", "applying"];
@@ -37,13 +41,68 @@ export const enqueue = mutation({
     if (reviews.length === 0) {
       throw new Error(`No outcome reviews recorded for ${args.dataset_repo}`);
     }
-    return await ctx.db.insert("applyJobs", {
+    const jobId = await ctx.db.insert("applyJobs", {
       dataset_repo: args.dataset_repo,
       status: "pending",
       requested_by: principal,
       requested_at: Date.now(),
       dry_run: args.dry_run ?? false,
     });
+    if (process.env.APPLY_NATIVE !== "0") {
+      await ctx.scheduler.runAfter(0, internal.applyWorker.run, { jobId });
+    }
+    return jobId;
+  },
+});
+
+/** Native worker claims its scheduled job. Null when no longer pending
+ * (cancelled first, or claimed by the legacy polling worker). */
+export const claimById = internalMutation({
+  args: { id: v.id("applyJobs") },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.id);
+    if (!job || job.status !== "pending") return null;
+    await ctx.db.patch(args.id, {
+      status: "applying",
+      worker_id: "convex-action",
+      started_at: Date.now(),
+    });
+    return await ctx.db.get(args.id);
+  },
+});
+
+/** Native worker reports completion (internal twin of `finish`). */
+export const finishInternal = internalMutation({
+  args: {
+    id: v.id("applyJobs"),
+    ok: v.boolean(),
+    hf_commit_sha: v.optional(v.string()),
+    pre_apply_sha: v.optional(v.string()),
+    error: v.optional(v.string()),
+    log_tail: v.optional(v.string()),
+    num_confirmed: v.optional(v.int64()),
+    num_skipped: v.optional(v.int64()),
+  },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.id);
+    if (!job) throw new Error("Job not found");
+    if (job.status !== "applying") {
+      throw new Error(`Cannot finish a job in status ${job.status}`);
+    }
+    if (!args.ok && !args.error) {
+      throw new Error("Failed jobs must carry an error message");
+    }
+    await ctx.db.patch(args.id, {
+      status: args.ok ? "applied" : "failed",
+      finished_at: Date.now(),
+      hf_commit_sha: args.hf_commit_sha,
+      pre_apply_sha: args.pre_apply_sha,
+      error: args.error,
+      log_tail: args.log_tail,
+      num_confirmed: args.num_confirmed,
+      num_skipped: args.num_skipped,
+    });
+    return args.id;
   },
 });
 

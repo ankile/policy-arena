@@ -41,31 +41,20 @@ export function CommitPanel({
   const totalReviews = numConfirmed + numSkipped;
 
   const age = worker ? now - worker.last_seen : null;
-  // useQuery: undefined = still loading, null = no heartbeat row exists.
-  // Rendering the loading flash as "no worker" trains operators to ignore
-  // the one pill that matters when the worker really is dead.
+  // Applies run NATIVELY as a scheduled Convex action since 2026-08-21 —
+  // there is no polling worker to be "offline". A recent heartbeat means the
+  // legacy Python fallback worker (APPLY_NATIVE=0 path) is deliberately
+  // running; surface it as information, never as a required dependency.
   const workerPill =
-    worker === undefined
-      ? { text: "checking worker…", className: "bg-warm-100 text-ink-muted" }
-      : age === null
+    age !== null && age < 90_000
       ? {
-          text: "no worker has ever checked in",
-          className: "bg-coral-light text-coral",
+          text: `legacy fallback worker also live ${formatAge(age)}`,
+          className: "bg-gold-light text-gold",
         }
-      : age < 90_000
-        ? {
-            text: `worker live ${formatAge(age)}`,
-            className: "bg-teal-light text-teal",
-          }
-        : age < 600_000
-          ? {
-              text: `worker last seen ${formatAge(age)}`,
-              className: "bg-gold-light text-gold",
-            }
-          : {
-              text: `worker offline (${formatAge(age)}) — start tmux \`arena-review-worker\` (host per docs/policy-arena-review-suite-plan.md)`,
-              className: "bg-coral-light text-coral",
-            };
+      : {
+          text: "apply runs natively in Convex",
+          className: "bg-teal-light text-teal",
+        };
 
   const statusChip: Record<string, string> = {
     pending: "bg-gold-light text-gold",

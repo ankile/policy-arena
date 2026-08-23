@@ -44,6 +44,42 @@ After pushing Convex changes, redeploy the frontend:
 npx vercel --prod
 ```
 
+## Outcome-review apply (NATIVE since 2026-08-21)
+
+Web-captured outcome reviews are applied to HuggingFace by a **scheduled
+Convex action** — `applyJobs:enqueue` runs `ctx.scheduler.runAfter(0,
+internal.applyWorker.run)`; there is NO polling worker anymore.
+
+- `convex/apply/` is a value-parity TS port of the Python
+  `sir/tools/outcome_editor.headless_apply_and_push` path (parquet rewrite of
+  success/reward/done/is_valid via parquet-wasm + apache-arrow, LeRobot
+  RunningQuantileStats refresh of per-episode meta cells + meta/stats.json,
+  ledger repair, results.json canonicalization + eval-time backup,
+  progress-record merge, label-history append). One ATOMIC HF commit pinned
+  on the pre-apply sha (`parentCommit` — a concurrent push fails the job
+  loudly), then the v3.0 tag advances.
+- Parity gate: `experiments/2026-08-21/01_ts_apply_parity_harness.py` in the
+  sir repo runs both implementations on the same snapshot and value-compares
+  every file. It passed on routing_d1 (subtask marks), marker_d2 collection
+  (ledgers), and marker_d2 + insert_marker_d1 evals (results.json) before
+  cutover. Re-run it after touching `convex/apply/` or the Python editor.
+- Node-runtime deps (`parquet-wasm`, `apache-arrow`, `@huggingface/hub`) are
+  `externalPackages` in `convex.json`; `convex/apply/{hf,parquetIO,pipeline}`
+  carry `"use node"` and must never be imported from default-runtime
+  functions. Pure-logic modules (progress/stats/results/ledgers/labelHistory/
+  frames/pyjson) are runtime-neutral.
+- Deployment env var **`HF_TOKEN`** (write access to the datasets) is
+  required by the action.
+- Session sync: `evalSessions:correctOutcomes` patches roundResults
+  success/num_frames IN PLACE after each apply (ratings are fit on read, so
+  this fully replaces the legacy delete-and-resubmit
+  `sir/tools/arena_resubmit.py` replay).
+- Rollback: set `APPLY_NATIVE=0` on the deployment (enqueue stops scheduling)
+  and start the deprecated Python `sir.tools.arena_review_worker` poller —
+  claims are atomic, so the two paths cannot double-apply.
+- Offline runner for debugging: `bun scripts/apply_local.ts <snapshot_dir>
+  <config.json> <out_dir>` runs the pipeline on a local snapshot, no network.
+
 ## Authentication (added 2026-08-18)
 
 Reads (queries) are public. **Every mutation is auth-gated** via
