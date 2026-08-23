@@ -87,9 +87,15 @@ username** validated against the `operators` table (`operators:list/add`,
 internal `operators:seed`). Stored as a username (not a users id) so
 operators can be recorded before they ever sign in; once they authenticate
 via HF OAuth, `users.username` joins the string to their account. Registered:
-`ankile`, `DaivdYuan` (David Yuan, sic — that is the real HF handle), and
+`ankile`, `DaivdYuan` (David Yuan, sic — that is the real HF handle),
 `rtbhowmik` (rtbhowmik's OIDC sub `669ecd73eab5069c62b91d17` is already in
-`ARENA_EDITOR_SUBS`; the other two have signed in already). All 124 pre-existing sessions were
+`ARENA_EDITOR_SUBS`; the other two have signed in already), and two
+PLACEHOLDERS with no HF account behind them yet: `andy-tang` (Andy Tang) and
+`aneesh-muppidi` (Aneesh Muppidi). When their real HF handles are known,
+`operators:add` the real handle, re-stamp their sessions via the operator
+select (or `set_session_operator`), and drop the placeholder row — the
+lowercase-hyphen style marks an entry as a placeholder, real handles were
+verified free on HF so a stranger's login can never auto-join them. All 124 pre-existing sessions were
 backfilled to `ankile` on 2026-08-21 (`evalSessions:backfillDefaultOperator`);
 correct non-ankile ones by hand via the editor select in Eval Sessions or
 `client.set_session_operator`. `submit_eval_session(..., operator=...)` sets
