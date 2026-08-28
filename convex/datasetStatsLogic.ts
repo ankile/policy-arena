@@ -9,6 +9,14 @@ export type EpisodeStatsInput = {
   humanFrames: number | null;
 };
 
+export type FrameStatsInput = {
+  episodeIndex: number;
+  success: number;
+  isValid: number | null;
+  done: number | null;
+  source: number | null;
+};
+
 export type DatasetStatsSummary = {
   numEpisodes: number;
   totalFrames: number;
@@ -31,6 +39,68 @@ function requireFrameCount(
       `Episode ${episodeIndex} ${name} must be an integer in [0, ${rawLength}], got ${value}`
     );
   }
+}
+
+function requireBinary(value: number, name: string, episodeIndex: number): void {
+  if (value !== 0 && value !== 1) {
+    throw new Error(
+      `Episode ${episodeIndex} ${name} must be 0 or 1, got ${value}`
+    );
+  }
+}
+
+export function episodeStatsFromFrames(
+  frames: FrameStatsInput[]
+): EpisodeStatsInput[] {
+  if (frames.length === 0) throw new Error("Dataset has no frame rows");
+
+  for (const feature of ["isValid", "done", "source"] as const) {
+    const availability = new Set(frames.map((frame) => frame[feature] !== null));
+    if (availability.size !== 1) {
+      throw new Error(`Frame data has ${feature} for only part of the dataset`);
+    }
+  }
+
+  const episodes = new Map<number, EpisodeStatsInput>();
+  for (const frame of frames) {
+    if (!Number.isInteger(frame.episodeIndex) || frame.episodeIndex < 0) {
+      throw new Error(
+        `Frame episode_index must be a non-negative integer, got ${frame.episodeIndex}`
+      );
+    }
+    requireBinary(frame.success, "success", frame.episodeIndex);
+    if (frame.isValid !== null) {
+      requireBinary(frame.isValid, "is_valid", frame.episodeIndex);
+    }
+    if (frame.done !== null) requireBinary(frame.done, "done", frame.episodeIndex);
+    if (frame.source !== null) {
+      requireBinary(frame.source, "source", frame.episodeIndex);
+    }
+
+    const existing = episodes.get(frame.episodeIndex);
+    if (existing === undefined) {
+      episodes.set(frame.episodeIndex, {
+        episodeIndex: frame.episodeIndex,
+        rawLength: 1,
+        success: frame.success === 1,
+        validFrames: frame.isValid,
+        doneFrames: frame.done,
+        humanFrames: frame.source,
+      });
+      continue;
+    }
+    if (existing.success !== (frame.success === 1)) {
+      throw new Error(
+        `Episode ${frame.episodeIndex} has inconsistent frame-level success values`
+      );
+    }
+    existing.rawLength += 1;
+    if (existing.validFrames !== null) existing.validFrames += frame.isValid!;
+    if (existing.doneFrames !== null) existing.doneFrames += frame.done!;
+    if (existing.humanFrames !== null) existing.humanFrames += frame.source!;
+  }
+
+  return [...episodes.values()].sort((a, b) => a.episodeIndex - b.episodeIndex);
 }
 
 export function summarizeDatasetStats(

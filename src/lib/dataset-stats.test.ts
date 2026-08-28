@@ -1,5 +1,47 @@
 import { describe, expect, test } from "bun:test";
-import { summarizeDatasetStats } from "../../convex/datasetStatsLogic";
+import {
+  episodeStatsFromFrames,
+  summarizeDatasetStats,
+} from "../../convex/datasetStatsLogic";
+
+describe("episodeStatsFromFrames", () => {
+  test("rebuilds legacy episode summaries from frame columns", () => {
+    expect(
+      episodeStatsFromFrames([
+        { episodeIndex: 0, success: 1, isValid: 1, done: 0, source: 0 },
+        { episodeIndex: 0, success: 1, isValid: 1, done: 1, source: 0 },
+        { episodeIndex: 0, success: 1, isValid: 0, done: 1, source: 0 },
+        { episodeIndex: 1, success: 0, isValid: 1, done: 0, source: 1 },
+      ])
+    ).toEqual([
+      {
+        episodeIndex: 0,
+        rawLength: 3,
+        success: true,
+        validFrames: 2,
+        doneFrames: 2,
+        humanFrames: 0,
+      },
+      {
+        episodeIndex: 1,
+        rawLength: 1,
+        success: false,
+        validFrames: 1,
+        doneFrames: 0,
+        humanFrames: 1,
+      },
+    ]);
+  });
+
+  test("rejects inconsistent per-frame success", () => {
+    expect(() =>
+      episodeStatsFromFrames([
+        { episodeIndex: 0, success: 1, isValid: null, done: null, source: null },
+        { episodeIndex: 0, success: 0, isValid: null, done: null, source: null },
+      ])
+    ).toThrow("inconsistent frame-level success");
+  });
+});
 
 describe("summarizeDatasetStats", () => {
   test("computes effective duration and source summaries", () => {
