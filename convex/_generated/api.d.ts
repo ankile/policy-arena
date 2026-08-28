@@ -23,6 +23,8 @@ import type * as applyJobs from "../applyJobs.js";
 import type * as applyWorker from "../applyWorker.js";
 import type * as auth from "../auth.js";
 import type * as bradleyTerry from "../bradleyTerry.js";
+import type * as datasetStats from "../datasetStats.js";
+import type * as datasetStatsLogic from "../datasetStatsLogic.js";
 import type * as datasets from "../datasets.js";
 import type * as evalSessions from "../evalSessions.js";
 import type * as http from "../http.js";
@@ -67,6 +69,8 @@ declare const fullApi: ApiFromModules<{
   applyWorker: typeof applyWorker;
   auth: typeof auth;
   bradleyTerry: typeof bradleyTerry;
+  datasetStats: typeof datasetStats;
+  datasetStatsLogic: typeof datasetStatsLogic;
   datasets: typeof datasets;
   evalSessions: typeof evalSessions;
   http: typeof http;

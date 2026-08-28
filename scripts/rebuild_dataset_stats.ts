@@ -1,43 +1,45 @@
 /**
- * Recompute Policy Arena dataset summaries from authoritative episode parquet
- * metadata, then update Convex only after every selected dataset passes audit.
+ * Queue authoritative Policy Arena dataset-summary refreshes in Convex and
+ * wait for every selected dataset to finish.
+ *
+ * The Convex worker pins each computation to the current Hugging Face commit
+ * SHA and reads meta/episodes parquet statistics. This script is the manual
+ * reconciliation path for Hub changes made outside dataset registration and
+ * the native outcome-review apply worker.
  *
  * Usage:
  *   bun run scripts/rebuild_dataset_stats.ts
  *   bun run scripts/rebuild_dataset_stats.ts ankile/repo-a ankile/repo-b
  */
 
-import {
-  fetchParquetMetadata,
-  fetchSuccessStatus,
-} from "../src/lib/hf-api";
-
 const ARENA_URL = "https://grandiose-rook-292.convex.cloud";
 const BATCH_SIZE = 6;
+const POLL_INTERVAL_MS = 2000;
+const REFRESH_TIMEOUT_MS = 10 * 60 * 1000;
 
 type RegisteredDataset = {
   repo_id: string;
   name: string;
+  stats_status?: "pending" | "ready" | "error";
+  stats_hf_sha?: string;
+  stats_error?: string;
+  stats_refresh_requested_at?: number;
 };
 
-type DatasetStats = {
-  repo_id: string;
-  num_episodes: number;
-  total_duration_seconds: number;
-  num_success: number;
-  num_failure: number;
-};
-
-async function hasEpisodeMetadata(repoId: string): Promise<boolean> {
-  const url =
-    `https://huggingface.co/api/datasets/${repoId}/tree/main/meta/episodes` +
-    "?recursive=true&expand=false&limit=1";
-  const response = await fetch(url);
-  if (response.status === 404) return false;
-  if (!response.ok) {
-    throw new Error(`Hugging Face metadata preflight returned ${response.status} for ${repoId}`);
+async function loadServiceToken(): Promise<string> {
+  const envToken = process.env.POLICY_ARENA_TOKEN?.trim();
+  if (envToken) return envToken;
+  const home = process.env.HOME;
+  if (!home) throw new Error("HOME is not set and POLICY_ARENA_TOKEN is absent");
+  const tokenFile = Bun.file(`${home}/.config/sir/policy_arena_token`);
+  if (!(await tokenFile.exists())) {
+    throw new Error(
+      "No arena service token found. Set POLICY_ARENA_TOKEN or create ~/.config/sir/policy_arena_token"
+    );
   }
-  return true;
+  const token = (await tokenFile.text()).trim();
+  if (!token) throw new Error("Arena service token file is empty");
+  return token;
 }
 
 async function convexRequest<T>(
@@ -62,35 +64,48 @@ async function convexRequest<T>(
   return payload.value;
 }
 
-async function computeStats(dataset: RegisteredDataset): Promise<DatasetStats> {
-  const metadata = await fetchParquetMetadata(dataset.repo_id);
-  const successMap = await fetchSuccessStatus(dataset.repo_id);
-  const numSuccess = [...successMap.values()].filter(Boolean).length;
-  const numEpisodes = metadata.episodes.length;
-  if (successMap.size !== numEpisodes) {
-    throw new Error(
-      `${dataset.repo_id}: ${successMap.size} outcomes for ${numEpisodes} episodes`
+async function waitForBatch(
+  datasets: RegisteredDataset[],
+  requestedAt: Map<string, number>
+): Promise<void> {
+  const pending = new Map(datasets.map((dataset) => [dataset.repo_id, dataset]));
+  const deadline = Date.now() + REFRESH_TIMEOUT_MS;
+  while (pending.size > 0) {
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for dataset stats: ${[...pending.keys()].join(", ")}`);
+    }
+    const rows = await Promise.all(
+      [...pending.keys()].map((repoId) =>
+        convexRequest<RegisteredDataset | null>("query", "datasets:getByRepo", {
+          repo_id: repoId,
+        })
+      )
     );
+    for (const row of rows) {
+      if (row === null) throw new Error("A registered dataset disappeared during refresh");
+      if (row.stats_status === "error") {
+        throw new Error(`${row.repo_id}: ${row.stats_error ?? "stats refresh failed"}`);
+      }
+      if (
+        row.stats_status === "ready" &&
+        row.stats_refresh_requested_at === undefined
+      ) {
+        console.log(`[ready] ${row.repo_id} @ ${row.stats_hf_sha?.slice(0, 8)}`);
+        pending.delete(row.repo_id);
+      } else if (
+        row.stats_refresh_requested_at !== undefined &&
+        row.stats_refresh_requested_at !== requestedAt.get(row.repo_id)
+      ) {
+        throw new Error(`${row.repo_id}: another stats refresh replaced this request`);
+      }
+    }
+    if (pending.size > 0) await Bun.sleep(POLL_INTERVAL_MS);
   }
-  const totalDuration = metadata.episodes.reduce(
-    (sum, episode) => sum + episode.duration,
-    0
-  );
-  console.log(
-    `[audit] ${dataset.repo_id}: ${numSuccess}/${numEpisodes} success, ` +
-      `${totalDuration.toFixed(1)} effective seconds`
-  );
-  return {
-    repo_id: dataset.repo_id,
-    num_episodes: numEpisodes,
-    total_duration_seconds: totalDuration,
-    num_success: numSuccess,
-    num_failure: numEpisodes - numSuccess,
-  };
 }
 
-async function main() {
+async function main(): Promise<void> {
   const requested = new Set(Bun.argv.slice(2));
+  const token = await loadServiceToken();
   const registered = await convexRequest<RegisteredDataset[]>(
     "query",
     "datasets:list",
@@ -106,41 +121,19 @@ async function main() {
     throw new Error(`Datasets are not registered in Policy Arena: ${missing.join(", ")}`);
   }
 
-  const available: RegisteredDataset[] = [];
-  const unavailable: RegisteredDataset[] = [];
+  console.log(`Refreshing ${selected.length} dataset(s) in batches of ${BATCH_SIZE}`);
   for (let start = 0; start < selected.length; start += BATCH_SIZE) {
     const batch = selected.slice(start, start + BATCH_SIZE);
-    const checks = await Promise.all(
-      batch.map(async (dataset) => ({
-        dataset,
-        available: await hasEpisodeMetadata(dataset.repo_id),
-      }))
-    );
-    for (const check of checks) {
-      (check.available ? available : unavailable).push(check.dataset);
+    const requestedAt = new Map<string, number>();
+    for (const dataset of batch) {
+      const timestamp = await convexRequest<number>("mutation", "datasets:refreshStats", {
+        repo_id: dataset.repo_id,
+        serviceToken: token,
+      });
+      requestedAt.set(dataset.repo_id, timestamp);
+      console.log(`[queued] ${dataset.repo_id}`);
     }
-  }
-  if (requested.size > 0 && unavailable.length > 0) {
-    throw new Error(
-      `Requested datasets have no Hugging Face episode metadata: ` +
-        unavailable.map((dataset) => dataset.repo_id).join(", ")
-    );
-  }
-  for (const dataset of unavailable) {
-    console.log(`[unavailable] ${dataset.repo_id}`);
-  }
-
-  console.log(`Auditing ${available.length} dataset(s) before any Convex writes`);
-  const audited: DatasetStats[] = [];
-  for (let start = 0; start < available.length; start += BATCH_SIZE) {
-    const batch = available.slice(start, start + BATCH_SIZE);
-    audited.push(...(await Promise.all(batch.map(computeStats))));
-  }
-
-  console.log(`Audit passed for all ${audited.length} dataset(s); updating Convex`);
-  for (const stats of audited) {
-    await convexRequest("mutation", "datasets:updateStats", stats);
-    console.log(`[updated] ${stats.repo_id}`);
+    await waitForBatch(batch, requestedAt);
   }
 }
 

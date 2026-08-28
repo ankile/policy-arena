@@ -45,12 +45,17 @@ export async function revisionSha(client: HfClient, revision = "main"): Promise<
   return info.sha;
 }
 
-export async function listRepoFiles(client: HfClient, revision = "main"): Promise<string[]> {
+export async function listRepoFiles(
+  client: HfClient,
+  revision = "main",
+  path?: string
+): Promise<string[]> {
   const paths: string[] = [];
   for await (const entry of listFiles({
     repo: { type: "dataset", name: client.repoId },
     revision,
     recursive: true,
+    path,
     accessToken: client.token,
   })) {
     if (entry.type === "file") paths.push(entry.path);

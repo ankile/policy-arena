@@ -118,6 +118,16 @@ export const run = internalAction({
           : "(no arena session registered for this repo; sync skipped)"
       );
 
+      const statsRefreshQueued = await ctx.runMutation(
+        internal.datasets.enqueueStatsRefreshInternal,
+        { repo_id: repoId }
+      );
+      log.push(
+        statsRefreshQueued
+          ? "Dataset summary refresh queued."
+          : "(no arena dataset registered for this repo; summary refresh skipped)"
+      );
+
       await ctx.runMutation(internal.applyJobs.finishInternal, {
         id: jobId,
         ok: true,

@@ -1,7 +1,6 @@
 import { asyncBufferFromUrl, parquetReadObjects, toJson } from "hyparquet";
 
 const DEFAULT_DATASET_ID = "ankile/dp-franka-pick-cube-2026-02-12";
-const DATASETS_SERVER = "https://datasets-server.huggingface.co";
 
 export const FPS = 15;
 const HIDDEN_CAMERA_KEYS = new Set([
@@ -28,18 +27,6 @@ export interface EpisodeMetadata {
   videoFileIndex: number;
   fromTimestamp: number;
   toTimestamp: number;
-}
-
-export interface DatasetSourceStats {
-  humanFrames: number;
-  policyFrames: number;
-  episodesWithHumanFrames: Set<number>;
-}
-
-export interface DatasetInfo {
-  episodes: EpisodeMetadata[];
-  cameraKeys: string[];
-  sourceStats: DatasetSourceStats | null;
 }
 
 function hfBase(datasetId: string): string {
@@ -470,23 +457,6 @@ export function getParquetCache(): ReadonlyMap<
   ParquetCacheEntry
 > {
   return parquetCache;
-}
-
-export async function fetchDatasetInfo(
-  datasetId: string = DEFAULT_DATASET_ID
-): Promise<DatasetInfo> {
-  const [parquetResult, successMap, sourceStats] = await Promise.all([
-    fetchParquetMetadata(datasetId),
-    fetchSuccessStatus(datasetId),
-    fetchSourceStats(datasetId).catch(() => null),
-  ]);
-
-  const episodes = parquetResult.episodes.map((ep) => ({
-    ...ep,
-    success: successMap.get(ep.episodeIndex) ?? false,
-  }));
-
-  return { episodes, cameraKeys: parquetResult.cameraKeys, sourceStats };
 }
 
 export async function fetchParquetMetadata(
@@ -982,49 +952,4 @@ export async function fetchLedgerArms(
   }
   ledgerArmCache.set(datasetId, arms);
   return arms;
-}
-
-export async function fetchSourceStats(
-  datasetId: string
-): Promise<DatasetSourceStats | null> {
-  // Try to get frame counts by source value. If the column doesn't exist, the
-  // HF Datasets server returns an error, so we treat any failure as "no source column".
-  const base = `${DATASETS_SERVER}/filter?dataset=${datasetId}&config=default&split=train`;
-
-  const [policyResp, humanResp] = await Promise.all([
-    fetch(`${base}&where=${encodeURIComponent('"source"=0')}&length=1`),
-    fetch(`${base}&where=${encodeURIComponent('"source"=1')}&length=1`),
-  ]);
-
-  if (!policyResp.ok || !humanResp.ok) return null;
-
-  const [policyData, humanData] = await Promise.all([
-    policyResp.json(),
-    humanResp.json(),
-  ]);
-
-  // The server returns num_rows_total for the filtered result
-  const policyFrames: number | undefined = policyData.num_rows_total;
-  const humanFrames: number | undefined = humanData.num_rows_total;
-  if (policyFrames == null || humanFrames == null) return null;
-
-  // Paginate through human-source rows to collect unique episode indices
-  const episodesWithHumanFrames = new Set<number>();
-  if (humanFrames > 0) {
-    let offset = 0;
-    const pageSize = 100;
-    while (offset < humanFrames) {
-      const pageResp = await fetch(
-        `${base}&where=${encodeURIComponent('"source"=1')}&offset=${offset}&length=${pageSize}`
-      );
-      if (!pageResp.ok) break;
-      const pageData = await pageResp.json();
-      for (const { row } of pageData.rows) {
-        episodesWithHumanFrames.add(row.episode_index);
-      }
-      offset += pageSize;
-    }
-  }
-
-  return { humanFrames, policyFrames, episodesWithHumanFrames };
 }

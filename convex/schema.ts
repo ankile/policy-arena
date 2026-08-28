@@ -241,6 +241,14 @@ export default defineSchema({
     num_human_frames: v.optional(v.int64()),
     num_policy_frames: v.optional(v.int64()),
     num_autonomous_success: v.optional(v.int64()),
+    stats_status: v.optional(
+      v.union(v.literal("pending"), v.literal("ready"), v.literal("error"))
+    ),
+    stats_hf_sha: v.optional(v.string()),
+    stats_computed_at: v.optional(v.float64()),
+    stats_algorithm_version: v.optional(v.string()),
+    stats_error: v.optional(v.string()),
+    stats_refresh_requested_at: v.optional(v.float64()),
     model_id: v.optional(v.string()),        // programmatic policy lookup key (URI-prefixed)
     model_url: v.optional(v.string()),       // human-facing link (W&B artifact/run, HF Hub, etc.)
     parent_repo_id: v.optional(v.string()),

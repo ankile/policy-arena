@@ -1,7 +1,10 @@
-/// <reference path="./env.d.ts" />
 import { getAuthUserId } from "@convex-dev/auth/server";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+
+declare const process: {
+  env: Record<string, string | undefined>;
+};
 
 /**
  * Access control for arena writes.

@@ -5,12 +5,10 @@ import { api } from "../../convex/_generated/api";
 import {
   fetchParquetMetadata,
   fetchSuccessStatus,
-  fetchSourceStats,
   getParquetCache,
   getVideoUrl,
   explorerCameraKeys,
   type EpisodeMetadata,
-  type DatasetSourceStats,
 } from "../lib/hf-api";
 import {
   datasetRoleLabel,
@@ -412,17 +410,14 @@ function DatasetDetail({
   const [episodeFilter, setEpisodeFilter] = useSearchParam("outcome", "all");
   // "view" (not "mode") because EvalSessions already owns the "mode" param.
   const [view, setView] = useSearchParam("view", "explorer");
-  const updateStats = useMutation(api.datasets.updateStats);
   const setDatasetStatus = useMutation(api.datasets.setStatus);
 
   // -- Staged state --
   const [baseEpisodes, setBaseEpisodes] = useState<Omit<EpisodeMetadata, "success">[]>([]);
   const [cameraKeys, setCameraKeys] = useState<string[]>([]);
   const [successMap, setSuccessMap] = useState<Map<number, boolean> | null>(null);
-  const [sourceStats, setSourceStats] = useState<DatasetSourceStats | null>(null);
   const [episodesLoading, setEpisodesLoading] = useState(true);
   const [successLoading, setSuccessLoading] = useState(true);
-  const [sourceStatsLoading, setSourceStatsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Derive episodes with optional success
@@ -460,8 +455,6 @@ function DatasetDetail({
     }
     setSuccessMap(null);
     setSuccessLoading(true);
-    setSourceStats(null);
-    setSourceStatsLoading(true);
     setError(null);
   }, [repoId]);
 
@@ -512,64 +505,6 @@ function DatasetDetail({
 
     return () => { cancelled = true; };
   }, [repoId]);
-
-  // Effect 3: Source stats
-  useEffect(() => {
-    let cancelled = false;
-    fetchSourceStats(repoId)
-      .then((stats) => {
-        if (cancelled) return;
-        setSourceStats(stats);
-        setSourceStatsLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setSourceStats(null);
-        setSourceStatsLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [repoId]);
-
-  // Effect 4: Sync stats to Convex once all data is ready
-  const statsSynced = useRef(false);
-  useEffect(() => {
-    // Reset sync flag on dataset switch
-    statsSynced.current = false;
-  }, [repoId]);
-  useEffect(() => {
-    if (episodesLoading || successLoading || sourceStatsLoading) return;
-    if (successMap === null) return;
-    if (statsSynced.current) return;
-    if (baseEpisodes.length === 0) return;
-    // Only allowlisted editors may write stats back; anonymous browsing must
-    // never mutate the database.
-    if (!viewer?.isEditor) return;
-    statsSynced.current = true;
-
-    const totalDuration = baseEpisodes.reduce((sum, ep) => sum + ep.duration, 0);
-    const numSuccess = baseEpisodes.filter((e) => successMap?.get(e.episodeIndex) === true).length;
-    const numFailure = baseEpisodes.length - numSuccess;
-
-    const statsUpdate: Parameters<typeof updateStats>[0] = {
-      repo_id: repoId,
-      num_episodes: baseEpisodes.length,
-      total_duration_seconds: totalDuration,
-      num_success: numSuccess,
-      num_failure: numFailure,
-    };
-
-    if (sourceStats) {
-      statsUpdate.num_human_frames = sourceStats.humanFrames;
-      statsUpdate.num_policy_frames = sourceStats.policyFrames;
-      const autonomousSuccess = baseEpisodes.filter(
-        (e) => successMap?.get(e.episodeIndex) === true && !sourceStats.episodesWithHumanFrames.has(e.episodeIndex)
-      ).length;
-      statsUpdate.num_autonomous_success = autonomousSuccess;
-    }
-
-    updateStats(statsUpdate);
-  }, [episodesLoading, successLoading, sourceStatsLoading, baseEpisodes, successMap, sourceStats, repoId, updateStats, viewer]);
 
   const handleTogglePlay = useCallback(() => {
     setPlaying((p) => !p);
@@ -776,21 +711,38 @@ function DatasetDetail({
         )}
 
         {/* Summary stats */}
-        {(() => {
+        {dataset && (() => {
           const total = episodes.length;
           const successPct = successCount != null && total > 0 ? Math.round((successCount / total) * 100) : null;
-          const autonomousCount = sourceStats && successMap
-            ? baseEpisodes.filter((e) => successMap.get(e.episodeIndex) === true && !sourceStats.episodesWithHumanFrames.has(e.episodeIndex)).length
+          const statsReady = dataset.stats_status === "ready";
+          const statsPending = dataset.stats_status == null || dataset.stats_status === "pending";
+          const statsFailed = dataset.stats_status === "error";
+          const cachedSuccess = dataset.num_success == null ? null : Number(dataset.num_success);
+          const cachedFailure = dataset.num_failure == null ? null : Number(dataset.num_failure);
+          const cachedOutcomeTotal =
+            cachedSuccess != null && cachedFailure != null ? cachedSuccess + cachedFailure : null;
+          const autonomousCount =
+            statsReady && dataset.num_autonomous_success != null
+              ? Number(dataset.num_autonomous_success)
+              : null;
+          const autonomousPct = autonomousCount != null && cachedOutcomeTotal != null && cachedOutcomeTotal > 0
+            ? Math.round((autonomousCount / cachedOutcomeTotal) * 100)
             : null;
-          const autonomousPct = autonomousCount != null && total > 0
-            ? Math.round((autonomousCount / total) * 100)
-            : null;
-          const totalFrames = sourceStats ? sourceStats.humanFrames + sourceStats.policyFrames : null;
+          const humanFrames =
+            statsReady && dataset.num_human_frames != null
+              ? Number(dataset.num_human_frames)
+              : null;
+          const policyFrames =
+            statsReady && dataset.num_policy_frames != null
+              ? Number(dataset.num_policy_frames)
+              : null;
+          const totalFrames =
+            humanFrames != null && policyFrames != null ? humanFrames + policyFrames : null;
           const humanPct = totalFrames != null && totalFrames > 0
-            ? Math.round((sourceStats!.humanFrames / totalFrames) * 100)
+            ? Math.round((humanFrames! / totalFrames) * 100)
             : null;
 
-          const stats: { label: string; value: string; color?: string; loading?: boolean }[] = [
+          const stats: { label: string; value: string; color?: string; loading?: boolean; title?: string }[] = [
             { label: "Episodes", value: total.toString() },
             { label: "Duration", value: formatDurationLong(episodes.reduce((s, e) => s + e.duration, 0)) },
             {
@@ -801,22 +753,32 @@ function DatasetDetail({
             },
           ];
           if (autonomousCount != null) {
-            stats.push({ label: "Autonomous Success", value: `${autonomousCount}/${total} (${autonomousPct}%)`, color: "text-teal" });
-          } else if (sourceStatsLoading) {
-            stats.push({ label: "Autonomous Success", value: "...", loading: true });
+            stats.push({ label: "Autonomous Success", value: `${autonomousCount}/${cachedOutcomeTotal} (${autonomousPct}%)`, color: "text-teal" });
+          } else if (statsPending) {
+            stats.push({ label: "Autonomous Success", value: "Pending", loading: true });
+          } else if (statsFailed) {
+            stats.push({ label: "Autonomous Success", value: "Error", color: "text-coral", title: dataset.stats_error });
+          } else {
+            stats.push({ label: "Autonomous Success", value: "N/A" });
           }
-          if (sourceStats) {
+          if (humanFrames != null && policyFrames != null) {
             stats.push({
               label: "Human Frames",
-              value: `${formatFrameCount(sourceStats.humanFrames)} (${humanPct}%)`,
+              value: `${formatFrameCount(humanFrames)} (${humanPct}%)`,
             });
             stats.push({
               label: "Policy Frames",
-              value: `${formatFrameCount(sourceStats.policyFrames)} (${100 - (humanPct ?? 0)}%)`,
+              value: `${formatFrameCount(policyFrames)} (${100 - (humanPct ?? 0)}%)`,
             });
-          } else if (sourceStatsLoading) {
-            stats.push({ label: "Human Frames", value: "...", loading: true });
-            stats.push({ label: "Policy Frames", value: "...", loading: true });
+          } else if (statsPending) {
+            stats.push({ label: "Human Frames", value: "Pending", loading: true });
+            stats.push({ label: "Policy Frames", value: "Pending", loading: true });
+          } else if (statsFailed) {
+            stats.push({ label: "Human Frames", value: "Error", color: "text-coral", title: dataset.stats_error });
+            stats.push({ label: "Policy Frames", value: "Error", color: "text-coral", title: dataset.stats_error });
+          } else {
+            stats.push({ label: "Human Frames", value: "N/A" });
+            stats.push({ label: "Policy Frames", value: "N/A" });
           }
           stats.push({ label: "Cameras", value: cameraKeys.length.toString() });
 
@@ -825,6 +787,7 @@ function DatasetDetail({
               {stats.map((stat) => (
                 <div
                   key={stat.label}
+                  title={stat.title}
                   className="bg-warm-50 rounded-lg px-4 py-2.5 border border-warm-100"
                 >
                   <div className="text-[10px] uppercase tracking-widest text-ink-muted font-medium mb-0.5">
@@ -1218,18 +1181,32 @@ export default function DataExplorer() {
         );
         const totalOutcomes = totalSuccess + totalFailure;
         const totalAutonomous = filteredDatasets.reduce(
-          (sum, d) => sum + (d.num_autonomous_success != null ? Number(d.num_autonomous_success) : 0),
+          (sum, d) =>
+            sum +
+            (d.stats_status === "ready" && d.num_autonomous_success != null
+              ? Number(d.num_autonomous_success)
+              : 0),
           0
         );
         const totalHuman = filteredDatasets.reduce(
-          (sum, d) => sum + (d.num_human_frames != null ? Number(d.num_human_frames) : 0),
+          (sum, d) =>
+            sum +
+            (d.stats_status === "ready" && d.num_human_frames != null
+              ? Number(d.num_human_frames)
+              : 0),
           0
         );
         const totalPolicy = filteredDatasets.reduce(
-          (sum, d) => sum + (d.num_policy_frames != null ? Number(d.num_policy_frames) : 0),
+          (sum, d) =>
+            sum +
+            (d.stats_status === "ready" && d.num_policy_frames != null
+              ? Number(d.num_policy_frames)
+              : 0),
           0
         );
-        const hasFrameStats = filteredDatasets.some((d) => d.num_human_frames != null);
+        const hasFrameStats = filteredDatasets.some(
+          (d) => d.stats_status === "ready" && d.num_human_frames != null
+        );
         const totalFrames = totalHuman + totalPolicy;
         return (
           <div className="text-xs font-mono flex items-center gap-3 flex-wrap">
@@ -1344,10 +1321,11 @@ export default function DataExplorer() {
                     const nSuccess = Number(dataset.num_success);
                     const total = nSuccess + Number(dataset.num_failure);
                     const successPct = total > 0 ? Math.round((nSuccess / total) * 100) : 0;
-                    const nAutonomous = dataset.num_autonomous_success != null ? Number(dataset.num_autonomous_success) : 0;
+                    const statsReady = dataset.stats_status === "ready";
+                    const nAutonomous = statsReady && dataset.num_autonomous_success != null ? Number(dataset.num_autonomous_success) : 0;
                     const autonomousPct = total > 0 ? Math.round((nAutonomous / total) * 100) : 0;
-                    const nHuman = dataset.num_human_frames != null ? Number(dataset.num_human_frames) : null;
-                    const nPolicy = dataset.num_policy_frames != null ? Number(dataset.num_policy_frames) : null;
+                    const nHuman = statsReady && dataset.num_human_frames != null ? Number(dataset.num_human_frames) : null;
+                    const nPolicy = statsReady && dataset.num_policy_frames != null ? Number(dataset.num_policy_frames) : null;
                     const humanPct = nHuman != null && nPolicy != null && (nHuman + nPolicy) > 0
                       ? Math.round((nHuman / (nHuman + nPolicy)) * 100) : null;
                     return (
