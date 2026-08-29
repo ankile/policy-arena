@@ -35,10 +35,30 @@ HTTP Action and the existing mutation handlers. Never install it on a machine.
 ## Python client
 
 The client reads `POLICY_ARENA_API_KEY`, then
-`~/.config/sir/policy_arena_api_key` by default:
+`~/.config/sir/policy_arena_api_key` by default. On Linux, install a credential
+from standard input with:
 
 ```bash
+mkdir -p ~/.config/sir
 install -m 600 /dev/stdin ~/.config/sir/policy_arena_api_key
+```
+
+macOS `install` does not accept `/dev/stdin`. When the credential is staged in
+Keychain, install it without printing the secret:
+
+```bash
+(
+  set -e
+  umask 077
+  credential_dir="$HOME/.config/sir"
+  mkdir -p "$credential_dir"
+  credential_tmp="$(mktemp "$credential_dir/.policy_arena_api_key.XXXXXX")"
+  trap 'rm -f "$credential_tmp"' EXIT
+  security find-generic-password \
+    -s policy-arena-machine-api -a iris-ws-15 -w > "$credential_tmp"
+  chmod 600 "$credential_tmp"
+  mv -f "$credential_tmp" "$credential_dir/policy_arena_api_key"
+)
 ```
 
 ```python
