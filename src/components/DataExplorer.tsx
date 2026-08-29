@@ -432,12 +432,13 @@ function DatasetDetail({
 
   // Initialize from cache on mount / dataset switch
   const prevRepoId = useRef(repoId);
+  /* eslint-disable react-hooks/set-state-in-effect -- a dataset identity change
+     resets working UI state and hydrates the new dataset from the shared cache. */
   useEffect(() => {
     if (prevRepoId.current !== repoId) {
       prevRepoId.current = repoId;
       setSelectedIndex(null);
       // Reset UI state when navigating between dataset identities.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPlaying(false);
       setEpisodeFilter("all");
     }
@@ -457,6 +458,7 @@ function DatasetDetail({
     setSuccessLoading(true);
     setError(null);
   }, [repoId, setEpisodeFilter, setSelectedIndex]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Effect 1: Parquet fetch
   useEffect(() => {

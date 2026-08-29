@@ -633,9 +633,6 @@ export default function StageReview({
     prefilledFor.current = selectedEpisode;
     const own = ownReviewByEpisode.get(selectedEpisode);
     const prefill = prefillByEpisode.get(selectedEpisode);
-    /* eslint-disable react-hooks/set-state-in-effect -- the prefill is an
-       imperative one-shot load of working state once async sources settle
-       (guarded by prefilledFor), same pattern as OutcomeReview's prefill. */
     const loaded = own?.label ? { ...own.label } : prefill ? { ...prefill.label } : {};
     // Success inheritance: the human outcome decision outranks the pipeline
     // prediction on the triple, but never the reviewer's own saved row.
@@ -652,7 +649,6 @@ export default function StageReview({
     );
     setDirty(false);
     setActionError(null);
-    /* eslint-enable react-hooks/set-state-in-effect */
   }, [
     selectedEpisode,
     spec,
