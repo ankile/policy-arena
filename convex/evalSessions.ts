@@ -10,7 +10,9 @@ import {
   statusOrInheritValidator,
 } from "./statusShared";
 
-function uniqueRoundIndexes(rounds: Array<{ round_index: bigint }>): Set<number> {
+function uniqueRoundIndexes(
+  rounds: Array<{ round_index: bigint }>,
+): Set<number> {
   const indexes = new Set<number>();
   for (const round of rounds) {
     const index = Number(round.round_index);
@@ -22,7 +24,10 @@ function uniqueRoundIndexes(rounds: Array<{ round_index: bigint }>): Set<number>
   return indexes;
 }
 
-async function requireKnownOperator(ctx: MutationCtx, operator: string): Promise<string> {
+async function requireKnownOperator(
+  ctx: MutationCtx,
+  operator: string,
+): Promise<string> {
   const username = operator.trim();
   const row = await ctx.db
     .query("operators")
@@ -30,7 +35,7 @@ async function requireKnownOperator(ctx: MutationCtx, operator: string): Promise
     .unique();
   if (!row) {
     throw new Error(
-      `Unknown operator ${JSON.stringify(username)} — add them first via operators:add`
+      `Unknown operator ${JSON.stringify(username)} — add them first via operators:add`,
     );
   }
   return username;
@@ -40,6 +45,8 @@ export const submit = mutation({
   args: {
     serviceToken: v.optional(v.string()),
     dataset_repo: v.string(),
+    submission_id: v.optional(v.string()),
+    submission_fingerprint: v.optional(v.string()),
     notes: v.optional(v.string()),
     session_mode: v.optional(v.string()),
     status: v.optional(statusValidator), // e.g. tag an ablation eval at submit time
@@ -53,7 +60,7 @@ export const submit = mutation({
         model_url: v.optional(v.string()),
         training_url: v.optional(v.string()),
         environment: v.string(),
-      })
+      }),
     ),
     rounds: v.array(
       v.object({
@@ -64,23 +71,49 @@ export const submit = mutation({
             success: v.boolean(),
             episode_index: v.int64(),
             num_frames: v.optional(v.int64()),
-          })
+          }),
         ),
-      })
+      }),
     ),
   },
   handler: async (ctx, args) => {
     await requireEditorOrService(ctx, args.serviceToken);
+    if (
+      (args.submission_id === undefined) !==
+      (args.submission_fingerprint === undefined)
+    ) {
+      throw new Error(
+        "submission_id and submission_fingerprint must be provided together",
+      );
+    }
+    if (args.submission_id !== undefined) {
+      const existingSession = await ctx.db
+        .query("evalSessions")
+        .withIndex("by_submission_id", (q) =>
+          q.eq("submission_id", args.submission_id),
+        )
+        .unique();
+      if (existingSession !== null) {
+        if (
+          existingSession.submission_fingerprint !== args.submission_fingerprint
+        ) {
+          throw new Error(
+            `Idempotency conflict for submission ${args.submission_id}`,
+          );
+        }
+        return existingSession._id;
+      }
+    }
     const operator =
-      args.operator !== undefined ? await requireKnownOperator(ctx, args.operator) : undefined;
+      args.operator !== undefined
+        ? await requireKnownOperator(ctx, args.operator)
+        : undefined;
     // 1. Register/upsert all policies
     const modelIdToPolicy = new Map<string, Id<"policies">>();
     for (const p of args.policies) {
       const existing = await ctx.db
         .query("policies")
-        .withIndex("by_model_id", (q) =>
-          q.eq("model_id", p.model_id)
-        )
+        .withIndex("by_model_id", (q) => q.eq("model_id", p.model_id))
         .unique();
 
       if (existing) {
@@ -104,7 +137,7 @@ export const submit = mutation({
     }
 
     const policyIds = args.policies.map(
-      (p) => modelIdToPolicy.get(p.model_id)!
+      (p) => modelIdToPolicy.get(p.model_id)!,
     );
 
     const roundIndexes = uniqueRoundIndexes(args.rounds);
@@ -114,6 +147,8 @@ export const submit = mutation({
       dataset_repo: args.dataset_repo,
       num_rounds: BigInt(roundIndexes.size),
       policy_ids: policyIds,
+      submission_id: args.submission_id,
+      submission_fingerprint: args.submission_fingerprint,
       notes: args.notes,
       session_mode: args.session_mode,
       status: args.status,
@@ -146,10 +181,7 @@ export const submit = mutation({
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const sessions = await ctx.db
-      .query("evalSessions")
-      .order("desc")
-      .collect();
+    const sessions = await ctx.db.query("evalSessions").order("desc").collect();
     const taskStatuses = await loadTaskStatusMap(ctx);
 
     return Promise.all(
@@ -158,7 +190,7 @@ export const list = query({
           session.policy_ids.map(async (id) => {
             const policy = await ctx.db.get(id);
             return policy?.name ?? "Unknown";
-          })
+          }),
         );
         const dataset = await ctx.db
           .query("datasets")
@@ -172,7 +204,7 @@ export const list = query({
           effective_status: effectiveStatus(session.status, task, taskStatuses),
           derivedDatasetRepos: dataset?.derived_repo_ids ?? [],
         };
-      })
+      }),
     );
   },
 });
@@ -215,7 +247,7 @@ export const getDetail = query({
       session.policy_ids.map(async (id) => {
         const policy = await ctx.db.get(id);
         return policy!;
-      })
+      }),
     );
 
     // Sort each round's results to match session.policy_ids order
@@ -224,7 +256,7 @@ export const getDetail = query({
       roundResults.sort(
         (a, b) =>
           policyIdOrder.indexOf(a.policy_id) -
-          policyIdOrder.indexOf(b.policy_id)
+          policyIdOrder.indexOf(b.policy_id),
       );
     }
 
@@ -297,7 +329,9 @@ export const removePolicyFromSession = mutation({
 
     // 3. Remove policy from session's policy_ids. Ratings are fit on read,
     // so no recompute/replay is needed.
-    const updatedPolicyIds = session.policy_ids.filter((id) => id !== policy._id);
+    const updatedPolicyIds = session.policy_ids.filter(
+      (id) => id !== policy._id,
+    );
     await ctx.db.patch(args.id, { policy_ids: updatedPolicyIds });
 
     return {
@@ -321,7 +355,7 @@ export const addRounds = mutation({
         model_url: v.optional(v.string()),
         training_url: v.optional(v.string()),
         environment: v.string(),
-      })
+      }),
     ),
     rounds: v.array(
       v.object({
@@ -332,9 +366,9 @@ export const addRounds = mutation({
             success: v.boolean(),
             episode_index: v.int64(),
             num_frames: v.optional(v.int64()),
-          })
+          }),
         ),
-      })
+      }),
     ),
   },
   handler: async (ctx, args) => {
@@ -348,14 +382,14 @@ export const addRounds = mutation({
       .withIndex("by_session", (q) => q.eq("session_id", args.id))
       .collect();
     const existingRoundIndexes = new Set(
-      existingResults.map((r) => Number(r.round_index))
+      existingResults.map((r) => Number(r.round_index)),
     );
     const duplicateRoundIndexes = [...incomingRoundIndexes].filter((index) =>
-      existingRoundIndexes.has(index)
+      existingRoundIndexes.has(index),
     );
     if (duplicateRoundIndexes.length > 0) {
       throw new Error(
-        `Round index already exists in session ${args.id}: ${duplicateRoundIndexes.join(", ")}`
+        `Round index already exists in session ${args.id}: ${duplicateRoundIndexes.join(", ")}`,
       );
     }
 
@@ -364,9 +398,7 @@ export const addRounds = mutation({
     for (const p of args.policies) {
       const existing = await ctx.db
         .query("policies")
-        .withIndex("by_model_id", (q) =>
-          q.eq("model_id", p.model_id)
-        )
+        .withIndex("by_model_id", (q) => q.eq("model_id", p.model_id))
         .unique();
 
       if (existing) {
@@ -417,7 +449,7 @@ export const addRounds = mutation({
 
     // 4. Update session metadata
     const newNumRounds = BigInt(
-      existingRoundIndexes.size + incomingRoundIndexes.size
+      existingRoundIndexes.size + incomingRoundIndexes.size,
     );
     await ctx.db.patch(args.id, {
       num_rounds: newNumRounds,
@@ -505,15 +537,12 @@ export const getByDatasetRepo = query({
     session_mode: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const sessions = await ctx.db
-      .query("evalSessions")
-      .order("desc")
-      .collect();
+    const sessions = await ctx.db.query("evalSessions").order("desc").collect();
 
     const matches = sessions.filter(
       (s) =>
         s.dataset_repo === args.dataset_repo &&
-        (args.session_mode == null || s.session_mode === args.session_mode)
+        (args.session_mode == null || s.session_mode === args.session_mode),
     );
 
     return matches.length > 0 ? matches[0] : null;
@@ -536,7 +565,7 @@ export const getByPolicy = query({
       sessionIds.map(async (id) => {
         const session = await ctx.db.get(id);
         return session!;
-      })
+      }),
     );
 
     return sessions.sort((a, b) => b._creationTime - a._creationTime);
@@ -558,7 +587,7 @@ export const correctOutcomes = internalMutation({
         episode_index: v.int64(),
         success: v.boolean(),
         num_frames: v.int64(),
-      })
+      }),
     ),
   },
   handler: async (ctx, args) => {
@@ -567,7 +596,7 @@ export const correctOutcomes = internalMutation({
     if (!session) return { session_found: false, updated: 0 };
 
     const byEpisode = new Map(
-      args.corrections.map((c) => [Number(c.episode_index), c])
+      args.corrections.map((c) => [Number(c.episode_index), c]),
     );
     const results = await ctx.db
       .query("roundResults")
@@ -579,11 +608,12 @@ export const correctOutcomes = internalMutation({
       if (corrected === undefined) {
         throw new Error(
           `Episode ${result.episode_index} in session ${session._id} has no ` +
-            `corrected outcome from the dataset parquet`
+            `corrected outcome from the dataset parquet`,
         );
       }
       const patch: { success?: boolean; num_frames?: bigint } = {};
-      if (result.success !== corrected.success) patch.success = corrected.success;
+      if (result.success !== corrected.success)
+        patch.success = corrected.success;
       if (
         result.num_frames === undefined ||
         Number(result.num_frames) !== Number(corrected.num_frames)

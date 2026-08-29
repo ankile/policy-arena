@@ -1,52 +1,104 @@
+import json
 import os
 import random
+import uuid
+from pathlib import Path
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
-from convex import ConvexClient, ConvexInt64
+from convex import ConvexClient, ConvexInt64, convex_to_json, json_to_convex
 
 from policy_arena.types import DatasetInput, PolicyInput, RoundInput, RoundResultInput
 
-DEFAULT_TOKEN_PATH = "~/.config/sir/policy_arena_token"
+DEFAULT_API_KEY_PATH = "~/.config/sir/policy_arena_api_key"
 
 
-def load_service_token() -> str | None:
-    """Resolve the arena service token for machine writes.
+class PolicyArenaAPIError(RuntimeError):
+    """An authenticated Policy Arena write request failed."""
 
-    Order: POLICY_ARENA_TOKEN env var, then the file at POLICY_ARENA_TOKEN_PATH
-    (default ~/.config/sir/policy_arena_token). Returns None when neither is
+
+def load_api_key() -> str | None:
+    """Resolve this machine's Policy Arena API key.
+
+    Order: POLICY_ARENA_API_KEY env var, then POLICY_ARENA_API_KEY_PATH
+    (default ~/.config/sir/policy_arena_api_key). Returns None when neither is
     configured; mutations then fail loudly at call time.
     """
-    token = os.environ.get("POLICY_ARENA_TOKEN")
-    if token and token.strip():
-        return token.strip()
-    path = os.path.expanduser(
-        os.environ.get("POLICY_ARENA_TOKEN_PATH", DEFAULT_TOKEN_PATH)
+    api_key = os.environ.get("POLICY_ARENA_API_KEY")
+    if api_key and api_key.strip():
+        return api_key.strip()
+    path = Path(
+        os.path.expanduser(
+            os.environ.get("POLICY_ARENA_API_KEY_PATH", DEFAULT_API_KEY_PATH)
+        )
     )
-    try:
-        with open(path) as f:
-            token = f.read().strip()
-    except FileNotFoundError:
+    if not path.exists():
         return None
-    return token or None
+    api_key = path.read_text().strip()
+    return api_key or None
 
 
 class PolicyArenaClient:
-    def __init__(self, url: str, service_token: str | None = None):
+    def __init__(
+        self,
+        url: str,
+        api_key: str | None = None,
+        api_url: str | None = None,
+        timeout_seconds: float = 30.0,
+    ):
         self.client = ConvexClient(url)
-        self._service_token = (
-            service_token if service_token is not None else load_service_token()
-        )
+        self._api_key = api_key if api_key is not None else load_api_key()
+        self._api_url = api_url or self._default_api_url(url)
+        self._timeout_seconds = timeout_seconds
 
-    def _mutation(self, name: str, args: dict):
-        """All arena mutations are auth-gated; attach the service token."""
-        if self._service_token is None:
-            raise RuntimeError(
-                "Policy Arena mutations require a service token. Set the "
-                "POLICY_ARENA_TOKEN env var or write the token to "
-                f"{DEFAULT_TOKEN_PATH} (override path with POLICY_ARENA_TOKEN_PATH)."
+    @staticmethod
+    def _default_api_url(url: str) -> str:
+        suffix = ".convex.cloud"
+        if not url.endswith(suffix):
+            raise ValueError(
+                "api_url is required when the Convex URL does not end in .convex.cloud"
             )
-        return self.client.mutation(
-            name, {**args, "serviceToken": self._service_token}
+        return f"{url.removesuffix(suffix)}.convex.site/api/v1"
+
+    def _mutation(
+        self,
+        name: str,
+        args: dict,
+        idempotency_key: str | None = None,
+    ):
+        """Send an authenticated, scope-checked machine write."""
+        if self._api_key is None:
+            raise PolicyArenaAPIError(
+                "Policy Arena mutations require a machine API key. Set "
+                "POLICY_ARENA_API_KEY or write the key to "
+                f"{DEFAULT_API_KEY_PATH} (override with POLICY_ARENA_API_KEY_PATH)."
+            )
+
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+        }
+        if idempotency_key is not None:
+            headers["Idempotency-Key"] = idempotency_key
+        operation = name.replace(":", "/")
+        request = Request(
+            f"{self._api_url}/mutate/{operation}",
+            data=json.dumps(convex_to_json(args)).encode(),
+            headers=headers,
+            method="POST",
         )
+        try:
+            with urlopen(request, timeout=self._timeout_seconds) as response:
+                payload = json.loads(response.read())
+        except HTTPError as error:
+            payload = json.loads(error.read())
+            raise PolicyArenaAPIError(
+                f"Policy Arena write failed with HTTP {error.code}: {payload['error']}"
+            ) from error
+
+        if payload["ok"] is not True:
+            raise PolicyArenaAPIError(payload["error"])
+        return json_to_convex(payload["value"])
 
     def submit_eval_session(
         self,
@@ -57,6 +109,7 @@ class PolicyArenaClient:
         session_mode: str | None = None,
         status: str | None = None,
         operator: str | None = None,
+        idempotency_key: str | None = None,
     ) -> str:
         """Submit evaluation results. Policies are auto-registered.
 
@@ -79,7 +132,11 @@ class PolicyArenaClient:
             args["status"] = status
         if operator is not None:
             args["operator"] = operator
-        return self._mutation("evalSessions:submit", args)
+        return self._mutation(
+            "evalSessions:submit",
+            args,
+            idempotency_key=idempotency_key or str(uuid.uuid4()),
+        )
 
     def set_session_operator(self, session_id: str, operator: str) -> str:
         """Set the operator (HF username, from the operators registry) on a session."""
@@ -99,6 +156,7 @@ class PolicyArenaClient:
         policy: PolicyInput,
         episodes: list[tuple[int, bool, int | None]],
         notes: str | None = None,
+        idempotency_key: str | None = None,
     ) -> str:
         """Submit a rollout session (single policy, no ELO changes).
 
@@ -128,6 +186,7 @@ class PolicyArenaClient:
             rounds=rounds,
             notes=notes,
             session_mode="rollout",
+            idempotency_key=idempotency_key,
         )
 
     def get_pair_counts(self, environment: str | None = None) -> dict[str, dict[str, int]]:
@@ -268,6 +327,38 @@ class PolicyArenaClient:
     def register_dataset(self, dataset: DatasetInput) -> str:
         """Register a dataset in the arena for browsing."""
         return self._mutation("datasets:register", dataset.to_dict())
+
+    def refresh_dataset_stats(self, repo_id: str) -> float:
+        """Queue an authoritative, revision-pinned dataset stats refresh."""
+        return self._mutation("datasets:refreshStats", {"repo_id": repo_id})
+
+    def update_dataset_stats(
+        self,
+        repo_id: str,
+        num_episodes: int,
+        total_duration_seconds: float,
+        num_success: int | None = None,
+        num_failure: int | None = None,
+        num_human_frames: int | None = None,
+        num_policy_frames: int | None = None,
+        num_autonomous_success: int | None = None,
+    ):
+        """Update legacy dataset counters through the ingest API."""
+        args = {
+            "repo_id": repo_id,
+            "num_episodes": num_episodes,
+            "total_duration_seconds": total_duration_seconds,
+        }
+        for key, value in {
+            "num_success": num_success,
+            "num_failure": num_failure,
+            "num_human_frames": num_human_frames,
+            "num_policy_frames": num_policy_frames,
+            "num_autonomous_success": num_autonomous_success,
+        }.items():
+            if value is not None:
+                args[key] = value
+        return self._mutation("datasets:updateStats", args)
 
     def list_datasets(
         self,

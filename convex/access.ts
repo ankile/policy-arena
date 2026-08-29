@@ -9,7 +9,7 @@ declare const process: {
 /**
  * Access control for arena writes.
  *
- * Two principals may write:
+ * Two principals may reach these mutation handlers:
  *  - Allowlisted humans, signed in with Hugging Face OAuth. The allowlist is
  *    the ARENA_EDITOR_SUBS env var: comma-separated HF OIDC `sub` values (the
  *    stable account ids stored as authAccounts.providerAccountId). Usernames
@@ -17,8 +17,8 @@ declare const process: {
  *    them would let a rename orphan or impersonate an editor (hardened
  *    2026-08-19 ahead of multi-reviewer stage review; previously
  *    ARENA_EDITORS matched usernames).
- *  - The robot pipeline, presenting the ARENA_SERVICE_TOKEN env var value as
- *    a `serviceToken` mutation argument.
+ *  - The machine HTTP API, after authenticating a per-machine key and scope,
+ *    presenting the server-only ARENA_SERVICE_TOKEN bridge value.
  *
  * Both env vars are required for their respective paths; missing config fails
  * closed with a descriptive error.
@@ -82,7 +82,7 @@ export async function requireEditor(
 }
 
 /**
- * Require either a valid service token (robot pipeline) or an allowlisted
+ * Require either the server-only HTTP Action bridge token or an allowlisted
  * signed-in editor. Returns the acting principal for audit purposes.
  */
 export async function requireEditorOrService(

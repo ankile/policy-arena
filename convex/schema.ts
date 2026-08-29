@@ -52,8 +52,10 @@ export default defineSchema({
     dataset_repo: v.string(),
     num_rounds: v.int64(),
     policy_ids: v.array(v.id("policies")),
+    submission_id: v.optional(v.string()),
+    submission_fingerprint: v.optional(v.string()),
     notes: v.optional(v.string()),
-    session_mode: v.optional(v.string()),  // "manual" | "pool-sample" | "calibrate" | "rollout"
+    session_mode: v.optional(v.string()), // "manual" | "pool-sample" | "calibrate" | "rollout"
     status: v.optional(statusValidator), // override; absent = inherit from task
     status_reason: v.optional(v.string()),
     // Who physically ran the eval — an HF USERNAME from the `operators`
@@ -61,7 +63,7 @@ export default defineSchema({
     // so it can be recorded before the person ever signs in; once they log in
     // via HF OAuth, users.username makes the join to their account.
     operator: v.optional(v.string()),
-  }),
+  }).index("by_submission_id", ["submission_id"]),
 
   // Registry of known eval operators (HF usernames). Sessions validate their
   // `operator` against this table; the UI select is populated from it.
@@ -242,15 +244,15 @@ export default defineSchema({
     num_policy_frames: v.optional(v.int64()),
     num_autonomous_success: v.optional(v.int64()),
     stats_status: v.optional(
-      v.union(v.literal("pending"), v.literal("ready"), v.literal("error"))
+      v.union(v.literal("pending"), v.literal("ready"), v.literal("error")),
     ),
     stats_hf_sha: v.optional(v.string()),
     stats_computed_at: v.optional(v.float64()),
     stats_algorithm_version: v.optional(v.string()),
     stats_error: v.optional(v.string()),
     stats_refresh_requested_at: v.optional(v.float64()),
-    model_id: v.optional(v.string()),        // programmatic policy lookup key (URI-prefixed)
-    model_url: v.optional(v.string()),       // human-facing link (W&B artifact/run, HF Hub, etc.)
+    model_id: v.optional(v.string()), // programmatic policy lookup key (URI-prefixed)
+    model_url: v.optional(v.string()), // human-facing link (W&B artifact/run, HF Hub, etc.)
     parent_repo_id: v.optional(v.string()),
     derived_repo_ids: v.optional(v.array(v.string())),
     mutually_exclusive_with: v.optional(v.array(v.string())),
