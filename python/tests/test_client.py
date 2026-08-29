@@ -81,14 +81,50 @@ class PolicyArenaClientTest(unittest.TestCase):
             code=403,
             msg="Forbidden",
             hdrs=None,
-            fp=io.BytesIO(b'{"ok":false,"error":"lacks curate scope"}'),
+            fp=io.BytesIO(
+                b'{"ok":false,"code":"insufficient_scope",'
+                b'"error":"lacks curate scope"}'
+            ),
         )
         client = PolicyArenaClient(
             "https://grandiose-rook-292.convex.cloud",
             api_key="pa_test.secret",
         )
-        with self.assertRaisesRegex(PolicyArenaAPIError, "lacks curate scope"):
+        with self.assertRaisesRegex(
+            PolicyArenaAPIError, "lacks curate scope"
+        ) as raised:
             client.set_task_status("task", "testing")
+        self.assertEqual(raised.exception.status, 403)
+        self.assertEqual(raised.exception.code, "insufficient_scope")
+        self.assertIsNone(raised.exception.error_id)
+
+    @patch("policy_arena.client.urlopen")
+    def test_internal_error_carries_safe_correlation_id(self, mock_urlopen):
+        mock_urlopen.side_effect = HTTPError(
+            url="https://example.invalid",
+            code=500,
+            msg="Internal Server Error",
+            hdrs=None,
+            fp=io.BytesIO(
+                b'{"ok":false,"code":"mutation_failed",'
+                b'"error":"Machine mutation failed",'
+                b'"error_id":"550e8400-e29b-41d4-a716-446655440000"}'
+            ),
+        )
+        client = PolicyArenaClient(
+            "https://grandiose-rook-292.convex.cloud",
+            api_key="pa_test.secret",
+        )
+        with self.assertRaisesRegex(
+            PolicyArenaAPIError, "error_id=550e8400"
+        ) as raised:
+            client.set_task_status("task", "testing")
+        self.assertEqual(raised.exception.status, 500)
+        self.assertEqual(raised.exception.code, "mutation_failed")
+        self.assertEqual(
+            raised.exception.error_id,
+            "550e8400-e29b-41d4-a716-446655440000",
+        )
 
     def test_convex_int_round_trip_fixture(self):
         self.assertEqual(ConvexInt64(3).value, 3)

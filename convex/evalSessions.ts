@@ -1,6 +1,6 @@
 import { query, mutation, internalMutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { requireEditorOrService } from "./access";
 import { loadTaskStatusMap } from "./statuses";
@@ -97,9 +97,7 @@ export const submit = mutation({
         if (
           existingSession.submission_fingerprint !== args.submission_fingerprint
         ) {
-          throw new Error(
-            `Idempotency conflict for submission ${args.submission_id}`,
-          );
+          throw new ConvexError({ code: "idempotency_conflict" });
         }
         return existingSession._id;
       }

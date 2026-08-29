@@ -1,10 +1,5 @@
 import { httpRouter, type FunctionReference } from "convex/server";
-import {
-  convexToJson,
-  jsonToConvex,
-  type JSONValue,
-  type Value,
-} from "convex/values";
+import { convexToJson, type Value } from "convex/values";
 
 import { api } from "./_generated/api";
 import { httpAction } from "./_generated/server";
@@ -15,6 +10,11 @@ import {
   sha256Hex,
   type MachineScope,
 } from "./machineAuth";
+import {
+  decodeMachineArguments,
+  MachineRequestError,
+  publicMutationFailure,
+} from "./machineHttpErrors";
 
 declare const process: {
   env: Record<string, string | undefined>;
@@ -38,34 +38,11 @@ type MachineRouteOptions = {
   idempotentSubmission?: boolean;
 };
 
-class MachineRequestError extends Error {
-  readonly status: 400 | 409;
-
-  constructor(message: string, status: 400 | 409) {
-    super(message);
-    this.name = "MachineRequestError";
-    this.status = status;
-  }
-}
-
 function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json" },
   });
-}
-
-function decodeArguments(bodyText: string): Record<string, Value> {
-  const encoded = JSON.parse(bodyText) as JSONValue;
-  const decoded = jsonToConvex(encoded);
-  if (
-    typeof decoded !== "object" ||
-    decoded === null ||
-    Array.isArray(decoded)
-  ) {
-    throw new MachineRequestError("Request body must encode an object", 400);
-  }
-  return decoded as Record<string, Value>;
 }
 
 function submissionKey(request: Request, machineId: string): string {
@@ -76,7 +53,7 @@ function submissionKey(request: Request, machineId: string): string {
   ) {
     throw new MachineRequestError(
       "Idempotency-Key must contain 8 to 200 URL-safe characters",
-      400,
+      "invalid_idempotency_key",
     );
   }
   return `${machineId}:${idempotencyKey}`;
@@ -93,7 +70,7 @@ function registerMachineRoute(options: MachineRouteOptions): void {
           options.scope,
         );
         const bodyText = await request.text();
-        const args = decodeArguments(bodyText);
+        const args = decodeMachineArguments(bodyText);
         const serviceToken = process.env.ARENA_SERVICE_TOKEN;
         if (serviceToken === undefined) {
           throw new Error("ARENA_SERVICE_TOKEN is not configured");
@@ -123,7 +100,17 @@ function registerMachineRoute(options: MachineRouteOptions): void {
             `[machine-api] rejected ${options.operation}: ${error.message}`,
           );
           return jsonResponse(
-            { ok: false, error: error.message },
+            {
+              ok: false,
+              code:
+                error.status === 401
+                  ? "invalid_credentials"
+                  : "insufficient_scope",
+              error:
+                error.status === 401
+                  ? "Invalid machine credential"
+                  : error.message,
+            },
             error.status,
           );
         }
@@ -132,15 +119,35 @@ function registerMachineRoute(options: MachineRouteOptions): void {
             `[machine-api] invalid ${options.operation}: ${error.message}`,
           );
           return jsonResponse(
-            { ok: false, error: error.message },
+            { ok: false, code: error.code, error: error.message },
             error.status,
           );
         }
 
-        const message = error instanceof Error ? error.message : String(error);
-        const status = message.includes("Idempotency conflict") ? 409 : 500;
-        console.error(`[machine-api] ${options.operation} failed`, error);
-        return jsonResponse({ ok: false, error: message }, status);
+        const failure = publicMutationFailure(error);
+        if (failure.status === 409) {
+          console.warn(
+            `[machine-api] conflict in ${options.operation}: ${failure.code}`,
+          );
+          return jsonResponse(
+            { ok: false, code: failure.code, error: failure.message },
+            failure.status,
+          );
+        }
+        const errorId = crypto.randomUUID();
+        console.error(
+          `[machine-api] error_id=${errorId} ${options.operation} failed`,
+          error,
+        );
+        return jsonResponse(
+          {
+            ok: false,
+            code: failure.code,
+            error: failure.message,
+            error_id: errorId,
+          },
+          failure.status,
+        );
       }
     }),
   });
@@ -158,11 +165,33 @@ http.route({
       );
     } catch (error) {
       if (error instanceof MachineAuthError) {
-        return jsonResponse({ ok: false, error: error.message }, error.status);
+        return jsonResponse(
+          {
+            ok: false,
+            code:
+              error.status === 401
+                ? "invalid_credentials"
+                : "insufficient_scope",
+            error:
+              error.status === 401
+                ? "Invalid machine credential"
+                : error.message,
+          },
+          error.status,
+        );
       }
-      console.error("[machine-api] auth check failed", error);
+      const errorId = crypto.randomUUID();
+      console.error(
+        `[machine-api] error_id=${errorId} auth check failed`,
+        error,
+      );
       return jsonResponse(
-        { ok: false, error: "Machine authentication is unavailable" },
+        {
+          ok: false,
+          code: "auth_unavailable",
+          error: "Machine authentication is unavailable",
+          error_id: errorId,
+        },
         500,
       );
     }

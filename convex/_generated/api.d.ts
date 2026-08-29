@@ -29,6 +29,7 @@ import type * as datasets from "../datasets.js";
 import type * as evalSessions from "../evalSessions.js";
 import type * as http from "../http.js";
 import type * as machineAuth from "../machineAuth.js";
+import type * as machineHttpErrors from "../machineHttpErrors.js";
 import type * as maintenance from "../maintenance.js";
 import type * as operators from "../operators.js";
 import type * as pairings from "../pairings.js";
@@ -76,6 +77,7 @@ declare const fullApi: ApiFromModules<{
   evalSessions: typeof evalSessions;
   http: typeof http;
   machineAuth: typeof machineAuth;
+  machineHttpErrors: typeof machineHttpErrors;
   maintenance: typeof maintenance;
   operators: typeof operators;
   pairings: typeof pairings;

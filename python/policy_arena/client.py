@@ -16,6 +16,19 @@ DEFAULT_API_KEY_PATH = "~/.config/sir/policy_arena_api_key"
 class PolicyArenaAPIError(RuntimeError):
     """An authenticated Policy Arena write request failed."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        status: int | None = None,
+        code: str | None = None,
+        error_id: str | None = None,
+    ):
+        super().__init__(message)
+        self.status = status
+        self.code = code
+        self.error_id = error_id
+
 
 def load_api_key() -> str | None:
     """Resolve this machine's Policy Arena API key.
@@ -92,12 +105,22 @@ class PolicyArenaClient:
                 payload = json.loads(response.read())
         except HTTPError as error:
             payload = json.loads(error.read())
+            error_id = payload.get("error_id")
+            suffix = f" [error_id={error_id}]" if error_id is not None else ""
             raise PolicyArenaAPIError(
-                f"Policy Arena write failed with HTTP {error.code}: {payload['error']}"
+                f"Policy Arena write failed with HTTP {error.code}: "
+                f"{payload['error']}{suffix}",
+                status=error.code,
+                code=payload.get("code"),
+                error_id=error_id,
             ) from error
 
         if payload["ok"] is not True:
-            raise PolicyArenaAPIError(payload["error"])
+            raise PolicyArenaAPIError(
+                payload["error"],
+                code=payload.get("code"),
+                error_id=payload.get("error_id"),
+            )
         return json_to_convex(payload["value"])
 
     def submit_eval_session(
