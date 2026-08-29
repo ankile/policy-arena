@@ -1,12 +1,104 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  assertEpisodeCoverage,
   binaryTrueCountFromEpisodeStats,
+  coalesceFullMetadataRequest,
   effectiveEpisodeLengthFromStats,
   explorerCameraKeys,
+  missingEpisodeIndices,
   summarizeEpisodeFrames,
   successFromEpisodeStats,
 } from "./hf-api";
+
+describe("episode subset coverage", () => {
+  test("reports requested indices missing from a partial cache", () => {
+    const cached = [{ episodeIndex: 1 }, { episodeIndex: 4 }];
+    expect(missingEpisodeIndices(cached, new Set([1, 4, 9]))).toEqual([9]);
+  });
+
+  test("detects a newly requested episode after an earlier cache hit", () => {
+    const cached = [{ episodeIndex: 2 }];
+    expect(missingEpisodeIndices(cached, new Set([2]))).toEqual([]);
+    expect(missingEpisodeIndices(cached, new Set([2, 7]))).toEqual([7]);
+  });
+
+  test("sorts missing indices for deterministic diagnostics", () => {
+    expect(
+      missingEpisodeIndices([{ episodeIndex: 3 }], new Set([9, 3, 1]))
+    ).toEqual([1, 9]);
+  });
+
+  test("rejects requested indices absent from a complete scan", () => {
+    expect(() =>
+      assertEpisodeCoverage(
+        "org/dataset",
+        [{ episodeIndex: 3 }],
+        new Set([3, 11, 7])
+      )
+    ).toThrow(
+      "org/dataset does not contain requested episode indices: 7, 11"
+    );
+  });
+});
+
+describe("full metadata request coalescing", () => {
+  test("shares one in-flight request per repository and clears it on success", async () => {
+    let loads = 0;
+    let resolveLoad: (() => void) | null = null;
+    const load = async () => {
+      loads += 1;
+      await new Promise<void>((resolve) => {
+        resolveLoad = resolve;
+      });
+      return {
+        episodes: [],
+        cameraKeys: [],
+        successMap: new Map<number, boolean>(),
+        complete: true,
+      };
+    };
+
+    const first = coalesceFullMetadataRequest("test/coalesce-success", load);
+    const second = coalesceFullMetadataRequest("test/coalesce-success", load);
+    expect(first).toBe(second);
+    expect(loads).toBe(1);
+    resolveLoad?.();
+    await first;
+
+    await coalesceFullMetadataRequest("test/coalesce-success", async () => {
+      loads += 1;
+      return {
+        episodes: [],
+        cameraKeys: [],
+        successMap: new Map<number, boolean>(),
+        complete: true,
+      };
+    });
+    expect(loads).toBe(2);
+  });
+
+  test("clears a failed request so callers can retry", async () => {
+    const failed = coalesceFullMetadataRequest(
+      "test/coalesce-failure",
+      async () => {
+        throw new Error("network failed");
+      }
+    );
+    await expect(failed).rejects.toThrow("network failed");
+
+    const recovered = await coalesceFullMetadataRequest(
+      "test/coalesce-failure",
+      async () => ({
+        episodes: [],
+        cameraKeys: [],
+        successMap: new Map<number, boolean>(),
+        complete: true,
+      })
+    );
+    expect(recovered.complete).toBe(true);
+  });
+});
 
 function binaryStats(feature: "done" | "is_valid", values: number[]) {
   const count = values.length;

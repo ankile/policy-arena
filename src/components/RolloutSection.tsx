@@ -3,6 +3,7 @@ import {
   fetchEpisodeSubset,
   getParquetCache,
   getVideoUrl,
+  missingEpisodeIndices,
   selectPrimaryCameraKey,
   type EpisodeMetadata,
 } from "../lib/hf-api";
@@ -23,14 +24,37 @@ interface DatasetCache {
   cameraKey: string;
 }
 
+export interface RolloutDataSource {
+  fetchEpisodeSubset: typeof fetchEpisodeSubset;
+  getParquetCache: typeof getParquetCache;
+}
+
+const DEFAULT_DATA_SOURCE: RolloutDataSource = {
+  fetchEpisodeSubset,
+  getParquetCache,
+};
+
+function neededEpisodeIndices(
+  results: RolloutResult[],
+  repo: string
+): Set<number> {
+  return new Set(
+    results
+      .filter((result) => result.dataset_repo === repo)
+      .map((result) => result.episode_index)
+  );
+}
+
 function RolloutVideoCard({
   result,
   datasetCache,
+  loadFailed,
   onClick,
   isExpanded,
 }: {
   result: RolloutResult;
   datasetCache: DatasetCache | null;
+  loadFailed: boolean;
   onClick: () => void;
   isExpanded: boolean;
 }) {
@@ -77,7 +101,7 @@ function RolloutVideoCard({
         className="rounded-lg bg-warm-100 aspect-video flex items-center justify-center text-ink-muted text-xs cursor-pointer hover:bg-warm-200 transition-colors"
         onClick={onClick}
       >
-        Loading...
+        {loadFailed ? "Video unavailable" : "Loading..."}
       </div>
     );
   }
@@ -205,16 +229,18 @@ function RolloutVideoCard({
 export default function RolloutSection({
   results,
   isOpen,
+  dataSource = DEFAULT_DATA_SOURCE,
 }: {
   results: RolloutResult[];
   isOpen: boolean;
+  dataSource?: RolloutDataSource;
 }) {
   // Initialize component state from module-level cache (survives unmount/remount)
   const [datasetCaches, setDatasetCaches] = useState<
     Map<string, DatasetCache>
   >(() => {
     const initial = new Map<string, DatasetCache>();
-    for (const [repo, cached] of getParquetCache()) {
+    for (const [repo, cached] of dataSource.getParquetCache()) {
       const episodeMap = new Map<number, EpisodeMetadata>();
       for (const ep of cached.episodes) {
         episodeMap.set(ep.episodeIndex, { ...ep, success: false });
@@ -224,51 +250,87 @@ export default function RolloutSection({
     }
     return initial;
   });
+  const datasetCachesRef = useRef(datasetCaches);
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadErrors, setLoadErrors] = useState<Map<string, string>>(
+    () => new Map()
+  );
+  const [retryCount, setRetryCount] = useState(0);
+  const activeRequestRef = useRef(0);
 
   // Prefetch dataset info on mount (no isOpen guard — starts immediately)
   useEffect(() => {
-    if (results.length === 0) return;
+    const requestId = ++activeRequestRef.current;
+    if (results.length === 0) {
+      // A prior request may have been cancelled by this empty result set.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoading(false);
+      return;
+    }
 
     const uniqueRepos = [...new Set(results.map((f) => f.dataset_repo))];
-    const missing = uniqueRepos.filter((repo) => !datasetCaches.has(repo));
-    if (missing.length === 0) return;
+    const missing = uniqueRepos.filter((repo) => {
+      const needed = neededEpisodeIndices(results, repo);
+      const cached = datasetCachesRef.current.get(repo);
+      return (
+        cached === undefined ||
+        missingEpisodeIndices([...cached.episodeMap.values()], needed).length > 0
+      );
+    });
+    if (missing.length === 0) {
+      // A prior request may have been cancelled by a now-covered result set.
+      setLoading(false);
+      return;
+    }
 
     // Reflect the async prefetch state immediately.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
-    Promise.all(
+    setLoadErrors((previous) => {
+      const next = new Map(previous);
+      for (const repo of missing) next.delete(repo);
+      return next;
+    });
+    Promise.allSettled(
       missing.map(async (repo) => {
-        // Collect episode indices needed for this repo
-        const neededIndices = new Set(
-          results
-            .filter((r) => r.dataset_repo === repo)
-            .map((r) => r.episode_index)
-        );
-        const info = await fetchEpisodeSubset(repo, neededIndices);
+        const neededIndices = neededEpisodeIndices(results, repo);
+        const info = await dataSource.fetchEpisodeSubset(repo, neededIndices);
         const episodeMap = new Map<number, EpisodeMetadata>();
         for (const ep of info.episodes) {
           episodeMap.set(ep.episodeIndex, { ...ep, success: false });
         }
         const cameraKey = selectPrimaryCameraKey(info.cameraKeys);
-        return [repo, { episodeMap, cameraKey }] as const;
+        return { repo, cache: { episodeMap, cameraKey } };
       })
     )
-      .then((fetched) => {
-        setDatasetCaches((prev) => {
-          const next = new Map(prev);
-          for (const [repo, cache] of fetched) {
-            next.set(repo, cache);
+      .then((settled) => {
+        if (activeRequestRef.current !== requestId) return;
+        const nextCaches = new Map(datasetCachesRef.current);
+        const nextErrors = new Map<string, string>();
+        for (let index = 0; index < settled.length; index++) {
+          const outcome = settled[index];
+          const repo = missing[index];
+          if (outcome.status === "fulfilled") {
+            nextCaches.set(outcome.value.repo, outcome.value.cache);
+          } else {
+            const message =
+              outcome.reason instanceof Error
+                ? outcome.reason.message
+                : String(outcome.reason);
+            nextErrors.set(repo, message);
           }
-          return next;
-        });
+        }
+        datasetCachesRef.current = nextCaches;
+        setDatasetCaches(nextCaches);
+        setLoadErrors(nextErrors);
       })
-      .catch(() => {
-        // Dataset fetch failed — cards will show "Loading..."
-      })
-      .finally(() => setLoading(false));
-  }, [results]);
+      .finally(() => {
+        if (activeRequestRef.current === requestId) setLoading(false);
+      });
+    return () => {
+      activeRequestRef.current = requestId + 1;
+    };
+  }, [results, retryCount, dataSource]);
 
   if (!isOpen) return null;
 
@@ -279,6 +341,16 @@ export default function RolloutSection({
       </div>
     );
   }
+
+  const visibleLoadErrors = [...loadErrors].filter(([repo]) => {
+    const needed = neededEpisodeIndices(results, repo);
+    if (needed.size === 0) return false;
+    const cached = datasetCaches.get(repo);
+    return (
+      cached === undefined ||
+      missingEpisodeIndices([...cached.episodeMap.values()], needed).length > 0
+    );
+  });
 
   // Group by dataset for display
   const grouped = new Map<string, RolloutResult[]>();
@@ -294,6 +366,26 @@ export default function RolloutSection({
         <div className="flex items-center gap-2 mb-3 text-xs text-ink-muted">
           <div className="w-3 h-3 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
           Loading video data...
+        </div>
+      )}
+
+      {visibleLoadErrors.length > 0 && (
+        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+          <div>Could not load rollout videos:</div>
+          <ul className="mt-1 list-disc pl-4 font-mono">
+            {visibleLoadErrors.map(([repo, message]) => (
+              <li key={repo}>
+                {repo}: {message}
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            className="mt-1 font-medium text-red-900 underline underline-offset-2 cursor-pointer"
+            onClick={() => setRetryCount((count) => count + 1)}
+          >
+            Retry
+          </button>
         </div>
       )}
 
@@ -321,6 +413,7 @@ export default function RolloutSection({
                   key={`${result.session_id}-${result.episode_index}`}
                   result={result}
                   datasetCache={datasetCaches.get(repo) ?? null}
+                  loadFailed={loadErrors.has(repo)}
                   onClick={() =>
                     setExpandedIdx(
                       expandedIdx === globalIdx ? null : globalIdx

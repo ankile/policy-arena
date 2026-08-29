@@ -14,6 +14,29 @@ type ParquetCacheEntry = {
   successMap: Map<number, boolean>;
   complete: boolean;
 };
+
+export function missingEpisodeIndices(
+  episodes: readonly Pick<EpisodeMetadata, "episodeIndex">[],
+  neededIndices: ReadonlySet<number>
+): number[] {
+  const present = new Set(episodes.map((episode) => episode.episodeIndex));
+  return [...neededIndices]
+    .filter((episodeIndex) => !present.has(episodeIndex))
+    .sort((a, b) => a - b);
+}
+
+export function assertEpisodeCoverage(
+  datasetId: string,
+  episodes: readonly Pick<EpisodeMetadata, "episodeIndex">[],
+  neededIndices: ReadonlySet<number>
+): void {
+  const missing = missingEpisodeIndices(episodes, neededIndices);
+  if (missing.length > 0) {
+    throw new Error(
+      `${datasetId} does not contain requested episode indices: ${missing.join(", ")}`
+    );
+  }
+}
 type EpisodeFrameSummary = {
   effectiveLength: number;
   success: boolean | null;
@@ -368,6 +391,25 @@ function parseEpisodeRows(
 
 // ── Module-level cache for parquet metadata ──
 const parquetCache = new Map<string, ParquetCacheEntry>();
+const fullMetadataRequests = new Map<string, Promise<ParquetCacheEntry>>();
+
+export function coalesceFullMetadataRequest(
+  datasetId: string,
+  load: () => Promise<ParquetCacheEntry>
+): Promise<ParquetCacheEntry> {
+  const existing = fullMetadataRequests.get(datasetId);
+  if (existing) return existing;
+
+  const request = load();
+  fullMetadataRequests.set(datasetId, request);
+  const clear = () => {
+    if (fullMetadataRequests.get(datasetId) === request) {
+      fullMetadataRequests.delete(datasetId);
+    }
+  };
+  request.then(clear, clear);
+  return request;
+}
 
 /**
  * Fetch only the parquet metadata needed for a specific set of episode indices.
@@ -380,14 +422,14 @@ export async function fetchEpisodeSubset(
 ): Promise<{ episodes: EpisodeWithoutSuccess[]; cameraKeys: string[] }> {
   // Return full cache hit
   const cached = parquetCache.get(datasetId);
-  if (
-    cached &&
-    (cached.complete ||
-      [...neededIndices].every((episodeIndex) =>
-        cached.episodes.some((episode) => episode.episodeIndex === episodeIndex)
-      ))
-  ) {
+  const missingFromCache = cached
+    ? missingEpisodeIndices(cached.episodes, neededIndices)
+    : [...neededIndices];
+  if (cached && missingFromCache.length === 0) {
     return cached;
+  }
+  if (cached?.complete) {
+    assertEpisodeCoverage(datasetId, cached.episodes, neededIndices);
   }
 
   // Read the first parquet file to discover camera keys and column schema
@@ -407,7 +449,7 @@ export async function fetchEpisodeSubset(
   let filesRead = 1;
 
   // Check if we already have all needed episodes
-  const allFound = () => [...neededIndices].every((idx) => found.has(idx));
+  const allFound = () => missingFromCache.every((idx) => found.has(idx));
 
   if (!allFound()) {
     // Fetch additional parquet files in batches of 4, with early termination.
@@ -438,16 +480,39 @@ export async function fetchEpisodeSubset(
     }
   }
 
+  // Another request may have populated more of this repository while this one
+  // was in flight. Never replace a complete entry with a subset, and merge
+  // partial entries so later previews retain every episode already fetched.
+  const latest = parquetCache.get(datasetId);
+  if (latest?.complete) {
+    assertEpisodeCoverage(datasetId, latest.episodes, neededIndices);
+    return latest;
+  }
+
+  const mergedEpisodes = new Map<number, EpisodeWithoutSuccess>();
+  for (const episode of latest?.episodes ?? []) {
+    mergedEpisodes.set(episode.episodeIndex, episode);
+  }
+  for (const episode of allEpisodes) {
+    mergedEpisodes.set(episode.episodeIndex, episode);
+  }
+  const mergedSuccessMap = new Map(latest?.successMap ?? []);
+  for (const [episodeIndex, success] of successMap) {
+    mergedSuccessMap.set(episodeIndex, success);
+  }
   const result = {
-    episodes: allEpisodes.sort((a, b) => a.episodeIndex - b.episodeIndex),
-    cameraKeys,
-    successMap,
+    episodes: [...mergedEpisodes.values()].sort(
+      (a, b) => a.episodeIndex - b.episodeIndex
+    ),
+    cameraKeys: cameraKeys.length > 0 ? cameraKeys : (latest?.cameraKeys ?? []),
+    successMap: mergedSuccessMap,
     complete: filesRead === metadataFiles.length,
   };
 
-  // Store in module-level cache
   parquetCache.set(datasetId, result);
-
+  // Cache a complete scan before reporting an absent requested episode. A
+  // retry can then fail from the local index instead of downloading it again.
+  assertEpisodeCoverage(datasetId, result.episodes, neededIndices);
   return result;
 }
 
@@ -459,13 +524,9 @@ export function getParquetCache(): ReadonlyMap<
   return parquetCache;
 }
 
-export async function fetchParquetMetadata(
+async function loadParquetMetadata(
   datasetId: string
-): Promise<{ episodes: EpisodeWithoutSuccess[]; cameraKeys: string[] }> {
-  // Return from module-level cache if available
-  const cached = parquetCache.get(datasetId);
-  if (cached?.complete) return cached;
-
+): Promise<ParquetCacheEntry> {
   // Read the first parquet file to discover camera keys and column schema
   const metadataFiles = await listEpisodeMetadataFiles(datasetId);
   const firstRows = await readParquet(`${hfBase(datasetId)}/${metadataFiles[0]}`);
@@ -504,6 +565,16 @@ export async function fetchParquetMetadata(
   parquetCache.set(datasetId, result);
 
   return result;
+}
+
+export function fetchParquetMetadata(
+  datasetId: string
+): Promise<{ episodes: EpisodeWithoutSuccess[]; cameraKeys: string[] }> {
+  const cached = parquetCache.get(datasetId);
+  if (cached?.complete) return Promise.resolve(cached);
+  return coalesceFullMetadataRequest(datasetId, () =>
+    loadParquetMetadata(datasetId)
+  );
 }
 
 export async function fetchSuccessStatus(

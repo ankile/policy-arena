@@ -520,6 +520,8 @@ export default function OutcomeReview({
     episodes,
     statusFilter,
     applied,
+    appliedError,
+    specReady,
     isAddressed,
     filter,
     effectiveOutcome,
@@ -586,14 +588,11 @@ export default function OutcomeReview({
   // this reset the old episode's tint/chips/marks render over the NEW
   // episode's video for seconds, and edits made in that gap are discarded.
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect -- imperative reset of
-       working state on selection change, not derived render state. */
     setPending(EMPTY_PENDING);
     setFrame(0);
     setDirty(false);
     setSkipArmed(false);
     setViewerDrift(null);
-    /* eslint-enable react-hooks/set-state-in-effect */
   }, [selectedEpisode]);
 
   useEffect(() => {

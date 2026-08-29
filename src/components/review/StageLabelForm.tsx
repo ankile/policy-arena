@@ -162,7 +162,6 @@ export function StageLabelForm({
   const flagged = violationFields(violations);
   const stage = typeof row[spec.stage_field] === "number" ? (row[spec.stage_field] as number) : null;
   const boolSet = new Set(spec.bool_fields);
-  const timeSet = new Set(spec.time_fields);
 
   // DISPLAY pairing of bools to their event time. The validator's bool<=>time
   // contract only couples strict `<bool>_time_s` names (the frozen consistency
@@ -172,6 +171,7 @@ export function StageLabelForm({
   // against all five specs' field descriptions 2026-08-20). No validation,
   // storage, or export changes ride on this map.
   const { pairedTime, claimedTimes } = useMemo(() => {
+    const timeSet = new Set(spec.time_fields);
     const paired = new Map<string, string>();
     const claimed = new Set<string>();
     for (const bf of spec.bool_fields) {
@@ -194,8 +194,6 @@ export function StageLabelForm({
       }
     }
     return { pairedTime: paired, claimedTimes: claimed };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- timeSet is
-    // rebuilt each render from spec; the pairing depends only on spec.
   }, [spec]);
   const selectedLevel =
     stage !== null ? spec.ladder.levels.find((lvl) => lvl.sid === stage) : undefined;

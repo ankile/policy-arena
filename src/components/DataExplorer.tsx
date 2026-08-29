@@ -444,7 +444,7 @@ function DatasetDetail({
 
     // Pre-populate from cache
     const cached = getParquetCache().get(repoId);
-    if (cached) {
+    if (cached?.complete) {
       setBaseEpisodes(cached.episodes);
       setCameraKeys(sortCameraKeys(explorerCameraKeys(cached.cameraKeys)));
       setEpisodesLoading(false);
@@ -456,13 +456,14 @@ function DatasetDetail({
     setSuccessMap(null);
     setSuccessLoading(true);
     setError(null);
-  }, [repoId]);
+  }, [repoId, setEpisodeFilter, setSelectedIndex]);
 
   // Effect 1: Parquet fetch
   useEffect(() => {
     let cancelled = false;
-    // Skip fetch if already populated from cache
-    if (getParquetCache().has(repoId) && baseEpisodes.length > 0) return;
+    // A rollout preview may have populated only a subset of the episodes.
+    // Skip this full fetch only when the cache itself says it is complete.
+    if (getParquetCache().get(repoId)?.complete) return;
 
     fetchParquetMetadata(repoId)
       .then((result) => {
