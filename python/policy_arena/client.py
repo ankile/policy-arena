@@ -73,6 +73,32 @@ class PolicyArenaClient:
             )
         return f"{url.removesuffix(suffix)}.convex.site/api/v1"
 
+    def whoami(self) -> dict:
+        """Check the machine credential without writing: ``{"ok", "actor", "scopes"}``.
+
+        Raises ``PolicyArenaAPIError`` when no key is installed or the API rejects it.
+        Launch/split shells call this as a preflight so a stale key fails before any
+        expensive work rather than after the HF pushes.
+        """
+        if self._api_key is None:
+            raise PolicyArenaAPIError(
+                "Policy Arena machine API key missing. Set POLICY_ARENA_API_KEY or write "
+                f"the key to {DEFAULT_API_KEY_PATH} (override with POLICY_ARENA_API_KEY_PATH)."
+            )
+        request = Request(
+            f"{self._api_url}/auth/whoami",
+            headers={"Authorization": f"Bearer {self._api_key}"},
+        )
+        try:
+            with urlopen(request, timeout=self._timeout_seconds) as response:
+                return json.loads(response.read())
+        except HTTPError as error:
+            raise PolicyArenaAPIError(
+                f"Policy Arena credential rejected (HTTP {error.code}): "
+                f"{error.read().decode(errors='replace')[:300]}",
+                status=error.code,
+            ) from error
+
     def _mutation(
         self,
         name: str,
