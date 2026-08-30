@@ -101,12 +101,11 @@ export async function commitFiles(args: {
   if (args.files.size === 0) throw new Error("commitFiles called with no files");
   const operations: CommitOperation[] = [...args.files.entries()].map(([path, content]) => {
     const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
-    const copy = new Uint8Array(bytes.length);
-    copy.set(bytes);
     return {
       operation: "addOrUpdate" as const,
       path,
-      content: new Blob([copy.buffer]),
+      // Blob copies the view's bytes itself; no intermediate exact-length copy.
+      content: new Blob([bytes as unknown as BlobPart]),
     };
   });
   const result = await commit({

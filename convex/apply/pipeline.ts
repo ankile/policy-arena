@@ -17,8 +17,8 @@ import type { Table } from "apache-arrow";
 import {
   readArrowTable,
   writeArrowTable,
-  extractFrameColumns,
-  replaceEditColumns,
+  readFrameColumns,
+  rewriteEditColumnsStreaming,
   patchListColumns,
   numberColumn,
   stringListColumn,
@@ -269,16 +269,16 @@ export async function headlessApply(args: {
 
   const subtaskMarks = resolveSubtaskMarks([...datasetTasks], args.taskSpecs);
 
-  // --- Load data files.
-  const dataTables = new Map<string, Table>();
+  // --- Load data files: raw bytes + projected edit columns only (see readFrameColumns).
+  const dataBytes = new Map<string, Uint8Array>();
   const dataFiles: FileFrameColumns[] = [];
   for (const path of [...dataFileKeys].sort()) {
     if (!store.paths.includes(path)) {
       throw new Error(`Current dataset metadata references missing parquet file: ${path}`);
     }
-    const table = readArrowTable(await store.fetch(path));
-    dataTables.set(path, table);
-    dataFiles.push(extractFrameColumns(path, table));
+    const buf = await store.fetch(path);
+    dataBytes.set(path, buf);
+    dataFiles.push(await readFrameColumns(path, buf));
   }
   const episodes = buildEpisodeMap(dataFiles);
 
@@ -312,9 +312,10 @@ export async function headlessApply(args: {
   const updatedLedgers: string[] = [];
   if (changedEpisodes.size > 0) {
     applyOutcomeEdits(episodes, progress, subtaskMarks);
+    // Streamed rewrite, one dirty file at a time; no full data table is ever held.
     for (const file of dataFiles) {
       if (!file.dirty) continue;
-      changedFiles.set(file.path, writeArrowTable(replaceEditColumns(dataTables.get(file.path)!, file)));
+      changedFiles.set(file.path, await rewriteEditColumnsStreaming(file.path, dataBytes.get(file.path)!, file));
     }
     log.push("Parquet files updated.");
 

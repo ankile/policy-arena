@@ -70,6 +70,15 @@ internal.applyWorker.run)`; there is NO polling worker anymore.
   frames/pyjson) are runtime-neutral.
 - Deployment env var **`HF_TOKEN`** (write access to the datasets) is
   required by the action.
+- **Memory (512 MiB node-action cap):** data parquet files are never decoded
+  whole. `readFrameColumns` streams a column projection
+  (`ParquetFile.stream({columns})` — the sync `readParquet(buf, {columns})`
+  silently ignores the projection) and `rewriteEditColumnsStreaming` rewrites
+  a dirty file batch-by-batch through `transformParquetStream`, re-attaching
+  the `huggingface` schema metadata the streamed batches drop. The whole-table
+  path OOM-killed the action on the 121-episode / 52.7k-frame routing_d1 R8
+  parent (2026-08-29: wasm linear memory alone hit ~180 MB and never shrinks).
+  `tests/parquetIO.test.ts` pins streaming == whole-table values + metadata.
 - Session sync: `evalSessions:correctOutcomes` patches roundResults
   success/num_frames IN PLACE after each apply (ratings are fit on read, so
   this fully replaces the legacy delete-and-resubmit

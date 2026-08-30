@@ -9,10 +9,21 @@
  * real LeRobot data + meta/episodes files, 2026-08-21.
  */
 
-import { readParquet, writeParquet, WriterPropertiesBuilder, Compression, Table as WasmTable } from "parquet-wasm";
+import {
+  readParquet,
+  readSchema,
+  writeParquet,
+  transformParquetStream,
+  ParquetFile,
+  WriterPropertiesBuilder,
+  Compression,
+  Table as WasmTable,
+} from "parquet-wasm";
+import type { RecordBatch as WasmRecordBatch } from "parquet-wasm";
 import {
   Table,
   RecordBatch,
+  Schema,
   tableFromIPC,
   tableToIPC,
   makeVector,
@@ -25,15 +36,93 @@ import {
 } from "apache-arrow";
 import type { FileFrameColumns } from "./frames";
 
+const STREAM_BATCH_ROWS = 4096;
+const STREAM_ROW_GROUP_ROWS = 8192;
+
 export function readArrowTable(buf: Uint8Array): Table {
   // Files may carry several record batches (LeRobot appends meta/episodes in
   // per-session row groups); all rebuilds below are batch-aligned.
   return tableFromIPC(readParquet(buf).intoIPCStream());
 }
 
+/** Whole-table write — meta/episodes files only (a few KB). Data files go through
+ * rewriteEditColumnsStreaming: a whole-table read+write of one ~20 MB data file
+ * peaks at ~180 MB of wasm linear memory (never returned to the OS), which
+ * OOM-killed the 512 MiB Convex node action on the routing_d1 R8 parent
+ * (2026-08-29). */
 export function writeArrowTable(table: Table): Uint8Array {
   const props = new WriterPropertiesBuilder().setCompression(Compression.SNAPPY).build();
   return writeParquet(WasmTable.fromIPCStream(tableToIPC(table, "stream")), props);
+}
+
+/**
+ * Rewrite one data file with the edited columns swapped in, streaming
+ * batch-by-batch through wasm so memory is bounded by one batch plus the
+ * writer's in-progress row group (~60 MB wasm peak on the R8 parent vs ~180 MB
+ * whole-table). The streamed batches drop the file's schema metadata, so the
+ * `huggingface` pandas metadata is re-attached from readSchema — verified
+ * value- and metadata-equal to pyarrow reads of the whole-table path.
+ */
+export async function rewriteEditColumnsStreaming(
+  path: string,
+  buf: Uint8Array,
+  cols: FileFrameColumns
+): Promise<Uint8Array> {
+  const fileSchema = fileArrowSchema(buf);
+  const file = await ParquetFile.fromFile(new Blob([buf as unknown as BlobPart]));
+  const input: ReadableStream<WasmRecordBatch> = await file.stream({ batchSize: STREAM_BATCH_ROWS });
+  let offset = 0;
+  const rebuilt = new ReadableStream<WasmRecordBatch>({
+    async start(controller) {
+      const reader = input.getReader();
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const batchTable = tableFromIPC(value.intoIPCStream());
+          const withMeta = new Table(
+            new Schema(batchTable.schema.fields, fileSchema.metadata),
+            batchTable.batches
+          );
+          const edited = replaceEditColumns(withMeta, cols, offset);
+          offset += batchTable.numRows;
+          const wasmTable = WasmTable.fromIPCStream(tableToIPC(edited, "stream"));
+          for (const rb of wasmTable.recordBatches()) controller.enqueue(rb);
+          // wasm-bindgen objects are otherwise released only when JS GC runs
+          // their finalizer; the batches hold their own refcounts.
+          wasmTable.free();
+        }
+        controller.close();
+      } catch (err) {
+        controller.error(err);
+      }
+    },
+  });
+  const props = new WriterPropertiesBuilder()
+    .setCompression(Compression.SNAPPY)
+    .setMaxRowGroupSize(STREAM_ROW_GROUP_ROWS)
+    .build();
+  const output: ReadableStream<Uint8Array> = await transformParquetStream(rebuilt, props);
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  const outReader = output.getReader();
+  for (;;) {
+    const { done, value } = await outReader.read();
+    if (done) break;
+    chunks.push(value);
+    total += value.length;
+  }
+  file.free();
+  if (offset !== cols.numRows) {
+    throw new Error(`${path}: streamed ${offset} rows, expected ${cols.numRows}`);
+  }
+  const out = new Uint8Array(total);
+  let pos = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, pos);
+    pos += chunk.length;
+  }
+  return out;
 }
 
 function columnAsFloat64(table: Table, name: string, path: string): Float64Array {
@@ -43,6 +132,62 @@ function columnAsFloat64(table: Table, name: string, path: string): Float64Array
   const raw = col.toArray() as ArrayLike<number | bigint>;
   for (let i = 0; i < table.numRows; i++) out[i] = Number(raw[i]);
   return out;
+}
+
+const FRAME_COLUMNS = ["episode_index", "frame_index", "reward", "done", "success"] as const;
+
+/** Arrow schema (fields + the `huggingface` pandas metadata) of a parquet file. */
+function fileArrowSchema(buf: Uint8Array): Schema {
+  return tableFromIPC(readSchema(buf).intoIPCStream()).schema;
+}
+
+/**
+ * Column-projected, batch-streamed read of the scalar edit columns of one data
+ * file (~7 MB wasm on the R8 parent's 37k-row file). The synchronous
+ * `readParquet(buf, {columns})` IGNORES the projection (decodes all 41 columns,
+ * ~91 MB wasm) and `ParquetFile.read({columns})` produced IPC that apache-arrow
+ * could not load; only `ParquetFile.stream({columns})` projects correctly.
+ */
+export async function readFrameColumns(path: string, buf: Uint8Array): Promise<FileFrameColumns> {
+  const hasIsValid = fileArrowSchema(buf).fields.some((f) => f.name === "is_valid");
+  const columns = hasIsValid ? [...FRAME_COLUMNS, "is_valid"] : [...FRAME_COLUMNS];
+  const file = await ParquetFile.fromFile(new Blob([buf as unknown as BlobPart]));
+  const stream: ReadableStream<WasmRecordBatch> = await file.stream({ columns, batchSize: STREAM_BATCH_ROWS });
+  const parts: FileFrameColumns[] = [];
+  const reader = stream.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const table = tableFromIPC(value.intoIPCStream());
+    if (table.schema.fields.length !== columns.length) {
+      throw new Error(
+        `${path}: projected read returned ${table.schema.fields.length} columns, expected ${columns.length}`
+      );
+    }
+    parts.push(extractFrameColumns(path, table));
+  }
+  file.free();
+  const numRows = parts.reduce((n, p) => n + p.numRows, 0);
+  const concat = <T extends Float64Array | Float32Array>(make: (n: number) => T, pick: (p: FileFrameColumns) => T): T => {
+    const out = make(numRows);
+    let pos = 0;
+    for (const p of parts) {
+      out.set(pick(p), pos);
+      pos += p.numRows;
+    }
+    return out;
+  };
+  return {
+    path,
+    numRows,
+    episodeIndex: concat((n) => new Float64Array(n), (p) => p.episodeIndex),
+    frameIndex: concat((n) => new Float64Array(n), (p) => p.frameIndex),
+    reward: concat((n) => new Float32Array(n), (p) => p.reward),
+    done: concat((n) => new Float64Array(n), (p) => p.done),
+    success: concat((n) => new Float64Array(n), (p) => p.success),
+    isValid: hasIsValid ? concat((n) => new Float64Array(n), (p) => p.isValid!) : null,
+    dirty: false,
+  };
 }
 
 /** Extract the scalar edit columns from one data-file table. */
@@ -80,11 +225,12 @@ function int64Data(values: Float64Array, field: Field): Data {
  * huggingface pandas metadata are preserved exactly. */
 function rebuildTable(
   table: Table,
-  makeReplacement: (fieldName: string, batchStart: number, batchLength: number, batchIndex: number) => Data | null
+  makeReplacement: (fieldName: string, batchStart: number, batchLength: number, batchIndex: number) => Data | null,
+  baseOffset = 0
 ): Table {
   const schema = table.schema;
   const batches: RecordBatch[] = [];
-  let offset = 0;
+  let offset = baseOffset;
   for (let b = 0; b < table.batches.length; b++) {
     const batch = table.batches[b];
     const n = batch.numRows;
@@ -117,8 +263,9 @@ function rebuildTable(
   return new Table(schema, batches);
 }
 
-/** Rebuild a data-file table with the edited columns swapped in. */
-export function replaceEditColumns(table: Table, cols: FileFrameColumns): Table {
+/** Rebuild a data-file table (or a batch slice of one starting at file row
+ * `baseOffset`) with the edited columns swapped in. */
+export function replaceEditColumns(table: Table, cols: FileFrameColumns, baseOffset = 0): Table {
   const fieldByName = new Map(table.schema.fields.map((f) => [f.name, f]));
   return rebuildTable(table, (name, start, length) => {
     if (name === "reward") {
@@ -130,7 +277,7 @@ export function replaceEditColumns(table: Table, cols: FileFrameColumns): Table 
       return int64Data(cols.isValid.slice(start, start + length), fieldByName.get(name)!);
     }
     return null;
-  });
+  }, baseOffset);
 }
 
 /**
