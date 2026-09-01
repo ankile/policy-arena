@@ -1279,110 +1279,7 @@ export default function OutcomeReview({
         </div>
       )}
 
-      <div className="grid grid-cols-[260px_1fr] gap-0">
-        {/* Work queue */}
-        <div className="border-r border-warm-100 p-4 flex flex-col gap-3 max-h-[80vh]">
-          <select
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
-              e.currentTarget.blur();
-            }}
-            className="w-full rounded-lg border border-warm-200 bg-white px-2 py-1.5 text-xs font-body text-ink cursor-pointer"
-            title="Unaddressed = no web review and not in the applied HF record"
-          >
-            <option value="unaddressed">Unaddressed only</option>
-            <option value="all">All statuses</option>
-          </select>
-          <select
-            value={filter}
-            onChange={(e) => {
-              setFilter(e.target.value as QueueFilter);
-              // A focused select swallows the review shortcuts and letter keys
-              // drive its native typeahead — release focus after each change.
-              e.currentTarget.blur();
-            }}
-            className="w-full rounded-lg border border-warm-200 bg-white px-2 py-1.5 text-xs font-body text-ink cursor-pointer"
-          >
-            {QUEUE_FILTERS.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          {armOptions.length > 0 && (
-            <select
-              value={armFilter}
-              onChange={(e) => {
-                setArmFilter(e.target.value);
-                e.currentTarget.blur();
-              }}
-              className="w-full rounded-lg border border-warm-200 bg-white px-2 py-1.5 text-xs font-body text-ink cursor-pointer"
-              title="Filter by ledger arm (blind_dagger / protocol_quota / teleop_manifest ledgers)"
-            >
-              <option value="all">All arms</option>
-              {armOptions.map((arm) => (
-                <option key={arm} value={arm}>
-                  {arm}
-                </option>
-              ))}
-            </select>
-          )}
-          {ledgerError && (
-            <div className="rounded-lg border border-coral/30 bg-coral-light px-2 py-1.5 text-[10px] text-coral font-mono">
-              arm filter unavailable — ledger parse failed: {ledgerError}
-            </div>
-          )}
-          <div className="text-[11px] font-mono text-ink-muted">
-            {numAddressed ?? "…"} of {episodes?.length ?? 0} addressed ·{" "}
-            {reviewByEpisode.size} this web ledger ·{" "}
-            {filteredEpisodes.length} in queue
-            {episodes && numLoadedSignals < episodes.length && (
-              <span className="block animate-pulse">
-                outcomes {numLoadedSignals}/{episodes.length}…
-              </span>
-            )}
-          </div>
-          <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
-            {episodes === null && !loadError && (
-              <div className="flex items-center gap-2 text-xs text-ink-muted">
-                <div className="w-4 h-4 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
-                Loading episodes…
-              </div>
-            )}
-            {filteredEpisodes.map((episode) => (
-              <QueueRow
-                key={episode.episodeIndex}
-                episode={episode}
-                signals={signals.get(episode.episodeIndex) ?? null}
-                signalError={signalErrors.get(episode.episodeIndex) ?? null}
-                review={reviewByEpisode.get(episode.episodeIndex) ?? null}
-                applied={
-                  applied?.changed.get(episode.episodeIndex)?.newOutcome ??
-                  (applied?.skipped.has(episode.episodeIndex) ? "skip" : null)
-                }
-                selected={selectedEpisode === episode.episodeIndex}
-                onSelect={() => selectEpisode(episode.episodeIndex)}
-                arm={ledgerArms?.get(episode.episodeIndex) ?? null}
-              />
-            ))}
-            {episodes !== null && filteredEpisodes.length === 0 && (
-              <div className="text-xs text-ink-muted font-body">
-                {statusFilter === "unaddressed" &&
-                applied === undefined &&
-                appliedError === null
-                  ? "Checking the applied HF record…"
-                  : statusFilter === "unaddressed" &&
-                      episodes.length > 0 &&
-                      episodes.every((episode) => isAddressed(episode.episodeIndex))
-                    ? `All ${episodes.length} episodes are already addressed. ` +
-                      `Switch to "All statuses" to revisit them.`
-                    : "No episodes match this filter yet."}
-              </div>
-            )}
-          </div>
-        </div>
-
+      <div>
         {/* Viewer */}
         <div className="p-5">
           {currentEpisode === null ? (
@@ -1567,6 +1464,111 @@ export default function OutcomeReview({
               </div>
             </>
           )}
+        </div>
+
+        {/* Work queue */}
+        <div className="border-t border-warm-100 p-4 flex flex-col gap-3 max-h-[42vh]">
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                e.currentTarget.blur();
+              }}
+              className="min-w-40 rounded-lg border border-warm-200 bg-white px-2 py-1.5 text-xs font-body text-ink cursor-pointer"
+              title="Unaddressed = no web review and not in the applied HF record"
+            >
+              <option value="unaddressed">Unaddressed only</option>
+              <option value="all">All statuses</option>
+            </select>
+            <select
+              value={filter}
+              onChange={(e) => {
+                setFilter(e.target.value as QueueFilter);
+                // A focused select swallows the review shortcuts and letter keys
+                // drive its native typeahead — release focus after each change.
+                e.currentTarget.blur();
+              }}
+              className="min-w-32 rounded-lg border border-warm-200 bg-white px-2 py-1.5 text-xs font-body text-ink cursor-pointer"
+            >
+              {QUEUE_FILTERS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            {armOptions.length > 0 && (
+              <select
+                value={armFilter}
+                onChange={(e) => {
+                  setArmFilter(e.target.value);
+                  e.currentTarget.blur();
+                }}
+                className="min-w-32 rounded-lg border border-warm-200 bg-white px-2 py-1.5 text-xs font-body text-ink cursor-pointer"
+                title="Filter by ledger arm (blind_dagger / protocol_quota / teleop_manifest ledgers)"
+              >
+                <option value="all">All arms</option>
+                {armOptions.map((arm) => (
+                  <option key={arm} value={arm}>
+                    {arm}
+                  </option>
+                ))}
+              </select>
+            )}
+            <div className="ml-auto text-[11px] font-mono text-ink-muted">
+              {numAddressed ?? "…"} of {episodes?.length ?? 0} addressed ·{" "}
+              {reviewByEpisode.size} this web ledger ·{" "}
+              {filteredEpisodes.length} in queue
+              {episodes && numLoadedSignals < episodes.length && (
+                <span className="ml-2 animate-pulse">
+                  outcomes {numLoadedSignals}/{episodes.length}…
+                </span>
+              )}
+            </div>
+          </div>
+          {ledgerError && (
+            <div className="rounded-lg border border-coral/30 bg-coral-light px-2 py-1.5 text-[10px] text-coral font-mono">
+              arm filter unavailable — ledger parse failed: {ledgerError}
+            </div>
+          )}
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-1.5 overflow-y-auto pr-1">
+            {episodes === null && !loadError && (
+              <div className="col-span-full flex items-center gap-2 text-xs text-ink-muted">
+                <div className="w-4 h-4 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
+                Loading episodes…
+              </div>
+            )}
+            {filteredEpisodes.map((episode) => (
+              <QueueRow
+                key={episode.episodeIndex}
+                episode={episode}
+                signals={signals.get(episode.episodeIndex) ?? null}
+                signalError={signalErrors.get(episode.episodeIndex) ?? null}
+                review={reviewByEpisode.get(episode.episodeIndex) ?? null}
+                applied={
+                  applied?.changed.get(episode.episodeIndex)?.newOutcome ??
+                  (applied?.skipped.has(episode.episodeIndex) ? "skip" : null)
+                }
+                selected={selectedEpisode === episode.episodeIndex}
+                onSelect={() => selectEpisode(episode.episodeIndex)}
+                arm={ledgerArms?.get(episode.episodeIndex) ?? null}
+              />
+            ))}
+            {episodes !== null && filteredEpisodes.length === 0 && (
+              <div className="col-span-full text-xs text-ink-muted font-body">
+                {statusFilter === "unaddressed" &&
+                applied === undefined &&
+                appliedError === null
+                  ? "Checking the applied HF record…"
+                  : statusFilter === "unaddressed" &&
+                      episodes.length > 0 &&
+                      episodes.every((episode) => isAddressed(episode.episodeIndex))
+                    ? `All ${episodes.length} episodes are already addressed. ` +
+                      `Switch to "All statuses" to revisit them.`
+                    : "No episodes match this filter yet."}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
