@@ -4,6 +4,7 @@ import {
   applyOutcomeEdits,
   buildEpisodeMap,
   detectFrameOutcome,
+  episodeOutcomesByIndex,
   type FileFrameColumns,
 } from "../convex/apply/frames";
 
@@ -51,6 +52,7 @@ describe("outcome frame and subtask frame boundaries", () => {
       outcome: "timeout",
       expectedNumSteps: 5,
     });
+    expect(episodeOutcomesByIndex(episodes, new Map([[0, [4]]])).get(0)).toBe("timeout");
   });
 
   test("still rejects a terminal failure and subtask on the same frame", () => {

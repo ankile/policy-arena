@@ -201,10 +201,16 @@ export function detectEpisodeOutcome(ep: EpisodeRows): OutcomeName {
   throw new Error(`Unexpected reward=${reward}, done=${done} on last valid frame`);
 }
 
-export function episodeOutcomesByIndex(episodes: EpisodeMap): Map<number, OutcomeName> {
+export function episodeOutcomesByIndex(
+  episodes: EpisodeMap,
+  subtaskFramesByEpisode: Map<number, number[]> = new Map()
+): Map<number, OutcomeName> {
   const out = new Map<number, OutcomeName>();
   for (const ep of [...episodes.keys()].sort((a, b) => a - b)) {
-    out.set(ep, detectEpisodeOutcome(episodes.get(ep)!));
+    out.set(
+      ep,
+      detectFrameOutcome(episodes.get(ep)!, subtaskFramesByEpisode.get(ep) ?? []).outcome
+    );
   }
   return out;
 }

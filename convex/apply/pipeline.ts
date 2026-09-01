@@ -307,6 +307,17 @@ export async function headlessApply(args: {
   mergeOverlayIntoProgress(progress, overlay);
   changedFiles.set(PROGRESS_FILENAME, serializeProgress(progress));
 
+  const subtaskByEp = new Map<number, number[]>();
+  for (const [epStr, entry] of Object.entries(progress.changed_episodes)) {
+    const frames = entry.subtask_frames ?? [];
+    if (frames.length > 0) {
+      subtaskByEp.set(
+        parseInt(epStr, 10),
+        [...new Set(frames.map(asInt))].sort((a, b) => a - b)
+      );
+    }
+  }
+
   // --- Apply edits + refresh stats + repair ledgers.
   const changedEpisodes = new Set(Object.keys(progress.changed_episodes).map((s) => parseInt(s, 10)));
   const updatedLedgers: string[] = [];
@@ -334,7 +345,7 @@ export async function headlessApply(args: {
       changedFiles.set("meta/stats.json", statsRefresh.statsJsonText);
     }
 
-    const outcomes = episodeOutcomesByIndex(episodes);
+    const outcomes = episodeOutcomesByIndex(episodes, subtaskByEp);
     for (const ledgerPath of DEFAULT_LEDGER_NAMES) {
       if (!store.paths.includes(ledgerPath)) continue;
       const newText = repairLedger({
@@ -353,13 +364,6 @@ export async function headlessApply(args: {
 
   // --- Canonicalize root results.json against the post-edit frame data.
   if (store.paths.includes(RESULTS_FILENAME)) {
-    const subtaskByEp = new Map<number, number[]>();
-    for (const [epStr, entry] of Object.entries(progress.changed_episodes)) {
-      const frames = entry.subtask_frames ?? [];
-      if (frames.length > 0) {
-        subtaskByEp.set(parseInt(epStr, 10), [...new Set(frames.map(asInt))].sort((a, b) => a - b));
-      }
-    }
     const frameOutcomes = new Map<number, FrameOutcome>();
     for (const [epIdx, ep] of episodes) {
       frameOutcomes.set(epIdx, detectFrameOutcome(ep, subtaskByEp.get(epIdx) ?? []));
