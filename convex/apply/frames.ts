@@ -99,14 +99,19 @@ export function normalizeOutcomeFrame(ep: EpisodeRows, outcomeFrame: number): nu
   return outcomeFrame;
 }
 
-function validateSubtaskFrame(ep: EpisodeRows, frame: number, outcomeFrame: number): void {
+function validateSubtaskFrame(
+  ep: EpisodeRows,
+  frame: number,
+  outcomeFrame: number,
+  newOutcome: OutcomeName
+): void {
   if (frameRow(ep, frame) === null) {
     throw new Error(`Episode ${ep.episodeIndex}: subtask frame ${frame} not found`);
   }
-  if (frame >= outcomeFrame) {
+  if (frame > outcomeFrame || (frame === outcomeFrame && newOutcome !== "timeout")) {
     throw new Error(
       `Episode ${ep.episodeIndex}: subtask frame ${frame} must be strictly before the ` +
-        `outcome frame ${outcomeFrame}`
+        `outcome frame ${outcomeFrame} (equality is allowed only for timeout)`
     );
   }
 }
@@ -166,10 +171,10 @@ export function applyOutcomeEdits(
       }
     }
 
-    // Subtask reward spikes AFTER the before-mask zeroing (spikes sit strictly
-    // before the outcome frame and must not be clobbered back to zero).
+    // Subtask reward spikes AFTER the before-mask zeroing (spikes sit before
+    // the outcome frame, except that a timeout may carry one on its boundary).
     for (const frame of subtaskFrames) {
-      validateSubtaskFrame(ep, frame, outcomeFrame);
+      validateSubtaskFrame(ep, frame, outcomeFrame, newOutcome);
       for (const r of ep.rows) {
         if (file.frameIndex[r] === frame) file.reward[r] = 1.0;
       }

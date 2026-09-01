@@ -708,13 +708,15 @@ export default function OutcomeReview({
         );
         return;
       }
-      const late = pending.subtaskFrames.filter(
-        (mark) => mark >= (pending.markedFrame as number)
-      );
+      const late = pending.subtaskFrames.filter((mark) => {
+        const outcomeFrame = pending.markedFrame as number;
+        return mark > outcomeFrame || (mark === outcomeFrame && pending.outcome !== "timeout");
+      });
       if (late.length > 0) {
         setActionError(
-          `Subtask mark(s) ${late.join(", ")} are not before the outcome frame ` +
-            `${pending.markedFrame}; move them earlier (g to toggle).`
+          `Subtask mark(s) ${late.join(", ")} must be before the outcome frame ` +
+            `${pending.markedFrame} (equality is allowed only for timeout); ` +
+            `move them earlier (g to toggle).`
         );
         return;
       }
