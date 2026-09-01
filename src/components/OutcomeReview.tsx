@@ -302,6 +302,7 @@ export default function OutcomeReview({
   const [skipArmed, setSkipArmed] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const controlsRef = useRef<ViewerControls | null>(null);
+  const queueScrollRef = useRef<HTMLDivElement | null>(null);
 
   // Exported registry row wins; hardcoded map only bridges MISSING rows.
   // Convex useQuery is undefined WHILE LOADING and null for a missing row —
@@ -579,6 +580,35 @@ export default function OutcomeReview({
     const head = filteredEpisodes[0];
     if (head) setSelectedEpisode(head.episodeIndex);
   }, [selectedEpisode, filteredEpisodes, setSelectedEpisode]);
+
+  // Keep keyboard-driven queue navigation visible without moving the page.
+  // scrollIntoView would also jump vertically to the queue on episode changes.
+  useEffect(() => {
+    const container = queueScrollRef.current;
+    if (container === null || selectedEpisode === null) return;
+    const selected = container.querySelector<HTMLElement>(
+      `[data-episode-index="${selectedEpisode}"]`
+    );
+    if (selected === null) return;
+    const itemLeft = selected.offsetLeft;
+    const itemRight = itemLeft + selected.offsetWidth;
+    const visibleLeft = container.scrollLeft;
+    const visibleRight = visibleLeft + container.clientWidth;
+    if (itemLeft < visibleLeft) {
+      container.scrollTo({ left: itemLeft, behavior: "smooth" });
+    } else if (itemRight > visibleRight) {
+      container.scrollTo({
+        left: itemRight - container.clientWidth,
+        behavior: "smooth",
+      });
+    }
+  }, [
+    selectedEpisode,
+    statusFilter,
+    filter,
+    armFilter,
+    filteredEpisodes.length,
+  ]);
 
   // -- Prefill on episode open -------------------------------------------
   const prefilledFor = useRef<number | null>(null);
@@ -1467,7 +1497,7 @@ export default function OutcomeReview({
         </div>
 
         {/* Work queue */}
-        <div className="border-t border-warm-100 p-4 flex flex-col gap-3 max-h-[42vh]">
+        <div className="border-t border-warm-100 p-4 flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <select
               value={statusFilter}
@@ -1531,31 +1561,39 @@ export default function OutcomeReview({
               arm filter unavailable — ledger parse failed: {ledgerError}
             </div>
           )}
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-1.5 overflow-y-auto pr-1">
+          <div
+            ref={queueScrollRef}
+            className="relative flex gap-1.5 overflow-x-auto pb-1"
+          >
             {episodes === null && !loadError && (
-              <div className="col-span-full flex items-center gap-2 text-xs text-ink-muted">
+              <div className="flex items-center gap-2 text-xs text-ink-muted">
                 <div className="w-4 h-4 border-2 border-teal/30 border-t-teal rounded-full animate-spin" />
                 Loading episodes…
               </div>
             )}
             {filteredEpisodes.map((episode) => (
-              <QueueRow
+              <div
                 key={episode.episodeIndex}
-                episode={episode}
-                signals={signals.get(episode.episodeIndex) ?? null}
-                signalError={signalErrors.get(episode.episodeIndex) ?? null}
-                review={reviewByEpisode.get(episode.episodeIndex) ?? null}
-                applied={
-                  applied?.changed.get(episode.episodeIndex)?.newOutcome ??
-                  (applied?.skipped.has(episode.episodeIndex) ? "skip" : null)
-                }
-                selected={selectedEpisode === episode.episodeIndex}
-                onSelect={() => selectEpisode(episode.episodeIndex)}
-                arm={ledgerArms?.get(episode.episodeIndex) ?? null}
-              />
+                data-episode-index={episode.episodeIndex}
+                className="w-44 shrink-0"
+              >
+                <QueueRow
+                  episode={episode}
+                  signals={signals.get(episode.episodeIndex) ?? null}
+                  signalError={signalErrors.get(episode.episodeIndex) ?? null}
+                  review={reviewByEpisode.get(episode.episodeIndex) ?? null}
+                  applied={
+                    applied?.changed.get(episode.episodeIndex)?.newOutcome ??
+                    (applied?.skipped.has(episode.episodeIndex) ? "skip" : null)
+                  }
+                  selected={selectedEpisode === episode.episodeIndex}
+                  onSelect={() => selectEpisode(episode.episodeIndex)}
+                  arm={ledgerArms?.get(episode.episodeIndex) ?? null}
+                />
+              </div>
             ))}
             {episodes !== null && filteredEpisodes.length === 0 && (
-              <div className="col-span-full text-xs text-ink-muted font-body">
+              <div className="text-xs text-ink-muted font-body">
                 {statusFilter === "unaddressed" &&
                 applied === undefined &&
                 appliedError === null
