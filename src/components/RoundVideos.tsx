@@ -1,24 +1,35 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { getVideoUrl, type EpisodeMetadata } from "../lib/hf-api";
+import type { RoundVideoSpec } from "../lib/roundVideoSpecs";
 
-export interface RoundResult {
-  policy_id: string;
-  policyName: string;
-  success: boolean;
-  episode_index: number;
-}
+type EpisodeWithoutSuccess = Omit<EpisodeMetadata, "success">;
 
+const GRID_COLS: Record<number, string> = {
+  1: "grid-cols-1",
+  2: "grid-cols-2",
+  3: "grid-cols-3",
+  4: "grid-cols-4",
+  5: "grid-cols-5",
+  6: "grid-cols-6",
+};
+
+/**
+ * Synchronized grid of episode videos. `null` entries are invisible spacers
+ * so a caller can pad a row (the joined view keeps one row per session by
+ * padding each session's tiles to `columns`).
+ */
 export function RoundVideos({
-  results,
-  datasetRepo,
-  episodeMap,
-  cameraKey,
+  videos,
+  columns,
 }: {
-  results: RoundResult[];
-  datasetRepo: string;
-  episodeMap: Map<number, Omit<EpisodeMetadata, "success">>;
-  cameraKey: string;
+  videos: (RoundVideoSpec | null)[];
+  columns?: number;
 }) {
+  const cols = columns ?? Math.max(1, Math.min(videos.length, 4));
+  const gridClass = GRID_COLS[cols];
+  if (!gridClass) {
+    throw new Error(`RoundVideos: unsupported column count ${cols}`);
+  }
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
   const [playing, setPlaying] = useState(false);
   const animFrameRef = useRef<number>(0);
@@ -31,27 +42,32 @@ export function RoundVideos({
     setPlaying(false);
     for (let i = 0; i < videoRefs.current.length; i++) {
       const video = videoRefs.current[i];
-      const episode = episodeMap.get(results[i]?.episode_index);
+      const episode = videos[i]?.episode;
       if (video && episode) {
         video.pause();
         video.currentTime = episode.fromTimestamp;
       }
     }
-  }, [results, episodeMap]);
+  }, [videos]);
 
   useEffect(() => {
-    const videos = videoRefs.current.filter(Boolean) as HTMLVideoElement[];
+    // Index-aligned with `videos`; tiles without metadata render no <video>.
+    const active: Array<{ el: HTMLVideoElement; episode: EpisodeWithoutSuccess }> = [];
+    for (let i = 0; i < videos.length; i++) {
+      const el = videoRefs.current[i];
+      const episode = videos[i]?.episode;
+      if (el && episode) active.push({ el, episode });
+    }
 
     if (playing) {
-      for (const v of videos) v.play();
+      for (const { el } of active) el.play();
 
       const sync = () => {
         let allDone = true;
-        for (let i = 0; i < videos.length; i++) {
-          const episode = episodeMap.get(results[i]?.episode_index);
-          if (episode && videos[i].currentTime >= episode.toTimestamp - 0.05) {
-            videos[i].pause();
-            videos[i].currentTime = episode.fromTimestamp;
+        for (const { el, episode } of active) {
+          if (el.currentTime >= episode.toTimestamp - 0.05) {
+            el.pause();
+            el.currentTime = episode.fromTimestamp;
           } else {
             allDone = false;
           }
@@ -64,17 +80,20 @@ export function RoundVideos({
       };
       animFrameRef.current = requestAnimationFrame(sync);
     } else {
-      for (const v of videos) v.pause();
+      for (const { el } of active) el.pause();
     }
 
     return () => cancelAnimationFrame(animFrameRef.current);
-  }, [playing, results, episodeMap]);
+  }, [playing, videos]);
 
   return (
     <div className="mt-3 mb-1">
-      <div className={`grid gap-3 ${results.length === 2 ? "grid-cols-2" : results.length === 3 ? "grid-cols-3" : "grid-cols-4"}`}>
-        {results.map((result, i) => {
-          const episode = episodeMap.get(result.episode_index);
+      <div className={`grid gap-3 ${gridClass}`}>
+        {videos.map((spec, i) => {
+          if (spec === null) {
+            return <div key={i} aria-hidden className="aspect-video" />;
+          }
+          const episode = spec.episode;
           if (!episode) {
             return (
               <div
@@ -93,9 +112,9 @@ export function RoundVideos({
                   videoRefs.current[i] = el;
                 }}
                 src={getVideoUrl(
-                  cameraKey,
+                  spec.cameraKey,
                   episode.videoFileIndex,
-                  datasetRepo
+                  spec.datasetRepo
                 )}
                 className="w-full rounded-lg bg-warm-100"
                 muted
@@ -106,18 +125,26 @@ export function RoundVideos({
                     episode.fromTimestamp;
                 }}
               />
-              <div className="absolute bottom-2 left-2 flex items-center gap-1.5">
-                <span className="px-2 py-0.5 rounded bg-black/60 text-white text-[11px] font-mono">
-                  {result.policyName}
+              <div className="absolute bottom-2 left-2 right-2 flex items-center gap-1.5 flex-wrap">
+                {spec.badge && (
+                  <span className="px-1.5 py-0.5 rounded bg-gold text-white text-[11px] font-mono font-semibold">
+                    {spec.badge}
+                  </span>
+                )}
+                <span
+                  className="px-2 py-0.5 rounded bg-black/60 text-white text-[11px] font-mono truncate min-w-0 max-w-full"
+                  title={spec.policyName}
+                >
+                  {spec.policyName}
                 </span>
                 <span
                   className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                    result.success
+                    spec.success
                       ? "bg-emerald-500/80 text-white"
                       : "bg-red-500/80 text-white"
                   }`}
                 >
-                  {result.success ? "PASS" : "FAIL"}
+                  {spec.success ? "PASS" : "FAIL"}
                 </span>
                 <span className="px-1.5 py-0.5 rounded bg-black/40 text-white/80 text-[10px] font-mono">
                   {episode.numFrames} steps

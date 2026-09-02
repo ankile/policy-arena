@@ -111,7 +111,7 @@ function App() {
   );
 
   const setActiveTab = (tab: string) => {
-    clearSearchParams("policy", "session", "mode", "round", "source", "task", "dataset", "episode", "outcome", "env", "sort", "policyA", "policyB", "pRound", "rollouts", "view", "queue", "arm", "status", "sstatus", "sconf", "sflag", "sarm", "schema", "blind");
+    clearSearchParams("policy", "session", "mode", "round", "source", "task", "dataset", "episode", "outcome", "env", "sort", "policyA", "policyB", "pRound", "rollouts", "view", "join", "queue", "arm", "status", "sstatus", "sconf", "sflag", "sarm", "schema", "blind");
     setActiveTabRaw(tab);
   };
 

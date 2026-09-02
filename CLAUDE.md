@@ -180,7 +180,14 @@ never writes summary statistics.
 
 - `App.tsx` — Main app with 4 tabs: Leaderboard, Eval Sessions, Pairings, Data Explorer
 - `components/DataExplorer.tsx` — Browse registered datasets and view episodes
-- `components/EvalSessions.tsx` — Eval session list and detail views
+- `components/EvalSessions.tsx` — Eval session list and detail views; also
+  the "join" selection (`?join=<idA>,<idB>[,...]`, `?view=join`)
+- `components/JoinedSessions.tsx` — Joined view: N arbitrary sessions
+  aligned on round index (round k of A next to round k of B), one
+  synchronized video row per session per round, "Expand all rounds".
+  Pure alignment/summary helpers + tests in `lib/joinSessions.ts`; the
+  per-tile video spec (`lib/roundVideoSpecs.ts`) lets one `RoundVideos`
+  grid mix datasets
 - `components/Pairings.tsx` — Head-to-head policy pairing comparisons
 - `components/EpisodeViewer.tsx` — HuggingFace episode video viewer
 - `components/PolicyDetail.tsx` — Expanded policy info and ELO history

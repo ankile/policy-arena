@@ -14,6 +14,7 @@ import {
   clearSearchParams,
 } from "../lib/useSearchParam";
 import { RoundVideos } from "./RoundVideos";
+import { roundVideoSpecs } from "../lib/roundVideoSpecs";
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString("en-US", {
@@ -307,15 +308,17 @@ export default function Pairings() {
                 {isExpanded && dsLoaded && (
                   <div className="px-6 pb-4">
                     <RoundVideos
-                      results={round.results.map((r) => ({
-                        policy_id: r.policyId,
-                        policyName: r.policyName,
-                        success: r.success,
-                        episode_index: r.episodeIndex,
-                      }))}
-                      datasetRepo={round.datasetRepo}
-                      episodeMap={dsLoaded.episodeMap}
-                      cameraKey={dsLoaded.cameraKey}
+                      videos={roundVideoSpecs(
+                        round.results.map((r) => ({
+                          policy_id: r.policyId,
+                          policyName: r.policyName,
+                          success: r.success,
+                          episode_index: r.episodeIndex,
+                        })),
+                        round.datasetRepo,
+                        dsLoaded.episodeMap,
+                        dsLoaded.cameraKey,
+                      )}
                     />
                   </div>
                 )}

@@ -10,7 +10,15 @@ import {
   type EpisodeMetadata,
 } from "../lib/hf-api";
 import { useSearchParam, useSearchParamNullable, useSearchParamNumber, clearSearchParams } from "../lib/useSearchParam";
+import {
+  formatJoinParam,
+  parseJoinParam,
+  sessionLetter,
+  toggleJoinId,
+} from "../lib/joinSessions";
+import JoinedSessions, { type SessionListRow } from "./JoinedSessions";
 import { RoundVideos } from "./RoundVideos";
+import { roundVideoSpecs } from "../lib/roundVideoSpecs";
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString("en-US", {
@@ -224,10 +232,12 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
               {isExpanded && datasetInfo && (
                 <div className="px-3 pb-3">
                   <RoundVideos
-                    results={round.results}
-                    datasetRepo={detail.dataset_repo}
-                    episodeMap={datasetInfo.episodeMap}
-                    cameraKey={datasetInfo.cameraKey}
+                    videos={roundVideoSpecs(
+                      round.results,
+                      detail.dataset_repo,
+                      datasetInfo.episodeMap,
+                      datasetInfo.cameraKey,
+                    )}
                   />
                 </div>
               )}
@@ -267,6 +277,22 @@ export default function EvalSessions() {
   const [showParam] = useSearchParam("show", "mainline");
   const showAll = showParam === "all";
 
+  // "Join" selection: an ordered list of session ids (order = A/B/C letters)
+  // in ?join=; ?view=join swaps the list for the round-aligned joined view.
+  const [joinParam, setJoinParam] = useSearchParamNullable("join");
+  const [view, setView] = useSearchParam("view", "list");
+  const joinIds = parseJoinParam(joinParam);
+  const joinedView = view === "join" && joinIds.length >= 2;
+  const toggleJoin = (id: string) => {
+    const next = toggleJoinId(joinIds, id);
+    if (next.length < 2 && view === "join") setView("list");
+    setJoinParam(formatJoinParam(next));
+  };
+  const clearJoin = () => {
+    if (view === "join") setView("list");
+    setJoinParam(null);
+  };
+
   const setExpandedSession = (id: string | null) => {
     if (id === null) clearSearchParams("round");
     setExpandedSessionRaw(id);
@@ -296,6 +322,10 @@ export default function EvalSessions() {
       </div>
     );
   }
+
+  const sessionById = new Map<string, SessionListRow>(
+    sessions.map((s) => [s._id as string, s]),
+  );
 
   // Mainline/all lens applies before every other filter and count.
   const statusVisible = showAll
@@ -327,6 +357,63 @@ export default function EvalSessions() {
       className="space-y-4"
       style={{ animation: "fade-up 0.6s ease-out 0.3s both" }}
     >
+      {/* Join bar: selected sessions (A, B, ...) + enter/leave the joined view */}
+      {joinIds.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gold/40 shadow-sm px-5 py-3 flex items-center gap-3 flex-wrap">
+          <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
+            Join sessions
+          </span>
+          {joinIds.map((id, i) => {
+            const row = sessionById.get(id);
+            return (
+              <span
+                key={id}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-warm-100 px-2 py-1 text-xs"
+              >
+                <span className="w-4 h-4 rounded bg-gold text-white text-[10px] font-mono font-semibold flex items-center justify-center">
+                  {sessionLetter(i)}
+                </span>
+                <span className="font-mono text-ink-light">
+                  {row ? row.policyNames.join(" vs ") : id}
+                </span>
+                {row && (
+                  <span className="text-ink-muted">{formatDate(row._creationTime)}</span>
+                )}
+                <button
+                  onClick={() => toggleJoin(id)}
+                  className="text-ink-muted hover:text-coral cursor-pointer ml-1 font-mono"
+                  title="Remove from join"
+                >
+                  ×
+                </button>
+              </span>
+            );
+          })}
+          {joinIds.length < 2 ? (
+            <span className="text-xs text-ink-muted">
+              Pick at least one more session to join.
+            </span>
+          ) : (
+            <button
+              onClick={() => setView(joinedView ? "list" : "join")}
+              className="px-3 py-1.5 rounded-lg bg-teal text-white text-xs font-medium cursor-pointer hover:bg-teal/90 transition-colors"
+            >
+              {joinedView ? "← Back to session list" : "View joined rollouts →"}
+            </button>
+          )}
+          <button
+            onClick={clearJoin}
+            className="text-xs text-ink-muted hover:text-ink cursor-pointer ml-auto"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      {joinedView ? (
+        <JoinedSessions sessionIds={joinIds} sessionRows={sessionById} />
+      ) : (
+        <>
       {/* Filter bars */}
       <div className="flex flex-wrap items-center gap-4">
         {/* Mode filter */}
@@ -447,6 +534,35 @@ export default function EvalSessions() {
                     op: {session.operator}
                   </span>
                 )}
+                {(() => {
+                  const pos = joinIds.indexOf(session._id as string);
+                  const joined = pos >= 0;
+                  return (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleJoin(session._id as string);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          toggleJoin(session._id as string);
+                        }
+                      }}
+                      className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-mono transition-colors cursor-pointer ${
+                        joined
+                          ? "bg-gold text-white"
+                          : "bg-warm-100 text-ink-muted hover:bg-gold-light hover:text-gold"
+                      }`}
+                      title="Join this session with another to view their rollouts side by side, round by round"
+                    >
+                      {joined ? `joined · ${sessionLetter(pos)}` : "+ join"}
+                    </span>
+                  );
+                })()}
                 <a
                   href={`?tab=explorer&dataset=${encodeURIComponent(session.dataset_repo)}`}
                   className="hover:text-teal transition-colors font-mono"
@@ -539,6 +655,8 @@ export default function EvalSessions() {
           )}
         </div>
       ))
+      )}
+        </>
       )}
     </div>
   );
