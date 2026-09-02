@@ -108,6 +108,14 @@ const operationsByScope = {
       mutationName: getFunctionName(api.applyJobs.finish),
     },
     {
+      operation: "applyJobs/cancel",
+      mutationName: getFunctionName(api.applyJobs.cancel),
+    },
+    {
+      operation: "evalSessions/correctOutcomesFromApply",
+      mutationName: getFunctionName(api.evalSessions.correctOutcomesFromApply),
+    },
+    {
       operation: "applyJobs/beat",
       mutationName: getFunctionName(api.applyJobs.beat),
     },

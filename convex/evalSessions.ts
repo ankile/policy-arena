@@ -577,18 +577,28 @@ export const getByPolicy = query({
  * the legacy delete-and-resubmit replay (sir/tools/arena_resubmit.py) while
  * preserving the session's identity and history.
  */
-export const correctOutcomes = internalMutation({
+const correctedOutcomesArgs = {
+  dataset_repo: v.string(),
+  corrections: v.array(
+    v.object({
+      episode_index: v.int64(),
+      success: v.boolean(),
+      num_frames: v.int64(),
+    }),
+  ),
+};
+
+async function correctOutcomesForRepo(
+  ctx: MutationCtx,
   args: {
-    dataset_repo: v.string(),
-    corrections: v.array(
-      v.object({
-        episode_index: v.int64(),
-        success: v.boolean(),
-        num_frames: v.int64(),
-      }),
-    ),
+    dataset_repo: string;
+    corrections: Array<{
+      episode_index: bigint;
+      success: boolean;
+      num_frames: bigint;
+    }>;
   },
-  handler: async (ctx, args) => {
+) {
     const sessions = await ctx.db.query("evalSessions").order("desc").collect();
     const session = sessions.find((s) => s.dataset_repo === args.dataset_repo);
     if (!session) return { session_found: false, updated: 0 };
@@ -624,5 +634,21 @@ export const correctOutcomes = internalMutation({
       }
     }
     return { session_found: true, updated };
+}
+
+export const correctOutcomes = internalMutation({
+  args: correctedOutcomesArgs,
+  handler: correctOutcomesForRepo,
+});
+
+/** Rollback-worker twin of the native apply's internal session sync. */
+export const correctOutcomesFromApply = mutation({
+  args: { serviceToken: v.optional(v.string()), ...correctedOutcomesArgs },
+  handler: async (ctx, args) => {
+    const principal = await requireEditorOrService(ctx, args.serviceToken);
+    if (principal !== "service") {
+      throw new Error("Only the apply worker (service principal) may sync outcomes");
+    }
+    return correctOutcomesForRepo(ctx, args);
   },
 });

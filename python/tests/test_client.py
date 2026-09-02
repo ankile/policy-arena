@@ -6,7 +6,11 @@ from urllib.error import HTTPError
 
 from convex import ConvexInt64, json_to_convex
 
-from policy_arena.client import PolicyArenaAPIError, PolicyArenaClient
+from policy_arena.client import (
+    PolicyArenaAPIError,
+    PolicyArenaClient,
+    _normalize_convex_json_numbers,
+)
 from policy_arena.types import PolicyInput, RoundInput, RoundResultInput
 
 
@@ -128,6 +132,17 @@ class PolicyArenaClientTest(unittest.TestCase):
 
     def test_convex_int_round_trip_fixture(self):
         self.assertEqual(ConvexInt64(3).value, 3)
+
+    def test_normalizes_integral_float64_without_touching_int64_wrappers(self):
+        value = {
+            "requested_at": 1788312198587,
+            "count": {"$integer": "AwAAAAAAAAA="},
+            "ok": True,
+        }
+        normalized = _normalize_convex_json_numbers(value)
+        self.assertEqual(normalized["requested_at"], 1788312198587.0)
+        self.assertEqual(normalized["count"], value["count"])
+        self.assertIs(normalized["ok"], True)
 
 
 if __name__ == "__main__":

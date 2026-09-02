@@ -261,6 +261,16 @@ const routes: MachineRouteOptions[] = [
     mutation: api.applyJobs.finish,
   },
   {
+    operation: "applyJobs/cancel",
+    scope: "ingest",
+    mutation: api.applyJobs.cancel,
+  },
+  {
+    operation: "evalSessions/correctOutcomesFromApply",
+    scope: "ingest",
+    mutation: api.evalSessions.correctOutcomesFromApply,
+  },
+  {
     operation: "applyJobs/beat",
     scope: "ingest",
     mutation: api.applyJobs.beat,

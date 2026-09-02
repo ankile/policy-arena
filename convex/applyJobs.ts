@@ -1,7 +1,7 @@
 import { query, mutation, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { requireEditor, requireEditorOrService } from "./access";
+import { requireEditorOrService } from "./access";
 
 /**
  * Apply jobs bridge web-captured outcome reviews to HuggingFace. Since
@@ -67,6 +67,14 @@ export const claimById = internalMutation({
       worker_id: "convex-action",
       started_at: Date.now(),
     });
+    // A platform-level action timeout bypasses applyWorker's try/catch. Start
+    // the reaper clock at the claim, not enqueue, so scheduler delay cannot
+    // make the watchdog run before the claim is stale.
+    await ctx.scheduler.runAfter(
+      NATIVE_STALE_REAPER_DELAY_MS,
+      internal.applyJobs.failStaleNativeInternal,
+      { id: args.id }
+    );
     return await ctx.db.get(args.id);
   },
 });
@@ -176,11 +184,40 @@ export const finish = mutation({
 // freshness gate blocks every ingest for the repo. After this long with no
 // finish, the claim is considered abandoned and cancellable.
 const STALE_APPLYING_MS = 10 * 60 * 1000;
+const NATIVE_STALE_REAPER_DELAY_MS = 12 * 60 * 1000;
 
-export const cancel = mutation({
+/** Mark a platform-terminated native action failed after its claim goes stale.
+ * A normally completed action has already left `applying`, so this is a no-op.
+ */
+export const failStaleNativeInternal = internalMutation({
   args: { id: v.id("applyJobs") },
   handler: async (ctx, args) => {
-    await requireEditor(ctx);
+    const job = await ctx.db.get(args.id);
+    if (
+      !job ||
+      job.status !== "applying" ||
+      job.worker_id !== "convex-action" ||
+      job.started_at === undefined ||
+      Date.now() - job.started_at <= STALE_APPLYING_MS
+    ) {
+      return null;
+    }
+    await ctx.db.patch(args.id, {
+      status: "failed",
+      finished_at: Date.now(),
+      error:
+        "native Convex apply action exceeded its execution window; " +
+        "no completion record was written (HF may be partially mutated; " +
+        "re-apply idempotently with the rollback worker)",
+    });
+    return args.id;
+  },
+});
+
+export const cancel = mutation({
+  args: { serviceToken: v.optional(v.string()), id: v.id("applyJobs") },
+  handler: async (ctx, args) => {
+    const principal = await requireEditorOrService(ctx, args.serviceToken);
     const job = await ctx.db.get(args.id);
     if (!job) throw new Error("Job not found");
     const staleApplying =
@@ -196,7 +233,7 @@ export const cancel = mutation({
       status: "cancelled",
       finished_at: Date.now(),
       error: staleApplying
-        ? "cancelled by operator: worker claim went stale mid-apply (HF may be " +
+        ? `cancelled by ${principal}: worker claim went stale mid-apply (HF may be ` +
           "partially mutated; re-committing re-applies idempotently)"
         : undefined,
     });

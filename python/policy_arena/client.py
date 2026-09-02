@@ -30,6 +30,26 @@ class PolicyArenaAPIError(RuntimeError):
         self.error_id = error_id
 
 
+def _normalize_convex_json_numbers(value):
+    """Restore Convex float64 values after Python's JSON decoder made them ints.
+
+    Convex's JSON wire format wraps int64 values in ``$integer`` objects, but
+    integral float64 values (timestamps in particular) are emitted as bare JSON
+    numbers. ``json.loads`` turns those into Python ``int`` objects, which
+    ``json_to_convex`` correctly rejects as ambiguous. Bare numbers are
+    therefore float64; wrapped integers remain untouched for the Convex decoder.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return float(value)
+    if isinstance(value, list):
+        return [_normalize_convex_json_numbers(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _normalize_convex_json_numbers(item) for key, item in value.items()}
+    return value
+
+
 def load_api_key() -> str | None:
     """Resolve this machine's Policy Arena API key.
 
@@ -147,7 +167,7 @@ class PolicyArenaClient:
                 code=payload.get("code"),
                 error_id=payload.get("error_id"),
             )
-        return json_to_convex(payload["value"])
+        return json_to_convex(_normalize_convex_json_numbers(payload["value"]))
 
     def submit_eval_session(
         self,
@@ -723,6 +743,25 @@ class PolicyArenaClient:
     def claim_apply_job(self, worker_id: str) -> dict | None:
         """Claim the oldest pending apply job; None when the queue is empty."""
         return self._mutation("applyJobs:claim", {"worker_id": worker_id})
+
+    def cancel_apply_job(self, job_id: str) -> str:
+        """Cancel a pending or stale-applying job through the service path."""
+        return self._mutation("applyJobs:cancel", {"id": job_id})
+
+    def correct_eval_outcomes(self, dataset_repo: str, corrections: list[dict]) -> dict:
+        """Patch an eval session in place after an outcome-review apply."""
+        normalized = [
+            {
+                "episode_index": ConvexInt64(int(row["episode_index"])),
+                "success": bool(row["success"]),
+                "num_frames": ConvexInt64(int(row["num_frames"])),
+            }
+            for row in corrections
+        ]
+        return self._mutation(
+            "evalSessions:correctOutcomesFromApply",
+            {"dataset_repo": dataset_repo, "corrections": normalized},
+        )
 
     def finish_apply_job(
         self,
