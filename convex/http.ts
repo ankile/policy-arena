@@ -261,11 +261,6 @@ const routes: MachineRouteOptions[] = [
     mutation: api.applyJobs.finish,
   },
   {
-    operation: "applyJobs/cancel",
-    scope: "ingest",
-    mutation: api.applyJobs.cancel,
-  },
-  {
     operation: "evalSessions/correctOutcomesFromApply",
     scope: "ingest",
     mutation: api.evalSessions.correctOutcomesFromApply,
@@ -331,6 +326,11 @@ const routes: MachineRouteOptions[] = [
     operation: "applyJobs/enqueue",
     scope: "curate",
     mutation: api.applyJobs.enqueue,
+  },
+  {
+    operation: "applyJobs/cancel",
+    scope: "curate",
+    mutation: api.applyJobs.cancel,
   },
   {
     operation: "evalSessions/deleteSession",

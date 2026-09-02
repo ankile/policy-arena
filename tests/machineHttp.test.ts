@@ -108,10 +108,6 @@ const operationsByScope = {
       mutationName: getFunctionName(api.applyJobs.finish),
     },
     {
-      operation: "applyJobs/cancel",
-      mutationName: getFunctionName(api.applyJobs.cancel),
-    },
-    {
       operation: "evalSessions/correctOutcomesFromApply",
       mutationName: getFunctionName(api.evalSessions.correctOutcomesFromApply),
     },
@@ -172,6 +168,10 @@ const operationsByScope = {
     {
       operation: "applyJobs/enqueue",
       mutationName: getFunctionName(api.applyJobs.enqueue),
+    },
+    {
+      operation: "applyJobs/cancel",
+      mutationName: getFunctionName(api.applyJobs.cancel),
     },
   ],
   admin: [

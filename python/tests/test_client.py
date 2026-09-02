@@ -144,6 +144,39 @@ class PolicyArenaClientTest(unittest.TestCase):
         self.assertEqual(normalized["count"], value["count"])
         self.assertIs(normalized["ok"], True)
 
+    @patch.object(PolicyArenaClient, "_mutation")
+    def test_cancel_apply_job_uses_scoped_machine_route(self, mutation):
+        mutation.return_value = "job-id"
+        client = PolicyArenaClient(
+            "https://grandiose-rook-292.convex.cloud",
+            api_key="pa_test.secret",
+        )
+
+        self.assertEqual(client.cancel_apply_job("job-id"), "job-id")
+        mutation.assert_called_once_with("applyJobs:cancel", {"id": "job-id"})
+
+    @patch.object(PolicyArenaClient, "_mutation")
+    def test_correct_eval_outcomes_encodes_convex_int64_fields(self, mutation):
+        mutation.return_value = {"session_found": True, "updated": 1}
+        client = PolicyArenaClient(
+            "https://grandiose-rook-292.convex.cloud",
+            api_key="pa_test.secret",
+        )
+
+        result = client.correct_eval_outcomes(
+            "ankile/eval",
+            [{"episode_index": 7, "success": True, "num_frames": 42}],
+        )
+
+        self.assertEqual(result, {"session_found": True, "updated": 1})
+        mutation.assert_called_once()
+        name, args = mutation.call_args.args
+        self.assertEqual(name, "evalSessions:correctOutcomesFromApply")
+        self.assertEqual(args["dataset_repo"], "ankile/eval")
+        self.assertEqual(args["corrections"][0]["episode_index"].value, 7)
+        self.assertIs(args["corrections"][0]["success"], True)
+        self.assertEqual(args["corrections"][0]["num_frames"].value, 42)
+
 
 if __name__ == "__main__":
     unittest.main()

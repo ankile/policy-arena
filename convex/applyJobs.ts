@@ -183,8 +183,27 @@ export const finish = mutation({
 // otherwise be stuck forever: enqueue rejects while it exists, and the
 // freshness gate blocks every ingest for the repo. After this long with no
 // finish, the claim is considered abandoned and cancellable.
-const STALE_APPLYING_MS = 10 * 60 * 1000;
-const NATIVE_STALE_REAPER_DELAY_MS = 12 * 60 * 1000;
+export const STALE_APPLYING_MS = 10 * 60 * 1000;
+export const NATIVE_STALE_REAPER_DELAY_MS = 12 * 60 * 1000;
+
+export function isStaleNativeApplyJob(
+  job:
+    | {
+        status: string;
+        worker_id?: string;
+        started_at?: number;
+      }
+    | null,
+  now: number
+): boolean {
+  return Boolean(
+    job &&
+      job.status === "applying" &&
+      job.worker_id === "convex-action" &&
+      job.started_at !== undefined &&
+      now - job.started_at > STALE_APPLYING_MS
+  );
+}
 
 /** Mark a platform-terminated native action failed after its claim goes stale.
  * A normally completed action has already left `applying`, so this is a no-op.
@@ -193,13 +212,7 @@ export const failStaleNativeInternal = internalMutation({
   args: { id: v.id("applyJobs") },
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.id);
-    if (
-      !job ||
-      job.status !== "applying" ||
-      job.worker_id !== "convex-action" ||
-      job.started_at === undefined ||
-      Date.now() - job.started_at <= STALE_APPLYING_MS
-    ) {
+    if (!isStaleNativeApplyJob(job, Date.now())) {
       return null;
     }
     await ctx.db.patch(args.id, {
