@@ -49,6 +49,7 @@ function SessionModeTag({ mode }: { mode: string }) {
 function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
   const detail = useQuery(api.evalSessions.getDetail, { id: sessionId });
   const [expandedRound, setExpandedRound] = useSearchParamNumber("round");
+  const [expandAll, setExpandAll] = useState(false);
   const [datasetInfo, setDatasetInfo] = useState<{
     episodeMap: Map<number, Omit<EpisodeMetadata, "success">>;
     cameraKey: string;
@@ -177,9 +178,26 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
       })()}
 
       {/* Rounds */}
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
+          Rounds
+        </span>
+        {datasetInfo && (
+          <button
+            onClick={() => setExpandAll((v) => !v)}
+            className={`px-3 py-1 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
+              expandAll
+                ? "bg-teal text-white border-teal shadow-sm"
+                : "bg-white text-ink-muted border-warm-200 hover:border-teal/40 hover:text-ink"
+            }`}
+          >
+            {expandAll ? "Collapse all" : "Expand all rounds"}
+          </button>
+        )}
+      </div>
       <div className="space-y-2">
         {detail.rounds.map((round) => {
-          const isExpanded = expandedRound === round.index;
+          const isExpanded = expandAll || expandedRound === round.index;
 
           return (
             <div
@@ -187,9 +205,10 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
               className="rounded-lg bg-warm-50/50 overflow-hidden"
             >
               <button
-                onClick={() =>
-                  setExpandedRound(isExpanded ? null : round.index)
-                }
+                onClick={() => {
+                  if (expandAll) return;
+                  setExpandedRound(isExpanded ? null : round.index);
+                }}
                 className="w-full flex items-center gap-3 px-3 py-2 hover:bg-warm-50 transition-colors cursor-pointer text-left"
               >
                 <span className="text-xs font-mono text-ink-muted w-16 shrink-0">
