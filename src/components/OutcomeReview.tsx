@@ -657,11 +657,15 @@ export default function OutcomeReview({
         softTruncate: appliedRecord.softTruncate,
       });
     } else {
+      // No review and no applied record: any reward spike in the parquet is a
+      // LIVE operator sub-goal mark (eval-time 'g' / numpad '3' press, written by
+      // finalize_episode_data). Prefill it so review is confirm + optional nudge;
+      // a confirm with an empty list would have the apply erase the spike.
       setPending({
         outcome: currentSignals.detectedOutcome,
         markedFrame:
           currentSignals.doneOnsetFrame ?? currentSignals.lastValidFrame,
-        subtaskFrames: [],
+        subtaskFrames: [...currentSignals.rewardSpikeFrames],
         softTruncate: false,
       });
     }
