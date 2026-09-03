@@ -52,6 +52,10 @@ function formatDate(timestamp: number): string {
   });
 }
 
+// A round's tiles share one row when there are at most this many; beyond
+// that each session gets its own column-aligned row.
+const SINGLE_ROW_MAX_TILES = 4;
+
 const SIDE_GRID: Record<number, string> = {
   1: "grid-cols-1",
   2: "grid-cols-2",
@@ -320,31 +324,46 @@ export default function JoinedSessions({
 
         {rounds.map((round, i) => {
           const isExpanded = expandAll || expandedRound === round.index;
-          // One grid row per session: pad each side's tiles to the widest
-          // side so A's rollouts sit above B's, column-aligned.
-          const columns = Math.max(1, ...round.perSide.map((r) => r?.length ?? 0));
-          const videos: (RoundVideoSpec | null)[] = [];
+          // Per-side tile specs (sides whose metadata is missing get a note).
+          const sideSpecs: RoundVideoSpec[][] = [];
           const notes: string[] = [];
           round.perSide.forEach((results, sideIdx) => {
             if (!results || results.length === 0) return;
             const detail = loadedDetails[sideIdx];
             const ds = datasetCache.get(detail.dataset_repo);
             if (ds?.status === "loaded") {
-              const specs = roundVideoSpecs(
-                results,
-                detail.dataset_repo,
-                ds.episodeMap,
-                ds.cameraKey,
-                sessionLetter(sideIdx),
+              sideSpecs.push(
+                roundVideoSpecs(
+                  results,
+                  detail.dataset_repo,
+                  ds.episodeMap,
+                  ds.cameraKey,
+                  sessionLetter(sideIdx),
+                ),
               );
-              videos.push(...specs);
-              for (let k = specs.length; k < columns; k++) videos.push(null);
             } else if (ds?.status === "error") {
               notes.push(`${sessionLetter(sideIdx)}: video metadata failed — ${ds.message}`);
             } else {
               notes.push(`${sessionLetter(sideIdx)}: loading video metadata…`);
             }
           });
+          // Layout: when every visible tile fits in one row, pack them all
+          // into that row (the session letter badge tells them apart). Only
+          // when there are more do we fall back to one row per session,
+          // padded to the widest side so A's rollouts sit above B's,
+          // column-aligned.
+          const total = sideSpecs.reduce((n, specs) => n + specs.length, 0);
+          const singleRow = total <= SINGLE_ROW_MAX_TILES;
+          const columns = singleRow
+            ? Math.max(1, total)
+            : Math.max(1, ...sideSpecs.map((specs) => specs.length));
+          const videos: (RoundVideoSpec | null)[] = [];
+          for (const specs of sideSpecs) {
+            videos.push(...specs);
+            if (!singleRow) {
+              for (let k = specs.length; k < columns; k++) videos.push(null);
+            }
+          }
 
           return (
             <div

@@ -184,7 +184,9 @@ never writes summary statistics.
   the "join" selection (`?join=<idA>,<idB>[,...]`, `?view=join`)
 - `components/JoinedSessions.tsx` — Joined view: N arbitrary sessions
   aligned on round index (round k of A next to round k of B), one
-  synchronized video row per session per round, "Expand all rounds".
+  synchronized video grid per round (all tiles share one row when there
+  are at most 4; beyond that one column-aligned row per session),
+  "Expand all rounds".
   A "Policies" chip strip hides/shows individual policies across every
   round's pills + video tiles (`?hide=<policyId>,...`; a side whose
   rollouts are all hidden reads "all hidden", distinct from "no round k").
