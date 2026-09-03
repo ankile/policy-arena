@@ -109,18 +109,63 @@ export function alignmentSummary(rounds: JoinedRound[]): string {
   return parts.join(" · ");
 }
 
-// The `join` URL param is a comma-separated, order-preserving list of
-// session ids; order defines the A/B/C letters.
-export function parseJoinParam(raw: string | null): string[] {
+export interface JoinedPolicy {
+  policy_id: string;
+  policyName: string;
+}
+
+/** Union of policies across all sides, in first-seen (side, round) order. */
+export function joinedPolicies(sides: JoinSide[]): JoinedPolicy[] {
+  const seen = new Map<string, JoinedPolicy>();
+  for (const side of sides) {
+    for (const round of side.rounds) {
+      for (const result of round.results) {
+        if (!seen.has(result.policy_id)) {
+          seen.set(result.policy_id, {
+            policy_id: result.policy_id,
+            policyName: result.policyName,
+          });
+        }
+      }
+    }
+  }
+  return [...seen.values()];
+}
+
+/**
+ * Drop every result whose policy is hidden. A side that HAS the round but
+ * whose rollouts are all hidden becomes `[]` (distinct from `null` = the
+ * session never ran that round), so the UI can say "all hidden" rather than
+ * "no round k". Rounds are never dropped: alignment is about sessions.
+ */
+export function hidePolicies(
+  rounds: JoinedRound[],
+  hiddenPolicyIds: ReadonlySet<string>,
+): JoinedRound[] {
+  if (hiddenPolicyIds.size === 0) return rounds;
+  return rounds.map((round) => ({
+    index: round.index,
+    perSide: round.perSide.map((results) =>
+      results === null
+        ? null
+        : results.filter((r) => !hiddenPolicyIds.has(r.policy_id)),
+    ),
+  }));
+}
+
+// URL id lists: `?join=<sessionId>,<sessionId>` (order-preserving; order
+// defines the A/B/C letters) and `?hide=<policyId>,<policyId>` (policies
+// hidden from the side-by-side rounds).
+export function parseIdList(raw: string | null): string[] {
   if (raw === null || raw === "") return [];
   const ids = raw.split(",").filter((id) => id.length > 0);
   return [...new Set(ids)];
 }
 
-export function formatJoinParam(ids: string[]): string | null {
+export function formatIdList(ids: string[]): string | null {
   return ids.length === 0 ? null : ids.join(",");
 }
 
-export function toggleJoinId(ids: string[], id: string): string[] {
+export function toggleId(ids: string[], id: string): string[] {
   return ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
 }

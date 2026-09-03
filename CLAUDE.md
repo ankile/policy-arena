@@ -185,7 +185,10 @@ never writes summary statistics.
 - `components/JoinedSessions.tsx` — Joined view: N arbitrary sessions
   aligned on round index (round k of A next to round k of B), one
   synchronized video row per session per round, "Expand all rounds".
-  Pure alignment/summary helpers + tests in `lib/joinSessions.ts`; the
+  A "Policies" chip strip hides/shows individual policies across every
+  round's pills + video tiles (`?hide=<policyId>,...`; a side whose
+  rollouts are all hidden reads "all hidden", distinct from "no round k").
+  Pure alignment/summary/hide helpers + tests in `lib/joinSessions.ts`; the
   per-tile video spec (`lib/roundVideoSpecs.ts`) lets one `RoundVideos`
   grid mix datasets
 - `components/Pairings.tsx` — Head-to-head policy pairing comparisons

@@ -11,10 +11,10 @@ import {
 } from "../lib/hf-api";
 import { useSearchParam, useSearchParamNullable, useSearchParamNumber, clearSearchParams } from "../lib/useSearchParam";
 import {
-  formatJoinParam,
-  parseJoinParam,
+  formatIdList,
+  parseIdList,
   sessionLetter,
-  toggleJoinId,
+  toggleId,
 } from "../lib/joinSessions";
 import JoinedSessions, { type SessionListRow } from "./JoinedSessions";
 import { RoundVideos } from "./RoundVideos";
@@ -281,15 +281,16 @@ export default function EvalSessions() {
   // in ?join=; ?view=join swaps the list for the round-aligned joined view.
   const [joinParam, setJoinParam] = useSearchParamNullable("join");
   const [view, setView] = useSearchParam("view", "list");
-  const joinIds = parseJoinParam(joinParam);
+  const joinIds = parseIdList(joinParam);
   const joinedView = view === "join" && joinIds.length >= 2;
   const toggleJoin = (id: string) => {
-    const next = toggleJoinId(joinIds, id);
+    const next = toggleId(joinIds, id);
     if (next.length < 2 && view === "join") setView("list");
-    setJoinParam(formatJoinParam(next));
+    setJoinParam(formatIdList(next));
   };
   const clearJoin = () => {
     if (view === "join") setView("list");
+    clearSearchParams("hide");
     setJoinParam(null);
   };
 

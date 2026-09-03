@@ -3,11 +3,13 @@ import { describe, expect, test } from "bun:test";
 import {
   alignRounds,
   alignmentSummary,
-  formatJoinParam,
-  parseJoinParam,
+  formatIdList,
+  hidePolicies,
+  joinedPolicies,
+  parseIdList,
   sessionLetter,
   sideSuccessSummary,
-  toggleJoinId,
+  toggleId,
   type JoinSide,
 } from "./joinSessions";
 
@@ -84,6 +86,37 @@ describe("sideSuccessSummary", () => {
   });
 });
 
+describe("joinedPolicies", () => {
+  test("unions policies across sides in first-seen order", () => {
+    expect(joinedPolicies([sideA, sideB]).map((p) => p.policy_id)).toEqual([
+      "p1",
+      "p2",
+      "p3",
+    ]);
+    expect(joinedPolicies([sideB, sideA]).map((p) => p.policy_id)).toEqual([
+      "p3",
+      "p1",
+      "p2",
+    ]);
+  });
+});
+
+describe("hidePolicies", () => {
+  test("drops hidden results, keeps rounds, distinguishes [] from null", () => {
+    const rounds = alignRounds([sideA, sideB]);
+    const hidden = hidePolicies(rounds, new Set(["p2", "p3"]));
+    expect(hidden.map((r) => r.index)).toEqual([0, 1, 2]);
+    expect(hidden[0].perSide[0]).toEqual([result("p1", true, 0)]);
+    expect(hidden[0].perSide[1]).toEqual([]); // B ran round 0 but p3 is hidden
+    expect(hidden[2].perSide[1]).toBeNull(); // B never ran round 2
+  });
+
+  test("returns the same rounds when nothing is hidden", () => {
+    const rounds = alignRounds([sideA, sideB]);
+    expect(hidePolicies(rounds, new Set())).toBe(rounds);
+  });
+});
+
 describe("alignmentSummary", () => {
   test("reports aligned and single-side counts", () => {
     expect(alignmentSummary(alignRounds([sideA, sideB]))).toBe(
@@ -99,19 +132,19 @@ describe("alignmentSummary", () => {
   });
 });
 
-describe("join url param", () => {
+describe("url id lists", () => {
   test("round-trips and dedupes", () => {
-    expect(parseJoinParam(null)).toEqual([]);
-    expect(parseJoinParam("")).toEqual([]);
-    expect(parseJoinParam("a,b,a")).toEqual(["a", "b"]);
-    expect(formatJoinParam([])).toBeNull();
-    expect(formatJoinParam(["a", "b"])).toBe("a,b");
+    expect(parseIdList(null)).toEqual([]);
+    expect(parseIdList("")).toEqual([]);
+    expect(parseIdList("a,b,a")).toEqual(["a", "b"]);
+    expect(formatIdList([])).toBeNull();
+    expect(formatIdList(["a", "b"])).toBe("a,b");
   });
 
   test("toggle adds at the end and removes in place", () => {
-    expect(toggleJoinId([], "a")).toEqual(["a"]);
-    expect(toggleJoinId(["a"], "b")).toEqual(["a", "b"]);
-    expect(toggleJoinId(["a", "b"], "a")).toEqual(["b"]);
+    expect(toggleId([], "a")).toEqual(["a"]);
+    expect(toggleId(["a"], "b")).toEqual(["a", "b"]);
+    expect(toggleId(["a", "b"], "a")).toEqual(["b"]);
   });
 
   test("letters follow selection order", () => {

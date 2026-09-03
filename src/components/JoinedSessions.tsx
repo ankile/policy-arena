@@ -9,12 +9,17 @@ import {
   selectPrimaryCameraKey,
   type EpisodeMetadata,
 } from "../lib/hf-api";
-import { useSearchParamNumber } from "../lib/useSearchParam";
+import { useSearchParamNullable, useSearchParamNumber } from "../lib/useSearchParam";
 import {
   alignRounds,
   alignmentSummary,
+  formatIdList,
+  hidePolicies,
+  joinedPolicies,
+  parseIdList,
   sessionLetter,
   sideSuccessSummary,
+  toggleId,
   type JoinSide,
 } from "../lib/joinSessions";
 import { RoundVideos } from "./RoundVideos";
@@ -88,6 +93,14 @@ export default function JoinedSessions({
 
   const [expandedRound, setExpandedRound] = useSearchParamNumber("round");
   const [expandAll, setExpandAll] = useState(false);
+
+  // Policies hidden from the side-by-side rounds (pills + video tiles), by
+  // policy id, so a joined eval can be narrowed to the models being compared.
+  // Lives in ?hide= so a filtered view is shareable.
+  const [hideParam, setHideParam] = useSearchParamNullable("hide");
+  const hiddenPolicyIds = new Set(parseIdList(hideParam));
+  const toggleHidden = (policyId: string) =>
+    setHideParam(formatIdList(toggleId(parseIdList(hideParam), policyId)));
 
   // Per-dataset episode metadata (sessions may live in different repos).
   const [datasetCache, setDatasetCache] = useState<Map<string, DsCacheEntry>>(
@@ -176,7 +189,9 @@ export default function JoinedSessions({
     sessionId: d._id,
     rounds: d.rounds,
   }));
-  const rounds = alignRounds(sides);
+  const policies = joinedPolicies(sides);
+  const rounds = hidePolicies(alignRounds(sides), hiddenPolicyIds);
+  const hiddenCount = policies.filter((p) => hiddenPolicyIds.has(p.policy_id)).length;
 
   return (
     <div className="space-y-4">
@@ -211,7 +226,12 @@ export default function JoinedSessions({
               </div>
               <div className="space-y-1 mb-2">
                 {summary.map((s) => (
-                  <div key={s.policy_id} className="flex items-center gap-2 text-xs">
+                  <div
+                    key={s.policy_id}
+                    className={`flex items-center gap-2 text-xs ${
+                      hiddenPolicyIds.has(s.policy_id) ? "opacity-40 line-through" : ""
+                    }`}
+                  >
                     <span
                       className="rounded bg-warm-100 px-2 py-0.5 font-mono text-ink-light truncate"
                       title={s.policyName}
@@ -266,6 +286,38 @@ export default function JoinedSessions({
           </button>
         </div>
 
+        {/* Policy visibility: click a chip to hide/show that policy's pills + videos */}
+        <div className="px-6 py-2 border-b border-warm-100 flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
+            Policies
+          </span>
+          {policies.map((policy) => {
+            const hidden = hiddenPolicyIds.has(policy.policy_id);
+            return (
+              <button
+                key={policy.policy_id}
+                onClick={() => toggleHidden(policy.policy_id)}
+                title={hidden ? "Show this policy" : "Hide this policy from the side-by-side rounds"}
+                className={`px-2 py-0.5 rounded text-xs font-mono border transition-all cursor-pointer max-w-xs truncate ${
+                  hidden
+                    ? "bg-white text-ink-muted/60 border-warm-200 border-dashed line-through"
+                    : "bg-warm-100 text-ink border-warm-200 hover:border-teal/40"
+                }`}
+              >
+                {policy.policyName}
+              </button>
+            );
+          })}
+          {hiddenCount > 0 && (
+            <button
+              onClick={() => setHideParam(null)}
+              className="text-[11px] text-teal hover:underline cursor-pointer ml-1"
+            >
+              show all ({hiddenCount} hidden)
+            </button>
+          )}
+        </div>
+
         {rounds.map((round, i) => {
           const isExpanded = expandAll || expandedRound === round.index;
           // One grid row per session: pad each side's tiles to the widest
@@ -274,7 +326,7 @@ export default function JoinedSessions({
           const videos: (RoundVideoSpec | null)[] = [];
           const notes: string[] = [];
           round.perSide.forEach((results, sideIdx) => {
-            if (!results) return;
+            if (!results || results.length === 0) return;
             const detail = loadedDetails[sideIdx];
             const ds = datasetCache.get(detail.dataset_repo);
             if (ds?.status === "loaded") {
@@ -323,6 +375,10 @@ export default function JoinedSessions({
                       {results === null ? (
                         <span className="text-[11px] text-ink-muted/60 italic">
                           no round {round.index}
+                        </span>
+                      ) : results.length === 0 ? (
+                        <span className="text-[11px] text-ink-muted/60 italic">
+                          all hidden
                         </span>
                       ) : (
                         results.map((result, j) => (

@@ -21,6 +21,8 @@ const REPLACE_KEYS = new Set([
   "sarm",
   "schema",
   "blind",
+  // Joined-view policy visibility filter.
+  "hide",
 ]);
 
 // pushState/replaceState fire no event, so hook instances holding the same
