@@ -110,6 +110,7 @@ export const run = internalAction({
           episode_index: BigInt(e.episode_index),
           success: e.success,
           num_frames: BigInt(e.num_frames),
+          num_subtask_marks: BigInt(e.num_subtask_marks),
         })),
       });
       log.push(

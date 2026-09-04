@@ -71,6 +71,7 @@ export const submit = mutation({
             success: v.boolean(),
             episode_index: v.int64(),
             num_frames: v.optional(v.int64()),
+            num_subtask_marks: v.optional(v.int64()),
           }),
         ),
       }),
@@ -166,6 +167,9 @@ export const submit = mutation({
           ...(result.num_frames != null
             ? { num_frames: BigInt(Number(result.num_frames)) }
             : {}),
+          ...(result.num_subtask_marks != null
+            ? { num_subtask_marks: BigInt(Number(result.num_subtask_marks)) }
+            : {}),
         });
       }
     }
@@ -226,6 +230,7 @@ export const getDetail = query({
         policyName: string;
         success: boolean;
         episode_index: number;
+        num_subtask_marks: number | null;
       }>
     >();
 
@@ -238,8 +243,24 @@ export const getDetail = query({
         policyName: policy?.name ?? "Unknown",
         success: r.success,
         episode_index: Number(r.episode_index),
+        num_subtask_marks:
+          r.num_subtask_marks === undefined ? null : Number(r.num_subtask_marks),
       });
     }
+
+    // Sub-goal budget of the session's task (0 = binary task): the dataset
+    // registration names the task, taskSpecs carries RealTaskSpec.num_subtask_marks.
+    const dataset = await ctx.db
+      .query("datasets")
+      .withIndex("by_repo", (q) => q.eq("repo_id", session.dataset_repo))
+      .unique();
+    const taskSpec = dataset
+      ? await ctx.db
+          .query("taskSpecs")
+          .withIndex("by_task", (q) => q.eq("task", dataset.task))
+          .unique()
+      : null;
+    const maxSubtaskMarks = taskSpec ? Number(taskSpec.num_subtask_marks) : 0;
 
     const policies = await Promise.all(
       session.policy_ids.map(async (id) => {
@@ -261,6 +282,7 @@ export const getDetail = query({
     return {
       ...session,
       policies,
+      max_subtask_marks: maxSubtaskMarks,
       rounds: Array.from(roundsMap.entries())
         .sort(([a], [b]) => a - b)
         .map(([index, results]) => ({ index, results })),
@@ -364,6 +386,7 @@ export const addRounds = mutation({
             success: v.boolean(),
             episode_index: v.int64(),
             num_frames: v.optional(v.int64()),
+            num_subtask_marks: v.optional(v.int64()),
           }),
         ),
       }),
@@ -440,6 +463,9 @@ export const addRounds = mutation({
           episode_index: BigInt(Number(result.episode_index)),
           ...(result.num_frames != null
             ? { num_frames: BigInt(Number(result.num_frames)) }
+            : {}),
+          ...(result.num_subtask_marks != null
+            ? { num_subtask_marks: BigInt(Number(result.num_subtask_marks)) }
             : {}),
         });
       }
@@ -584,6 +610,7 @@ const correctedOutcomesArgs = {
       episode_index: v.int64(),
       success: v.boolean(),
       num_frames: v.int64(),
+      num_subtask_marks: v.optional(v.int64()),
     }),
   ),
 };
@@ -596,6 +623,7 @@ async function correctOutcomesForRepo(
       episode_index: bigint;
       success: boolean;
       num_frames: bigint;
+      num_subtask_marks?: bigint;
     }>;
   },
 ) {
@@ -619,7 +647,11 @@ async function correctOutcomesForRepo(
             `corrected outcome from the dataset parquet`,
         );
       }
-      const patch: { success?: boolean; num_frames?: bigint } = {};
+      const patch: {
+        success?: boolean;
+        num_frames?: bigint;
+        num_subtask_marks?: bigint;
+      } = {};
       if (result.success !== corrected.success)
         patch.success = corrected.success;
       if (
@@ -627,6 +659,13 @@ async function correctOutcomesForRepo(
         Number(result.num_frames) !== Number(corrected.num_frames)
       ) {
         patch.num_frames = corrected.num_frames;
+      }
+      if (
+        corrected.num_subtask_marks !== undefined &&
+        (result.num_subtask_marks === undefined ||
+          Number(result.num_subtask_marks) !== Number(corrected.num_subtask_marks))
+      ) {
+        patch.num_subtask_marks = corrected.num_subtask_marks;
       }
       if (Object.keys(patch).length > 0) {
         await ctx.db.patch(result._id, patch);
@@ -650,5 +689,54 @@ export const correctOutcomesFromApply = mutation({
       throw new Error("Only the apply worker (service principal) may sync outcomes");
     }
     return correctOutcomesForRepo(ctx, args);
+  },
+});
+
+/**
+ * Backfill / repair the per-round sub-goal mark counts of the session
+ * registered for a dataset (pre-2026-09-03 sessions were submitted without
+ * them). Every episode of the session must be present — a partial map would
+ * silently leave stale counts behind.
+ */
+export const setSubtaskMarks = mutation({
+  args: {
+    serviceToken: v.optional(v.string()),
+    dataset_repo: v.string(),
+    marks: v.array(
+      v.object({
+        episode_index: v.int64(),
+        num_subtask_marks: v.int64(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    await requireEditorOrService(ctx, args.serviceToken);
+    const sessions = await ctx.db.query("evalSessions").order("desc").collect();
+    const session = sessions.find((s) => s.dataset_repo === args.dataset_repo);
+    if (!session) return { session_found: false, updated: 0 };
+
+    const byEpisode = new Map(args.marks.map((m) => [Number(m.episode_index), m]));
+    const results = await ctx.db
+      .query("roundResults")
+      .withIndex("by_session", (q) => q.eq("session_id", session._id))
+      .collect();
+    let updated = 0;
+    for (const result of results) {
+      const mark = byEpisode.get(Number(result.episode_index));
+      if (mark === undefined) {
+        throw new Error(
+          `Episode ${result.episode_index} in session ${session._id} has no ` +
+            `sub-goal mark count in the backfill payload`,
+        );
+      }
+      if (
+        result.num_subtask_marks === undefined ||
+        Number(result.num_subtask_marks) !== Number(mark.num_subtask_marks)
+      ) {
+        await ctx.db.patch(result._id, { num_subtask_marks: mark.num_subtask_marks });
+        updated += 1;
+      }
+    }
+    return { session_found: true, updated };
   },
 });

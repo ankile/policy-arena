@@ -271,6 +271,11 @@ const routes: MachineRouteOptions[] = [
     mutation: api.applyJobs.beat,
   },
   {
+    operation: "evalSessions/setSubtaskMarks",
+    scope: "ingest",
+    mutation: api.evalSessions.setSubtaskMarks,
+  },
+  {
     operation: "evalSessions/setStatus",
     scope: "curate",
     mutation: api.evalSessions.setStatus,

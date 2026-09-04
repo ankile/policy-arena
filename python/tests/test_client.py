@@ -176,6 +176,42 @@ class PolicyArenaClientTest(unittest.TestCase):
         self.assertEqual(args["corrections"][0]["episode_index"].value, 7)
         self.assertIs(args["corrections"][0]["success"], True)
         self.assertEqual(args["corrections"][0]["num_frames"].value, 42)
+        self.assertNotIn("num_subtask_marks", args["corrections"][0])
+
+    @patch.object(PolicyArenaClient, "_mutation")
+    def test_correct_eval_outcomes_forwards_subtask_marks(self, mutation):
+        mutation.return_value = {"session_found": True, "updated": 1}
+        client = PolicyArenaClient(
+            "https://grandiose-rook-292.convex.cloud",
+            api_key="pa_test.secret",
+        )
+        client.correct_eval_outcomes(
+            "ankile/eval",
+            [{"episode_index": 7, "success": False, "num_frames": 42, "num_subtask_marks": 1}],
+        )
+        _, args = mutation.call_args.args
+        self.assertEqual(args["corrections"][0]["num_subtask_marks"].value, 1)
+
+    @patch.object(PolicyArenaClient, "_mutation")
+    def test_set_session_subtask_marks_encodes_every_episode(self, mutation):
+        mutation.return_value = {"session_found": True, "updated": 2}
+        client = PolicyArenaClient(
+            "https://grandiose-rook-292.convex.cloud",
+            api_key="pa_test.secret",
+        )
+        result = client.set_session_subtask_marks("ankile/eval", {3: 1, 1: 0})
+        self.assertEqual(result, {"session_found": True, "updated": 2})
+        name, args = mutation.call_args.args
+        self.assertEqual(name, "evalSessions:setSubtaskMarks")
+        self.assertEqual(
+            [(m["episode_index"].value, m["num_subtask_marks"].value) for m in args["marks"]],
+            [(1, 0), (3, 1)],
+        )
+
+    def test_round_result_input_carries_subtask_marks(self):
+        d = RoundResultInput("org/model", False, 7, num_frames=10, num_subtask_marks=1).to_dict()
+        self.assertEqual(d["num_subtask_marks"].value, 1)
+        self.assertNotIn("num_subtask_marks", RoundResultInput("org/model", True, 7).to_dict())
 
 
 if __name__ == "__main__":

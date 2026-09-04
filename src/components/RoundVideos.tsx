@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { getVideoUrl, type EpisodeMetadata } from "../lib/hf-api";
 import type { RoundVideoSpec } from "../lib/roundVideoSpecs";
+import { TONE_BADGE, outcomeLabel, outcomeTone } from "../lib/outcomeScore";
 
 type EpisodeWithoutSuccess = Omit<EpisodeMetadata, "success">;
 
@@ -139,12 +140,10 @@ export function RoundVideos({
                 </span>
                 <span
                   className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                    spec.success
-                      ? "bg-emerald-500/80 text-white"
-                      : "bg-red-500/80 text-white"
+                    TONE_BADGE[outcomeTone(spec.success, spec.numSubtaskMarks)]
                   }`}
                 >
-                  {spec.success ? "PASS" : "FAIL"}
+                  {outcomeLabel(spec.success, spec.numSubtaskMarks, spec.maxSubtaskMarks)}
                 </span>
                 <span className="px-1.5 py-0.5 rounded bg-black/40 text-white/80 text-[10px] font-mono">
                   {episode.numFrames} steps

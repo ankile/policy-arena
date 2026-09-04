@@ -750,17 +750,39 @@ class PolicyArenaClient:
 
     def correct_eval_outcomes(self, dataset_repo: str, corrections: list[dict]) -> dict:
         """Patch an eval session in place after an outcome-review apply."""
-        normalized = [
-            {
+        normalized = []
+        for row in corrections:
+            entry = {
                 "episode_index": ConvexInt64(int(row["episode_index"])),
                 "success": bool(row["success"]),
                 "num_frames": ConvexInt64(int(row["num_frames"])),
             }
-            for row in corrections
-        ]
+            if "num_subtask_marks" in row:
+                entry["num_subtask_marks"] = ConvexInt64(int(row["num_subtask_marks"]))
+            normalized.append(entry)
         return self._mutation(
             "evalSessions:correctOutcomesFromApply",
             {"dataset_repo": dataset_repo, "corrections": normalized},
+        )
+
+    def set_session_subtask_marks(self, dataset_repo: str, marks: dict[int, int]) -> dict:
+        """Backfill per-round sub-goal mark counts on the session registered for a dataset.
+
+        ``marks`` maps EVERY episode of the session to its count; the mutation
+        fails loud on a missing episode rather than leaving stale counts.
+        """
+        return self._mutation(
+            "evalSessions:setSubtaskMarks",
+            {
+                "dataset_repo": dataset_repo,
+                "marks": [
+                    {
+                        "episode_index": ConvexInt64(int(ep)),
+                        "num_subtask_marks": ConvexInt64(int(n)),
+                    }
+                    for ep, n in sorted(marks.items())
+                ],
+            },
         )
 
     def finish_apply_job(

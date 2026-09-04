@@ -19,6 +19,7 @@ import {
 import JoinedSessions, { type SessionListRow } from "./JoinedSessions";
 import { RoundVideos } from "./RoundVideos";
 import { roundVideoSpecs } from "../lib/roundVideoSpecs";
+import { TONE_PILL, meanScore, outcomeLabel, outcomeTone } from "../lib/outcomeScore";
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString("en-US", {
@@ -100,9 +101,17 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
       {/* Per-policy stats summary */}
       {(() => {
         const totalRounds = detail.rounds.length;
+        const maxMarks = detail.max_subtask_marks;
         const policyStats = new Map<
           string,
-          { successes: number; wins: number; draws: number; losses: number }
+          {
+            successes: number;
+            wins: number;
+            draws: number;
+            losses: number;
+            // Graded rounds (success + marks) for the 0..N+1 score column.
+            graded: Array<{ success: boolean; marks: number | null }>;
+          }
         >();
 
         for (const policy of detail.policies) {
@@ -111,14 +120,15 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
             wins: 0,
             draws: 0,
             losses: 0,
+            graded: [],
           });
         }
 
         for (const round of detail.rounds) {
           for (const result of round.results) {
-            if (result.success) {
-              policyStats.get(result.policy_id)!.successes += 1;
-            }
+            const stats = policyStats.get(result.policy_id)!;
+            if (result.success) stats.successes += 1;
+            stats.graded.push({ success: result.success, marks: result.num_subtask_marks });
           }
 
           // Pairwise comparisons
@@ -148,6 +158,8 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
             {detail.policies.map((policy) => {
               const stats = policyStats.get(policy._id)!;
               const successRate = totalRounds > 0 ? (stats.successes / totalRounds) * 100 : 0;
+              const score = meanScore(stats.graded, maxMarks);
+              const unscored = stats.graded.filter((g) => g.marks === null).length;
 
               return (
                 <div
@@ -164,6 +176,21 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
                         success
                       </span>
                     </span>
+                    {score !== null && (
+                      <span
+                        className="font-mono text-ink shrink-0"
+                        title={
+                          `Mean graded score: sub-goal marks reached + success, ` +
+                          `max ${maxMarks + 1} per round` +
+                          (unscored > 0 ? ` (${unscored} round(s) submitted without a mark count)` : "")
+                        }
+                      >
+                        {score.toFixed(2)}
+                        <span className="text-[11px] text-ink-muted font-body ml-1">
+                          / {maxMarks + 1} score{unscored > 0 ? "*" : ""}
+                        </span>
+                      </span>
+                    )}
                     <div className="flex items-center gap-1.5 font-mono shrink-0">
                       <span className="text-teal font-medium">{stats.wins}W</span>
                       <span className="text-ink-muted">{stats.draws}D</span>
@@ -219,14 +246,16 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
                     <span
                       key={i}
                       className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${
-                        result.success
-                          ? "bg-teal-light text-teal"
-                          : "bg-coral-light text-coral"
+                        TONE_PILL[outcomeTone(result.success, result.num_subtask_marks)]
                       }`}
                     >
                       {result.policyName}
                       <span className="text-[10px]">
-                        {result.success ? "PASS" : "FAIL"}
+                        {outcomeLabel(
+                          result.success,
+                          result.num_subtask_marks,
+                          detail.max_subtask_marks
+                        )}
                       </span>
                     </span>
                   ))}
@@ -256,6 +285,8 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
                       detail.dataset_repo,
                       datasetInfo.episodeMap,
                       datasetInfo.cameraKey,
+                      undefined,
+                      detail.max_subtask_marks,
                     )}
                   />
                 </div>

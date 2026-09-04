@@ -30,6 +30,8 @@ class RoundResultInput:
     success: bool
     episode_index: int
     num_frames: int | None = None
+    # Mid-episode sub-goal marks reached (graded score = marks + success).
+    num_subtask_marks: int | None = None
 
     def to_dict(self) -> dict:
         d = {
@@ -39,6 +41,8 @@ class RoundResultInput:
         }
         if self.num_frames is not None:
             d["num_frames"] = ConvexInt64(self.num_frames)
+        if self.num_subtask_marks is not None:
+            d["num_subtask_marks"] = ConvexInt64(self.num_subtask_marks)
         return d
 
 

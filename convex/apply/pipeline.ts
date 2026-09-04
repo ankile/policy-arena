@@ -76,7 +76,13 @@ export interface ApplySummary {
   overlay_changed: number[];
   overlay_skipped: number[];
   num_data_files_rewritten: number;
-  episode_success: Array<{ episode_index: number; success: boolean; num_frames: number }>;
+  episode_success: Array<{
+    episode_index: number;
+    success: boolean;
+    num_frames: number;
+    /** Sub-goal marks reached (review record, else live eval-time marks). */
+    num_subtask_marks: number;
+  }>;
   log: string[];
 }
 
@@ -406,7 +412,12 @@ export async function headlessApply(args: {
       num_data_files_rewritten: dataFiles.filter((f) => f.dirty).length,
       episode_success: [...successAndFrames.entries()]
         .sort((a, b) => a[0] - b[0])
-        .map(([episode_index, v]) => ({ episode_index, success: v.success, num_frames: v.numFrames })),
+        .map(([episode_index, v]) => ({
+          episode_index,
+          success: v.success,
+          num_frames: v.numFrames,
+          num_subtask_marks: subtaskByEp.get(episode_index)?.length ?? 0,
+        })),
       log,
     },
   };

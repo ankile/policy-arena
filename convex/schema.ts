@@ -80,6 +80,10 @@ export default defineSchema({
     success: v.boolean(),
     episode_index: v.int64(),
     num_frames: v.optional(v.int64()),
+    // Mid-episode sub-goal marks reached (0..taskSpecs.num_subtask_marks); the
+    // graded score is marks + success. Live 'g' presses at submit time, then
+    // the review record after an outcome-review apply. Absent = never recorded.
+    num_subtask_marks: v.optional(v.int64()),
   })
     .index("by_session", ["session_id"])
     .index("by_policy", ["policy_id"]),

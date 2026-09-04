@@ -24,6 +24,7 @@ import {
 } from "../lib/joinSessions";
 import { RoundVideos } from "./RoundVideos";
 import { roundVideoSpecs, type RoundVideoSpec } from "../lib/roundVideoSpecs";
+import { TONE_PILL, outcomeLabel, outcomeTone } from "../lib/outcomeScore";
 import { StatusBadge } from "./StatusBadge";
 
 type SessionDetail = NonNullable<
@@ -339,6 +340,7 @@ export default function JoinedSessions({
                   ds.episodeMap,
                   ds.cameraKey,
                   sessionLetter(sideIdx),
+                  detail.max_subtask_marks,
                 ),
               );
             } else if (ds?.status === "error") {
@@ -404,14 +406,16 @@ export default function JoinedSessions({
                           <span
                             key={j}
                             className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${
-                              result.success
-                                ? "bg-teal-light text-teal"
-                                : "bg-coral-light text-coral"
+                              TONE_PILL[outcomeTone(result.success, result.num_subtask_marks ?? null)]
                             }`}
                           >
                             {result.policyName}
                             <span className="text-[10px]">
-                              {result.success ? "PASS" : "FAIL"}
+                              {outcomeLabel(
+                                result.success,
+                                result.num_subtask_marks ?? null,
+                                loadedDetails[sideIdx].max_subtask_marks
+                              )}
                             </span>
                           </span>
                         ))

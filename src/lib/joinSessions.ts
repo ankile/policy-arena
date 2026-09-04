@@ -8,6 +8,8 @@ export interface JoinRoundResult {
   policyName: string;
   success: boolean;
   episode_index: number;
+  /** Sub-goal marks reached; null/absent on rounds submitted without them. */
+  num_subtask_marks?: number | null;
 }
 
 export interface JoinSide {

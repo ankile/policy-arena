@@ -68,6 +68,10 @@ const operationsByScope = {
       mutationName: getFunctionName(api.evalSessions.addRounds),
     },
     {
+      operation: "evalSessions/setSubtaskMarks",
+      mutationName: getFunctionName(api.evalSessions.setSubtaskMarks),
+    },
+    {
       operation: "datasets/register",
       mutationName: getFunctionName(api.datasets.register),
     },
