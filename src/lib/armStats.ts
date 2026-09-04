@@ -10,8 +10,19 @@ export interface Arm {
   /** Matches `policy_id` on the round results. */
   key: string;
   name: string;
-  /** Optional provenance badge, e.g. the session letter in the joined view. */
-  badge?: string;
+  /**
+   * 1-based policy number, stable across the whole view: the same policy id
+   * carries the same number in every session it appears in, so a reader can
+   * match arms across sessions by number alone.
+   */
+  policyNumber: number;
+  /**
+   * Short label shown wherever the full name does not fit: `"3"` in a single
+   * session, `"B3"` (session letter + policy number) in the joined view.
+   */
+  label: string;
+  /** Session letter in the joined view; absent for a single session. */
+  session?: string;
 }
 
 export interface ArmResult {
@@ -119,15 +130,21 @@ export function armsFromPolicies(
   policies: Array<{ _id: string; name: string }>,
   rounds: ArmRound[],
 ): Arm[] {
-  const arms = policies.map((p) => ({ key: p._id, name: p.name }));
-  const known = new Set(arms.map((a) => a.key));
+  const names = new Map<string, string>(policies.map((p) => [p._id, p.name]));
   for (const round of rounds) {
     for (const result of round.results) {
-      if (!known.has(result.policy_id)) {
-        known.add(result.policy_id);
-        arms.push({ key: result.policy_id, name: result.policyName });
-      }
+      if (!names.has(result.policy_id)) names.set(result.policy_id, result.policyName);
     }
   }
-  return arms;
+  return [...names].map(([key, name], i) => ({
+    key,
+    name,
+    policyNumber: i + 1,
+    label: String(i + 1),
+  }));
+}
+
+/** Arm label lookup by round-result `policy_id`, for video tile badges. */
+export function armLabels(arms: Arm[]): Map<string, string> {
+  return new Map(arms.map((a) => [a.key, a.label]));
 }

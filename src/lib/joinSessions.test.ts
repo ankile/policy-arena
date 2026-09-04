@@ -5,6 +5,7 @@ import {
   alignmentSummary,
   formatIdList,
   hidePolicies,
+  joinedArms,
   joinedPolicies,
   parseIdList,
   sessionLetter,
@@ -98,6 +99,29 @@ describe("joinedPolicies", () => {
       "p1",
       "p2",
     ]);
+  });
+});
+
+describe("joinedArms", () => {
+  // p1 runs in both sessions: it must carry the same number on both sides.
+  const sideC: JoinSide = {
+    sessionId: "sC",
+    rounds: [{ index: 0, results: [result("p3", true, 0), result("p1", false, 1)] }],
+  };
+
+  test("numbers policies over the union and labels arms letter+number", () => {
+    const arms = joinedArms([sideA, sideC], new Set());
+    expect(arms.map((a) => [a.key, a.label, a.policyNumber, a.session])).toEqual([
+      ["A:p1", "A1", 1, "A"],
+      ["A:p2", "A2", 2, "A"],
+      ["B:p3", "B3", 3, "B"],
+      ["B:p1", "B1", 1, "B"],
+    ]);
+  });
+
+  test("hiding a policy drops its arms but keeps every other number", () => {
+    const arms = joinedArms([sideA, sideC], new Set(["p1"]));
+    expect(arms.map((a) => a.label)).toEqual(["A2", "B3"]);
   });
 });
 

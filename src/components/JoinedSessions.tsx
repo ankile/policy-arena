@@ -15,6 +15,8 @@ import {
   alignmentSummary,
   formatIdList,
   hidePolicies,
+  joinedArmKey,
+  joinedArms,
   joinedPolicies,
   parseIdList,
   sessionLetter,
@@ -27,11 +29,12 @@ import { RoundVideos } from "./RoundVideos";
 import { roundVideoSpecs, type RoundVideoSpec } from "../lib/roundVideoSpecs";
 import { StatusBadge } from "./StatusBadge";
 import {
+  ArmBadge,
+  ArmLegend,
   ExpandAllButton,
   PairedTestsDrawer,
   PolicyStatCards,
   RoundsGrid,
-  type Arm,
   type ArmRound,
 } from "./RoundOutcomes";
 
@@ -70,11 +73,6 @@ const SIDE_GRID: Record<number, string> = {
   2: "grid-cols-2",
   3: "grid-cols-3",
 };
-
-/** Arm key for (session position, policy): the same policy in two sessions stays two arms. */
-function armKey(sideIdx: number, policyId: string): string {
-  return `${sessionLetter(sideIdx)}:${policyId}`;
-}
 
 /**
  * Side-by-side view of N eval sessions aligned on round index: round k of
@@ -196,16 +194,15 @@ export default function JoinedSessions({
     }));
     const hidden = new Set(parseIdList(hideParam));
     const aligned = hidePolicies(alignRounds(sides), hidden);
-    const arms: Arm[] = sides.flatMap((side, i) =>
-      sideSuccessSummary(side)
-        .filter((p) => !hidden.has(p.policy_id))
-        .map((p) => ({ key: armKey(i, p.policy_id), name: p.policyName, badge: sessionLetter(i) })),
-    );
+    const arms = joinedArms(sides, hidden);
+    // Policy number per policy id (hidden ones included, so numbers are
+    // stable across toggles) for the side-card chips.
+    const policyNumbers = new Map(joinedPolicies(sides).map((p, i) => [p.policy_id, i + 1]));
     const rounds: ArmRound[] = aligned.map((round) => ({
       index: round.index,
       results: round.perSide.flatMap((results, i) =>
         (results ?? []).map((r) => ({
-          policy_id: armKey(i, r.policy_id),
+          policy_id: joinedArmKey(i, r.policy_id),
           policyName: r.policyName,
           success: r.success,
           episode_index: r.episode_index,
@@ -215,7 +212,7 @@ export default function JoinedSessions({
     }));
     const alignedByIndex = new Map(aligned.map((r) => [r.index, r]));
     const maxMarks = Math.max(0, ...loadedDetails.map((d) => d.max_subtask_marks));
-    return { sides, aligned, alignedByIndex, arms, rounds, maxMarks };
+    return { sides, aligned, alignedByIndex, arms, policyNumbers, rounds, maxMarks };
   }, [detailSig, hideParam]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Loading / error gates ──
@@ -248,13 +245,13 @@ export default function JoinedSessions({
     );
   }
 
-  const { sides, aligned, alignedByIndex, arms, rounds, maxMarks } = joined;
+  const { sides, aligned, alignedByIndex, arms, policyNumbers, rounds, maxMarks } = joined;
   const hiddenCount = joinedPolicies(sides).filter((p) => hiddenPolicyIds.has(p.policy_id)).length;
   const anyVideo = uniqueRepos.some((repo) => datasetCache.get(repo)?.status === "loaded");
 
   // Expanded round: one synchronized grid over every side's rollouts. When
-  // every visible tile fits in one row, pack them all (the session letter
-  // badge tells them apart); otherwise one row per session, padded to the
+  // every visible tile fits in one row, pack them all (the arm label badge,
+  // e.g. B3, tells them apart); otherwise one row per session, padded to the
   // widest side so A's rollouts sit above B's, column-aligned.
   const renderExpanded = (round: JoinedRound) => {
     const sideSpecs: RoundVideoSpec[][] = [];
@@ -270,7 +267,7 @@ export default function JoinedSessions({
             detail.dataset_repo,
             ds.episodeMap,
             ds.cameraKey,
-            sessionLetter(sideIdx),
+            new Map(results.map((r) => [r.policy_id, `${sessionLetter(sideIdx)}${policyNumbers.get(r.policy_id)!}`])),
             detail.max_subtask_marks,
           ),
         );
@@ -343,13 +340,14 @@ export default function JoinedSessions({
                       key={p.policy_id}
                       onClick={() => toggleHidden(p.policy_id)}
                       title={hidden ? "Show this policy" : "Hide this policy from the joined view"}
-                      className={`px-2 py-0.5 rounded text-xs font-mono border transition-all cursor-pointer max-w-full truncate ${
+                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-mono border transition-all cursor-pointer max-w-full ${
                         hidden
-                          ? "bg-white text-ink-muted/60 border-warm-200 border-dashed line-through"
+                          ? "bg-white text-ink-muted/60 border-warm-200 border-dashed"
                           : "bg-warm-100 text-ink border-warm-200 hover:border-teal/40"
                       }`}
                     >
-                      {p.policyName}
+                      <ArmBadge label={`${sessionLetter(i)}${policyNumbers.get(p.policy_id)!}`} />
+                      <span className={`truncate ${hidden ? "line-through" : ""}`}>{p.policyName}</span>
                     </button>
                   );
                 })}
@@ -390,6 +388,7 @@ export default function JoinedSessions({
           )}
         </div>
 
+        <ArmLegend arms={arms} />
         <PolicyStatCards arms={arms} rounds={rounds} maxMarks={maxMarks} />
         <PairedTestsDrawer arms={arms} rounds={rounds} maxMarks={maxMarks} />
 

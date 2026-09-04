@@ -192,7 +192,19 @@ never writes summary statistics.
   rollouts are all hidden reads "all hidden", distinct from "no round k").
   Pure alignment/summary/hide helpers + tests in `lib/joinSessions.ts`; the
   per-tile video spec (`lib/roundVideoSpecs.ts`) lets one `RoundVideos`
-  grid mix datasets
+  grid mix datasets.
+  **Arm labels (since 2026-09-04):** every arm carries a short label used
+  wherever the full slug does not fit (paired-tests pair column, rounds-grid
+  header, video tile badge, side-card chips). Policies are numbered over the
+  UNION of policies in the view in first-seen order, so the same policy id
+  keeps its number across sessions: single session `1`, `2`, `3`; joined view
+  session letter + number, e.g. `A3` and `B3` are the same model, `B4` is a
+  model only session B ran. Hidden policies keep their number. The
+  `ArmLegend` (number → full name, both chips on one row for a shared model)
+  is the one surface that never truncates. The paired-tests table calls the
+  two arms of a row X and Y (never A/B, which are session letters).
+  Builders: `armsFromPolicies` (`lib/armStats.ts`), `joinedArms`
+  (`lib/joinSessions.ts`).
 - `components/Pairings.tsx` — Head-to-head policy pairing comparisons
 - `components/EpisodeViewer.tsx` — HuggingFace episode video viewer
 - `components/PolicyDetail.tsx` — Expanded policy info and ELO history

@@ -3,6 +3,8 @@
 // every session can be shown side by side. No React, no network — unit-tested
 // in joinSessions.test.ts.
 
+import type { Arm } from "./armStats";
+
 export interface JoinRoundResult {
   policy_id: string;
   policyName: string;
@@ -132,6 +134,36 @@ export function joinedPolicies(sides: JoinSide[]): JoinedPolicy[] {
     }
   }
   return [...seen.values()];
+}
+
+/** Arm key for (session position, policy): the same policy in two sessions stays two arms. */
+export function joinedArmKey(sideIdx: number, policyId: string): string {
+  return `${sessionLetter(sideIdx)}:${policyId}`;
+}
+
+/**
+ * One arm per (session, policy), in side order then each side's first-seen
+ * policy order. Policy numbers are assigned over the UNION of policies across
+ * all sides (first-seen order, hidden policies included so numbers do not
+ * shift when a policy is toggled), and the label is session letter + number:
+ * the same model in sessions A and B reads `A3` and `B3`.
+ */
+export function joinedArms(sides: JoinSide[], hiddenPolicyIds: ReadonlySet<string>): Arm[] {
+  const numberOf = new Map(joinedPolicies(sides).map((p, i) => [p.policy_id, i + 1]));
+  return sides.flatMap((side, i) =>
+    sideSuccessSummary(side)
+      .filter((p) => !hiddenPolicyIds.has(p.policy_id))
+      .map((p) => {
+        const policyNumber = numberOf.get(p.policy_id)!;
+        return {
+          key: joinedArmKey(i, p.policy_id),
+          name: p.policyName,
+          policyNumber,
+          label: `${sessionLetter(i)}${policyNumber}`,
+          session: sessionLetter(i),
+        };
+      }),
+  );
 }
 
 /**

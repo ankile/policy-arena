@@ -4,7 +4,7 @@
 // the joined-sessions view (arms = session letter × policy over rounds
 // aligned by index), so both inherit the same layout and statistics.
 
-import { useMemo, useState, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { armStats, type Arm, type ArmRound } from "../lib/armStats";
 export type { Arm, ArmResult, ArmRound } from "../lib/armStats";
 import { TONE_PILL, meanScore, outcomeLabel, outcomeTone } from "../lib/outcomeScore";
@@ -30,11 +30,44 @@ export function WdlRecord({
   );
 }
 
-function ArmBadge({ badge }: { badge: string }) {
+/** The arm's short label (`3`, or `B3` in the joined view) as a gold chip. */
+export function ArmBadge({ label }: { label: string }) {
   return (
-    <span className="inline-flex w-4 h-4 rounded bg-gold text-white text-[10px] font-mono font-semibold items-center justify-center shrink-0">
-      {badge}
+    <span className="inline-flex min-w-4 h-4 px-1 rounded bg-gold text-white text-[10px] font-mono font-semibold items-center justify-center shrink-0 leading-none">
+      {label}
     </span>
+  );
+}
+
+// ── Legend ──
+
+/**
+ * Policy number → full name, the one place the names are never truncated.
+ * One row per policy: in the joined view a model evaluated in sessions A and
+ * B shows both its chips (`A3` `B3`) on the same row, so the number alone
+ * says "same model".
+ */
+export function ArmLegend({ arms }: { arms: Arm[] }) {
+  const byNumber = new Map<number, { name: string; labels: string[] }>();
+  for (const arm of arms) {
+    const entry = byNumber.get(arm.policyNumber);
+    if (entry) entry.labels.push(arm.label);
+    else byNumber.set(arm.policyNumber, { name: arm.name, labels: [arm.label] });
+  }
+  const rows = [...byNumber].sort(([a], [b]) => a - b);
+  return (
+    <div className="mb-4 rounded-lg border border-warm-200 bg-warm-50/40 px-3 py-2 grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-1">
+      {rows.map(([n, entry]) => (
+        <Fragment key={n}>
+          <span className="flex items-center gap-1">
+            {entry.labels.map((label) => (
+              <ArmBadge key={label} label={label} />
+            ))}
+          </span>
+          <span className="font-mono text-xs text-ink break-all">{entry.name}</span>
+        </Fragment>
+      ))}
+    </div>
   );
 }
 
@@ -63,12 +96,11 @@ export function PolicyStatCards({
         const unscored = s.graded.filter((g) => g.marks === null).length;
         return (
           <div key={arm.key} className="rounded-xl border border-warm-200 bg-warm-50/50 px-4 py-3">
-            <div
-              className="flex items-center gap-1.5 font-body font-semibold text-ink text-sm mb-1.5 min-w-0"
-              title={arm.name}
-            >
-              {arm.badge && <ArmBadge badge={arm.badge} />}
-              <span className="truncate">{arm.name}</span>
+            <div className="flex items-start gap-1.5 font-body font-semibold text-ink text-sm mb-1.5 min-w-0">
+              <span className="pt-0.5">
+                <ArmBadge label={arm.label} />
+              </span>
+              <span className="break-all">{arm.name}</span>
             </div>
             {/* One metric per line: label | value | pairwise record. */}
             <div className="grid grid-cols-[auto_1fr_auto] items-baseline gap-x-3 gap-y-1 text-xs">
@@ -173,8 +205,9 @@ function PairedStatsHelp() {
         <div className="rounded-lg border border-warm-200 bg-white shadow-lg px-3 py-2.5 text-[11px] font-body leading-snug">
           <div className="text-ink mb-1.5">
             Every row is a{" "}
-            <WikiLink href={WIKI.paired}>paired comparison</WikiLink>: round k of A is
-            compared with round k of B (same start state), never A's pool against B's.
+            <WikiLink href={WIKI.paired}>paired comparison</WikiLink> of two arms X and
+            Y: round k of X is compared with round k of Y (same start state), never X's
+            pool against Y's. Arm chips are read off the legend above.
           </div>
           <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
             <dt className={dt}>n</dt>
@@ -182,9 +215,9 @@ function PairedStatsHelp() {
               Rounds where both arms have a result. Score rows also require a mark
               count on both.
             </dd>
-            <dt className={dt}>Δ A−B</dt>
+            <dt className={dt}>Δ X−Y</dt>
             <dd className={dd}>
-              Mean over paired rounds of A's outcome minus B's: percentage points for
+              Mean over paired rounds of X's outcome minus Y's: percentage points for
               success, score points for the graded score.
             </dd>
             <dt className={dt}>95% CI</dt>
@@ -194,7 +227,7 @@ function PairedStatsHelp() {
               2.5th and 97.5th percentiles.
             </dd>
             <dt className={dt}>W/D/L</dt>
-            <dd className={dd}>Rounds where A &gt; B, A = B, A &lt; B.</dd>
+            <dd className={dd}>Rounds where X &gt; Y, X = Y, X &lt; Y.</dd>
             <dt className={dt}>sign p</dt>
             <dd className={dd}>
               Exact two-sided <WikiLink href={WIKI.sign}>sign test</WikiLink> on the
@@ -221,13 +254,10 @@ function PairedStatsHelp() {
   );
 }
 
-function ArmLabel({ arm }: { arm: Arm }) {
+function ArmChip({ arm }: { arm: Arm }) {
   return (
-    <span className="inline-flex items-center gap-1 min-w-0 max-w-full">
-      {arm.badge && <ArmBadge badge={arm.badge} />}
-      <span className="truncate" title={arm.name}>
-        {arm.name}
-      </span>
+    <span className="inline-flex" title={arm.name}>
+      <ArmBadge label={arm.label} />
     </span>
   );
 }
@@ -249,18 +279,20 @@ function PairedStatsTable({
       <table className="w-full text-left">
         <thead className="border-b border-warm-200">
           <tr>
-            <th className={th}>A vs B</th>
+            <th className={th} title="Arm chips X vs Y; full names in the legend above">
+              X vs Y
+            </th>
             <th className={th}>Metric</th>
             <th className={`${th} text-right`}>n</th>
-            <th className={`${th} text-right`}>A</th>
-            <th className={`${th} text-right`}>B</th>
-            <th className={`${th} text-right`} title="Paired per-round difference, mean(A) - mean(B)">
-              Δ A−B
+            <th className={`${th} text-right`}>X</th>
+            <th className={`${th} text-right`}>Y</th>
+            <th className={`${th} text-right`} title="Paired per-round difference, mean(X) - mean(Y)">
+              Δ X−Y
             </th>
             <th className={th} title="Paired bootstrap 95% CI on Δ (20,000 resamples of rounds)">
               95% CI
             </th>
-            <th className={th} title="Rounds where A beat / tied / lost to B">
+            <th className={th} title="Rounds where X beat / tied / lost to Y">
               W/D/L
             </th>
             <th
@@ -279,8 +311,8 @@ function PairedStatsTable({
         </thead>
         <tbody>
           {rows.map((row) => {
-            const armA = arms.get(row.policyA) ?? { key: row.policyA, name: row.policyA };
-            const armB = arms.get(row.policyB) ?? { key: row.policyB, name: row.policyB };
+            const armA = arms.get(row.policyA)!;
+            const armB = arms.get(row.policyB)!;
             const isScore = row.metric === "score";
             const fmt = (x: number) => (isScore ? x.toFixed(2) : `${(x * 100).toFixed(0)}%`);
             const fmtDelta = (x: number) =>
@@ -290,11 +322,11 @@ function PairedStatsTable({
             const s = row.stats;
             return (
               <tr key={`${row.policyA}:${row.policyB}:${row.metric}`} className="border-b border-warm-100 last:border-b-0">
-                <td className={`${td} font-body max-w-[18rem]`}>
-                  <span className="flex items-center gap-1 min-w-0">
-                    <ArmLabel arm={armA} />
-                    <span className="text-ink-muted shrink-0">vs</span>
-                    <ArmLabel arm={armB} />
+                <td className={`${td} font-body`}>
+                  <span className="flex items-center gap-1.5">
+                    <ArmChip arm={armA} />
+                    <span className="text-ink-muted">vs</span>
+                    <ArmChip arm={armB} />
                   </span>
                 </td>
                 <td className={`${td} font-body text-ink-muted`}>
@@ -409,7 +441,7 @@ export function PairedTestsDrawer({
 
 /**
  * One grid row per round: Round | one cell per arm (header row carries the
- * arm names, so a pill only holds the outcome and never wraps) | chevron.
+ * arm chip + name, so a pill only holds the outcome and never wraps) | chevron.
  * An arm without a result in a round shows a dash.
  */
 export function RoundsGrid({
@@ -447,7 +479,7 @@ export function RoundsGrid({
             className="flex items-center gap-1 text-[11px] font-mono text-ink-light min-w-0"
             title={arm.name}
           >
-            {arm.badge && <ArmBadge badge={arm.badge} />}
+            <ArmBadge label={arm.label} />
             <span className="truncate">{arm.name}</span>
           </span>
         ))}

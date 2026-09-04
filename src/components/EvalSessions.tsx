@@ -20,12 +20,13 @@ import JoinedSessions, { type SessionListRow } from "./JoinedSessions";
 import { RoundVideos } from "./RoundVideos";
 import { roundVideoSpecs } from "../lib/roundVideoSpecs";
 import {
+  ArmLegend,
   ExpandAllButton,
   PairedTestsDrawer,
   PolicyStatCards,
   RoundsGrid,
 } from "./RoundOutcomes";
-import { armsFromPolicies } from "../lib/armStats";
+import { armLabels, armsFromPolicies } from "../lib/armStats";
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString("en-US", {
@@ -110,6 +111,7 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
 
   return (
     <div className="px-6 pb-5">
+      <ArmLegend arms={arms} />
       <PolicyStatCards arms={arms} rounds={detail.rounds} maxMarks={detail.max_subtask_marks} />
       <PairedTestsDrawer arms={arms} rounds={detail.rounds} maxMarks={detail.max_subtask_marks} />
 
@@ -137,7 +139,7 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
                 detail.dataset_repo,
                 datasetInfo.episodeMap,
                 datasetInfo.cameraKey,
-                undefined,
+                armLabels(arms),
                 detail.max_subtask_marks,
               )}
             />

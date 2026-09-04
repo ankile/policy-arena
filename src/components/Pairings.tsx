@@ -318,6 +318,7 @@ export default function Pairings() {
                         round.datasetRepo,
                         dsLoaded.episodeMap,
                         dsLoaded.cameraKey,
+                        null,
                       )}
                     />
                   </div>

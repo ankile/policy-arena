@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { armStats } from "./armStats";
+import { armLabels, armStats, armsFromPolicies } from "./armStats";
 
 function r(policy_id: string, success: boolean, marks: number | null = null) {
   return { policy_id, success, num_subtask_marks: marks };
@@ -36,5 +36,23 @@ describe("armStats", () => {
   test("binary task leaves the graded record at zero", () => {
     const s = armStats(["a", "b"], rounds, 0);
     expect(s.get("a")).toMatchObject({ scoreWins: 0, scoreDraws: 0, scoreLosses: 0 });
+  });
+});
+
+describe("armsFromPolicies", () => {
+  test("numbers policies in list order, then stragglers from results", () => {
+    const arms = armsFromPolicies(
+      [
+        { _id: "a", name: "policy-a" },
+        { _id: "b", name: "policy-b" },
+      ],
+      [{ index: 0, results: [{ policy_id: "c", policyName: "policy-c", success: true, episode_index: 0, num_subtask_marks: null }] }],
+    );
+    expect(arms.map((a) => [a.key, a.label, a.policyNumber, a.name])).toEqual([
+      ["a", "1", 1, "policy-a"],
+      ["b", "2", 2, "policy-b"],
+      ["c", "3", 3, "policy-c"],
+    ]);
+    expect(armLabels(arms).get("c")).toBe("3");
   });
 });

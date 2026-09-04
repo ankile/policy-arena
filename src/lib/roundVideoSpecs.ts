@@ -24,7 +24,8 @@ export interface RoundVideoSpec {
   datasetRepo: string;
   cameraKey: string;
   episode: EpisodeWithoutSuccess | null; // null => no metadata for this episode
-  badge?: string; // e.g. the session letter in the joined view
+  /** Short arm label (`"3"`, or `"B3"` in the joined view); see `Arm.label`. */
+  badge: string | null;
 }
 
 export function roundVideoSpecs(
@@ -32,7 +33,11 @@ export function roundVideoSpecs(
   datasetRepo: string,
   episodeMap: Map<number, EpisodeWithoutSuccess>,
   cameraKey: string,
-  badge?: string,
+  /**
+   * Arm label per `policy_id` (every result's policy must be present), or
+   * null for surfaces without arm labels (the Pairings page).
+   */
+  labelByPolicy: ReadonlyMap<string, string> | null,
   maxSubtaskMarks = 0,
 ): RoundVideoSpec[] {
   return results.map((result) => ({
@@ -44,6 +49,12 @@ export function roundVideoSpecs(
     datasetRepo,
     cameraKey,
     episode: episodeMap.get(result.episode_index) ?? null,
-    badge,
+    badge: labelByPolicy === null ? null : labelFor(labelByPolicy, result.policy_id),
   }));
+}
+
+function labelFor(labelByPolicy: ReadonlyMap<string, string>, policyId: string): string {
+  const label = labelByPolicy.get(policyId);
+  if (label === undefined) throw new Error(`No arm label for policy ${policyId}`);
+  return label;
 }

@@ -127,7 +127,7 @@ export function RoundVideos({
                 }}
               />
               <div className="absolute bottom-2 left-2 right-2 flex items-center gap-1.5 flex-wrap">
-                {spec.badge && (
+                {spec.badge !== null && (
                   <span className="px-1.5 py-0.5 rounded bg-gold text-white text-[11px] font-mono font-semibold">
                     {spec.badge}
                   </span>
