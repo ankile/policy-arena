@@ -68,6 +68,105 @@ function WdlRecord({
   );
 }
 
+const WIKI = {
+  paired: "https://en.wikipedia.org/wiki/Paired_difference_test",
+  bootstrap: "https://en.wikipedia.org/wiki/Bootstrapping_(statistics)",
+  sign: "https://en.wikipedia.org/wiki/Sign_test",
+  mcnemar: "https://en.wikipedia.org/wiki/McNemar%27s_test",
+  permutation: "https://en.wikipedia.org/wiki/Permutation_test",
+};
+
+function WikiLink({ href, children }: { href: string; children: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="text-teal hover:underline whitespace-nowrap"
+    >
+      {children} ↗
+    </a>
+  );
+}
+
+/**
+ * Faint "?" next to the drawer toggle. The definitions card shows on hover
+ * and can be pinned by click (touch, or to follow a link comfortably).
+ */
+function PairedStatsHelp() {
+  const [pinned, setPinned] = useState(false);
+  const dt = "font-mono text-ink shrink-0 w-14";
+  const dd = "text-ink-muted";
+  return (
+    <span className="relative group inline-flex">
+      <button
+        onClick={() => setPinned((v) => !v)}
+        aria-label="How the paired tests are computed"
+        aria-expanded={pinned}
+        className={`w-3.5 h-3.5 rounded-full border text-[9px] leading-none font-medium flex items-center justify-center cursor-pointer transition-colors ${
+          pinned
+            ? "border-ink-muted text-ink-muted"
+            : "border-warm-300 text-warm-400 group-hover:border-ink-muted group-hover:text-ink-muted"
+        }`}
+      >
+        ?
+      </button>
+      <div
+        className={`absolute left-0 top-full z-20 pt-1.5 w-[30rem] max-w-[calc(100vw-4rem)] ${
+          pinned ? "block" : "hidden group-hover:block"
+        }`}
+      >
+        <div className="rounded-lg border border-warm-200 bg-white shadow-lg px-3 py-2.5 text-[11px] font-body leading-snug">
+          <div className="text-ink mb-1.5">
+            Every row is a{" "}
+            <WikiLink href={WIKI.paired}>paired comparison</WikiLink>: round k of A is
+            compared with round k of B (same start state), never A's pool against B's.
+          </div>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
+            <dt className={dt}>n</dt>
+            <dd className={dd}>
+              Rounds where both arms have a result. Score rows also require a mark
+              count on both.
+            </dd>
+            <dt className={dt}>Δ A−B</dt>
+            <dd className={dd}>
+              Mean over paired rounds of A's outcome minus B's: percentage points for
+              success, score points for the graded score.
+            </dd>
+            <dt className={dt}>95% CI</dt>
+            <dd className={dd}>
+              Paired <WikiLink href={WIKI.bootstrap}>bootstrap</WikiLink>: resample
+              rounds with replacement 20,000 times, recompute Δ each time, take the
+              2.5th and 97.5th percentiles.
+            </dd>
+            <dt className={dt}>W/D/L</dt>
+            <dd className={dd}>Rounds where A &gt; B, A = B, A &lt; B.</dd>
+            <dt className={dt}>sign p</dt>
+            <dd className={dd}>
+              Exact two-sided <WikiLink href={WIKI.sign}>sign test</WikiLink> on the
+              W and L counts (draws dropped): under H₀ each discordant round is a fair
+              coin, p = P(a split at least this lopsided). For binary success this is
+              identical to the exact{" "}
+              <WikiLink href={WIKI.mcnemar}>McNemar test</WikiLink>, which uses the
+              same two discordant cells.
+            </dd>
+            <dt className={dt}>flip p</dt>
+            <dd className={dd}>
+              Sign-flip <WikiLink href={WIKI.permutation}>permutation test</WikiLink>{" "}
+              of mean Δ = 0: under H₀ each round's difference is equally likely to
+              have the opposite sign, so flip signs at random 20,000 times and take
+              p = share of flips with |mean| ≥ observed (with +1 correction). Unlike
+              the sign test it weighs the size of each difference, so it can disagree
+              with sign p when a few rounds swing by 2 points.
+            </dd>
+          </dl>
+          <div className="mt-1.5 text-ink-muted">Bold p: p &lt; 0.05.</div>
+        </div>
+      </div>
+    </span>
+  );
+}
+
 function PairedStatsTable({
   rows,
   policyNames,
@@ -171,13 +270,11 @@ function PairedStatsTable({
           })}
         </tbody>
       </table>
-      <div className="px-2 py-1.5 text-[10px] text-ink-muted font-body border-t border-warm-200">
-        Paired by round. Δ is A−B; CI from a paired bootstrap over rounds; sign p
-        is the exact sign test on discordant rounds (McNemar for success); flip p
-        is a sign-flip permutation test of mean Δ. Bold: p &lt; 0.05.
-        {anyDropped &&
-          " * Score rows use only rounds where both arms carry a mark count."}
-      </div>
+      {anyDropped && (
+        <div className="px-2 py-1.5 text-[10px] text-ink-muted font-body border-t border-warm-200">
+          * Score rows use only rounds where both arms carry a mark count.
+        </div>
+      )}
     </div>
   );
 }
@@ -388,6 +485,7 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
           a bootstrap CI and the two paired tests the Python pairwise summary
           reports (exact sign / McNemar, sign-flip permutation). */}
       <div className="mb-4 -mt-1">
+        <div className="flex items-center gap-2">
         <button
           onClick={() => setStatsOpen((v) => !v)}
           className="flex items-center gap-1 text-[11px] text-ink-muted hover:text-ink transition-colors cursor-pointer"
@@ -408,6 +506,8 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
           </svg>
           Paired tests
         </button>
+        {statsOpen && <PairedStatsHelp />}
+        </div>
         {statsOpen && pairedTable && (
           <PairedStatsTable
             rows={pairedTable}
