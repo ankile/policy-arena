@@ -1,0 +1,40 @@
+import { describe, expect, test } from "bun:test";
+
+import { armStats } from "./armStats";
+
+function r(policy_id: string, success: boolean, marks: number | null = null) {
+  return { policy_id, success, num_subtask_marks: marks };
+}
+
+describe("armStats", () => {
+  const rounds = [
+    { results: [r("a", true, 1), r("b", false, 1)] },
+    { results: [r("a", false, 0), r("b", false, 1)] },
+    { results: [r("a", true, 1)] },
+    { results: [r("b", true, 1), r("zzz", true, 0)] },
+  ];
+
+  test("n and successes count only rounds where the arm ran", () => {
+    const s = armStats(["a", "b"], rounds, 1);
+    expect(s.get("a")).toMatchObject({ n: 3, successes: 2 });
+    expect(s.get("b")).toMatchObject({ n: 3, successes: 1 });
+  });
+
+  test("pairwise records are symmetric and skip unlisted arms", () => {
+    const s = armStats(["a", "b"], rounds, 1);
+    expect(s.get("a")).toMatchObject({ wins: 1, draws: 1, losses: 0 });
+    expect(s.get("b")).toMatchObject({ wins: 0, draws: 1, losses: 1 });
+    expect(s.has("zzz")).toBe(false);
+  });
+
+  test("graded record splits a binary draw by marks", () => {
+    // Round 2: both fail, a=0 marks vs b=1 mark -> graded loss for a.
+    const s = armStats(["a", "b"], rounds, 1);
+    expect(s.get("a")).toMatchObject({ scoreWins: 1, scoreDraws: 0, scoreLosses: 1 });
+  });
+
+  test("binary task leaves the graded record at zero", () => {
+    const s = armStats(["a", "b"], rounds, 0);
+    expect(s.get("a")).toMatchObject({ scoreWins: 0, scoreDraws: 0, scoreLosses: 0 });
+  });
+});

@@ -21,11 +21,19 @@ import {
   sideSuccessSummary,
   toggleId,
   type JoinSide,
+  type JoinedRound,
 } from "../lib/joinSessions";
 import { RoundVideos } from "./RoundVideos";
 import { roundVideoSpecs, type RoundVideoSpec } from "../lib/roundVideoSpecs";
-import { TONE_PILL, outcomeLabel, outcomeTone } from "../lib/outcomeScore";
 import { StatusBadge } from "./StatusBadge";
+import {
+  ExpandAllButton,
+  PairedTestsDrawer,
+  PolicyStatCards,
+  RoundsGrid,
+  type Arm,
+  type ArmRound,
+} from "./RoundOutcomes";
 
 type SessionDetail = NonNullable<
   FunctionReturnType<typeof api.evalSessions.getDetail>
@@ -63,12 +71,18 @@ const SIDE_GRID: Record<number, string> = {
   3: "grid-cols-3",
 };
 
+/** Arm key for (session position, policy): the same policy in two sessions stays two arms. */
+function armKey(sideIdx: number, policyId: string): string {
+  return `${sessionLetter(sideIdx)}:${policyId}`;
+}
+
 /**
  * Side-by-side view of N eval sessions aligned on round index: round k of
- * session A next to round k of session B (and C, ...). Each aligned round
+ * session A next to round k of session B (and C, ...). Every arm (session
+ * letter × policy) gets the same summary cards, paired tests and outcome
+ * grid as a single session, computed over the aligned rounds; each round
  * expands into one synchronized video grid holding every rollout from every
- * session, so a whole eval can be scanned rollout-by-rollout across sessions
- * that were never submitted together (different datasets, dates, policies).
+ * session.
  */
 export default function JoinedSessions({
   sessionIds,
@@ -99,7 +113,7 @@ export default function JoinedSessions({
   const [expandedRound, setExpandedRound] = useSearchParamNumber("round");
   const [expandAll, setExpandAll] = useState(false);
 
-  // Policies hidden from the side-by-side rounds (pills + video tiles), by
+  // Policies hidden from the joined surface (cards, tests, pills, videos), by
   // policy id, so a joined eval can be narrowed to the models being compared.
   // Lives in ?hide= so a filtered view is shareable.
   const [hideParam, setHideParam] = useSearchParamNullable("hide");
@@ -160,6 +174,50 @@ export default function JoinedSessions({
     }
   }, [uniqueRepos.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Content signature of the loaded sessions: the joined arms/rounds (and the
+  // 20k-resample paired tests downstream) only recompute when a session's
+  // outcomes actually change, not on every render.
+  const detailSig = loadedDetails
+    .map(
+      (d) =>
+        `${d._id}:${d.rounds
+          .map((r) =>
+            r.results
+              .map((x) => `${x.policy_id}${x.success ? 1 : 0}${x.num_subtask_marks ?? "n"}`)
+              .join(""),
+          )
+          .join("/")}`,
+    )
+    .join("|");
+  const joined = useMemo(() => {
+    const sides: JoinSide[] = loadedDetails.map((d) => ({
+      sessionId: d._id,
+      rounds: d.rounds,
+    }));
+    const hidden = new Set(parseIdList(hideParam));
+    const aligned = hidePolicies(alignRounds(sides), hidden);
+    const arms: Arm[] = sides.flatMap((side, i) =>
+      sideSuccessSummary(side)
+        .filter((p) => !hidden.has(p.policy_id))
+        .map((p) => ({ key: armKey(i, p.policy_id), name: p.policyName, badge: sessionLetter(i) })),
+    );
+    const rounds: ArmRound[] = aligned.map((round) => ({
+      index: round.index,
+      results: round.perSide.flatMap((results, i) =>
+        (results ?? []).map((r) => ({
+          policy_id: armKey(i, r.policy_id),
+          policyName: r.policyName,
+          success: r.success,
+          episode_index: r.episode_index,
+          num_subtask_marks: r.num_subtask_marks ?? null,
+        })),
+      ),
+    }));
+    const alignedByIndex = new Map(aligned.map((r) => [r.index, r]));
+    const maxMarks = Math.max(0, ...loadedDetails.map((d) => d.max_subtask_marks));
+    return { sides, aligned, alignedByIndex, arms, rounds, maxMarks };
+  }, [detailSig, hideParam]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Loading / error gates ──
   const pending = sessionIds.some((id) => details[id] === undefined);
   if (pending) {
@@ -190,27 +248,75 @@ export default function JoinedSessions({
     );
   }
 
-  const sides: JoinSide[] = loadedDetails.map((d) => ({
-    sessionId: d._id,
-    rounds: d.rounds,
-  }));
-  const policies = joinedPolicies(sides);
-  const rounds = hidePolicies(alignRounds(sides), hiddenPolicyIds);
-  const hiddenCount = policies.filter((p) => hiddenPolicyIds.has(p.policy_id)).length;
+  const { sides, aligned, alignedByIndex, arms, rounds, maxMarks } = joined;
+  const hiddenCount = joinedPolicies(sides).filter((p) => hiddenPolicyIds.has(p.policy_id)).length;
+  const anyVideo = uniqueRepos.some((repo) => datasetCache.get(repo)?.status === "loaded");
+
+  // Expanded round: one synchronized grid over every side's rollouts. When
+  // every visible tile fits in one row, pack them all (the session letter
+  // badge tells them apart); otherwise one row per session, padded to the
+  // widest side so A's rollouts sit above B's, column-aligned.
+  const renderExpanded = (round: JoinedRound) => {
+    const sideSpecs: RoundVideoSpec[][] = [];
+    const notes: string[] = [];
+    round.perSide.forEach((results, sideIdx) => {
+      if (!results || results.length === 0) return;
+      const detail = loadedDetails[sideIdx];
+      const ds = datasetCache.get(detail.dataset_repo);
+      if (ds?.status === "loaded") {
+        sideSpecs.push(
+          roundVideoSpecs(
+            results,
+            detail.dataset_repo,
+            ds.episodeMap,
+            ds.cameraKey,
+            sessionLetter(sideIdx),
+            detail.max_subtask_marks,
+          ),
+        );
+      } else if (ds?.status === "error") {
+        notes.push(`${sessionLetter(sideIdx)}: video metadata failed — ${ds.message}`);
+      } else {
+        notes.push(`${sessionLetter(sideIdx)}: loading video metadata…`);
+      }
+    });
+    const total = sideSpecs.reduce((n, specs) => n + specs.length, 0);
+    const singleRow = total <= SINGLE_ROW_MAX_TILES;
+    const columns = singleRow
+      ? Math.max(1, total)
+      : Math.max(1, ...sideSpecs.map((specs) => specs.length));
+    const videos: (RoundVideoSpec | null)[] = [];
+    for (const specs of sideSpecs) {
+      videos.push(...specs);
+      if (!singleRow) {
+        for (let k = specs.length; k < columns; k++) videos.push(null);
+      }
+    }
+    return (
+      <>
+        {videos.some(Boolean) && <RoundVideos videos={videos} columns={columns} />}
+        {notes.map((note) => (
+          <p key={note} className="text-xs text-ink-muted mt-2 font-mono">
+            {note}
+          </p>
+        ))}
+      </>
+    );
+  };
 
   return (
     <div className="space-y-4">
-      {/* Side summary cards */}
+      {/* Side identity cards: letter, provenance, and the policy chips that
+          toggle a policy in/out of the whole joined surface. */}
       <div className={`grid gap-3 ${SIDE_GRID[loadedDetails.length] ?? "grid-cols-4"}`}>
         {loadedDetails.map((detail, i) => {
           const row = sessionRows.get(detail._id);
-          const summary = sideSuccessSummary(sides[i]);
           return (
             <div
               key={detail._id}
               className="bg-white rounded-2xl border border-warm-200 shadow-sm px-5 py-4"
             >
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
                 <span className="w-6 h-6 rounded-md bg-gold text-white text-xs font-mono font-semibold flex items-center justify-center">
                   {sessionLetter(i)}
                 </span>
@@ -229,34 +335,30 @@ export default function JoinedSessions({
                   </span>
                 )}
               </div>
-              <div className="space-y-1 mb-2">
-                {summary.map((s) => (
-                  <div
-                    key={s.policy_id}
-                    className={`flex items-center gap-2 text-xs ${
-                      hiddenPolicyIds.has(s.policy_id) ? "opacity-40 line-through" : ""
-                    }`}
-                  >
-                    <span
-                      className="rounded bg-warm-100 px-2 py-0.5 font-mono text-ink-light truncate"
-                      title={s.policyName}
+              <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                {sideSuccessSummary(sides[i]).map((p) => {
+                  const hidden = hiddenPolicyIds.has(p.policy_id);
+                  return (
+                    <button
+                      key={p.policy_id}
+                      onClick={() => toggleHidden(p.policy_id)}
+                      title={hidden ? "Show this policy" : "Hide this policy from the joined view"}
+                      className={`px-2 py-0.5 rounded text-xs font-mono border transition-all cursor-pointer max-w-full truncate ${
+                        hidden
+                          ? "bg-white text-ink-muted/60 border-warm-200 border-dashed line-through"
+                          : "bg-warm-100 text-ink border-warm-200 hover:border-teal/40"
+                      }`}
                     >
-                      {s.policyName}
-                    </span>
-                    <span className="font-mono text-ink shrink-0">
-                      {s.successes}/{s.rounds}
-                      <span className="text-ink-muted ml-1">
-                        ({s.rounds > 0 ? ((100 * s.successes) / s.rounds).toFixed(0) : "–"}%)
-                      </span>
-                    </span>
-                  </div>
-                ))}
+                      {p.policyName}
+                    </button>
+                  );
+                })}
               </div>
               <a
                 href={`https://huggingface.co/datasets/${detail.dataset_repo}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[11px] font-mono text-ink-muted hover:text-teal transition-colors"
+                className="text-[11px] font-mono text-ink-muted hover:text-teal transition-colors break-all"
               >
                 {detail.dataset_repo} &rarr;
               </a>
@@ -268,191 +370,47 @@ export default function JoinedSessions({
         })}
       </div>
 
-      {/* Aligned rounds */}
-      <div className="bg-white rounded-2xl border border-warm-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-3 border-b border-warm-100 bg-warm-50 flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-3">
-            <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
-              Rounds aligned by index
-            </span>
-            <span className="font-mono text-xs text-ink-muted">
-              {rounds.length} total · {alignmentSummary(rounds)}
-            </span>
-          </div>
-          <button
-            onClick={() => setExpandAll((v) => !v)}
-            className={`px-3 py-1 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
-              expandAll
-                ? "bg-teal text-white border-teal shadow-sm"
-                : "bg-white text-ink-muted border-warm-200 hover:border-teal/40 hover:text-ink"
-            }`}
-          >
-            {expandAll ? "Collapse all" : "Expand all rounds"}
-          </button>
-        </div>
-
-        {/* Policy visibility: click a chip to hide/show that policy's pills + videos */}
-        <div className="px-6 py-2 border-b border-warm-100 flex items-center gap-2 flex-wrap">
+      {/* Joined analysis: same cards / tests / grid as a single session, over
+          the aligned rounds with one arm per (session, policy). */}
+      <div className="bg-white rounded-2xl border border-warm-200 shadow-sm px-6 pt-5 pb-5">
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
           <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
-            Policies
+            Rounds aligned by index
           </span>
-          {policies.map((policy) => {
-            const hidden = hiddenPolicyIds.has(policy.policy_id);
-            return (
-              <button
-                key={policy.policy_id}
-                onClick={() => toggleHidden(policy.policy_id)}
-                title={hidden ? "Show this policy" : "Hide this policy from the side-by-side rounds"}
-                className={`px-2 py-0.5 rounded text-xs font-mono border transition-all cursor-pointer max-w-xs truncate ${
-                  hidden
-                    ? "bg-white text-ink-muted/60 border-warm-200 border-dashed line-through"
-                    : "bg-warm-100 text-ink border-warm-200 hover:border-teal/40"
-                }`}
-              >
-                {policy.policyName}
-              </button>
-            );
-          })}
+          <span className="font-mono text-xs text-ink-muted">
+            {aligned.length} total · {alignmentSummary(aligned)}
+          </span>
           {hiddenCount > 0 && (
             <button
               onClick={() => setHideParam(null)}
-              className="text-[11px] text-teal hover:underline cursor-pointer ml-1"
+              className="text-[11px] text-teal hover:underline cursor-pointer"
             >
               show all ({hiddenCount} hidden)
             </button>
           )}
         </div>
 
-        {rounds.map((round, i) => {
-          const isExpanded = expandAll || expandedRound === round.index;
-          // Per-side tile specs (sides whose metadata is missing get a note).
-          const sideSpecs: RoundVideoSpec[][] = [];
-          const notes: string[] = [];
-          round.perSide.forEach((results, sideIdx) => {
-            if (!results || results.length === 0) return;
-            const detail = loadedDetails[sideIdx];
-            const ds = datasetCache.get(detail.dataset_repo);
-            if (ds?.status === "loaded") {
-              sideSpecs.push(
-                roundVideoSpecs(
-                  results,
-                  detail.dataset_repo,
-                  ds.episodeMap,
-                  ds.cameraKey,
-                  sessionLetter(sideIdx),
-                  detail.max_subtask_marks,
-                ),
-              );
-            } else if (ds?.status === "error") {
-              notes.push(`${sessionLetter(sideIdx)}: video metadata failed — ${ds.message}`);
-            } else {
-              notes.push(`${sessionLetter(sideIdx)}: loading video metadata…`);
-            }
-          });
-          // Layout: when every visible tile fits in one row, pack them all
-          // into that row (the session letter badge tells them apart). Only
-          // when there are more do we fall back to one row per session,
-          // padded to the widest side so A's rollouts sit above B's,
-          // column-aligned.
-          const total = sideSpecs.reduce((n, specs) => n + specs.length, 0);
-          const singleRow = total <= SINGLE_ROW_MAX_TILES;
-          const columns = singleRow
-            ? Math.max(1, total)
-            : Math.max(1, ...sideSpecs.map((specs) => specs.length));
-          const videos: (RoundVideoSpec | null)[] = [];
-          for (const specs of sideSpecs) {
-            videos.push(...specs);
-            if (!singleRow) {
-              for (let k = specs.length; k < columns; k++) videos.push(null);
-            }
-          }
+        <PolicyStatCards arms={arms} rounds={rounds} maxMarks={maxMarks} />
+        <PairedTestsDrawer arms={arms} rounds={rounds} maxMarks={maxMarks} />
 
-          return (
-            <div
-              key={round.index}
-              className={i < rounds.length - 1 ? "border-b border-warm-100" : ""}
-            >
-              <button
-                onClick={() => {
-                  if (expandAll) return;
-                  setExpandedRound(isExpanded ? null : round.index);
-                }}
-                className="w-full flex items-center gap-3 px-6 py-2.5 hover:bg-warm-50 transition-colors cursor-pointer text-left"
-              >
-                <span className="text-xs font-mono text-ink-muted w-16 shrink-0">
-                  Round {round.index}
-                </span>
-                <div className="flex items-center gap-3 flex-wrap flex-1">
-                  {round.perSide.map((results, sideIdx) => (
-                    <div
-                      key={sideIdx}
-                      className={`flex items-center gap-1.5 ${
-                        sideIdx > 0 ? "pl-3 border-l border-warm-200" : ""
-                      }`}
-                    >
-                      <span className="text-[10px] font-mono font-semibold text-gold w-3">
-                        {sessionLetter(sideIdx)}
-                      </span>
-                      {results === null ? (
-                        <span className="text-[11px] text-ink-muted/60 italic">
-                          no round {round.index}
-                        </span>
-                      ) : results.length === 0 ? (
-                        <span className="text-[11px] text-ink-muted/60 italic">
-                          all hidden
-                        </span>
-                      ) : (
-                        results.map((result, j) => (
-                          <span
-                            key={j}
-                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${
-                              TONE_PILL[outcomeTone(result.success, result.num_subtask_marks ?? null)]
-                            }`}
-                          >
-                            {result.policyName}
-                            <span className="text-[10px]">
-                              {outcomeLabel(
-                                result.success,
-                                result.num_subtask_marks ?? null,
-                                loadedDetails[sideIdx].max_subtask_marks
-                              )}
-                            </span>
-                          </span>
-                        ))
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className={`text-ink-muted/50 transition-transform duration-200 shrink-0 ${
-                    isExpanded ? "rotate-90" : ""
-                  }`}
-                >
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
-              </button>
-
-              {isExpanded && (
-                <div className="px-6 pb-4">
-                  {videos.some(Boolean) && (
-                    <RoundVideos videos={videos} columns={columns} />
-                  )}
-                  {notes.map((note) => (
-                    <p key={note} className="text-xs text-ink-muted mt-2 font-mono">
-                      {note}
-                    </p>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
+            Rounds
+          </span>
+          {anyVideo && (
+            <ExpandAllButton expandAll={expandAll} onToggle={() => setExpandAll((v) => !v)} />
+          )}
+        </div>
+        <RoundsGrid
+          arms={arms}
+          rounds={rounds}
+          maxMarks={maxMarks}
+          expandedRound={expandedRound}
+          expandAll={expandAll}
+          canExpand={anyVideo}
+          onToggleRound={setExpandedRound}
+          renderExpanded={(round) => renderExpanded(alignedByIndex.get(round.index)!)}
+        />
       </div>
     </div>
   );
