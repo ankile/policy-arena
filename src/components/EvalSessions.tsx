@@ -47,6 +47,26 @@ function SessionModeTag({ mode }: { mode: string }) {
   );
 }
 
+function WdlRecord({
+  wins,
+  draws,
+  losses,
+  title,
+}: {
+  wins: number;
+  draws: number;
+  losses: number;
+  title: string;
+}) {
+  return (
+    <span className="flex items-center gap-1.5 font-mono whitespace-nowrap" title={title}>
+      <span className="text-teal font-medium">{wins}W</span>
+      <span className="text-ink-muted">{draws}D</span>
+      <span className="text-coral font-medium">{losses}L</span>
+    </span>
+  );
+}
+
 function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
   const detail = useQuery(api.evalSessions.getDetail, { id: sessionId });
   const [expandedRound, setExpandedRound] = useSearchParamNumber("round");
@@ -191,46 +211,41 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
                   <div className="font-body font-semibold text-ink text-sm truncate mb-1.5" title={policy.name}>
                     {policy.name}
                   </div>
-                  <div className="flex items-center gap-3 text-xs">
-                    <span className="font-mono text-ink shrink-0">
-                      {successRate.toFixed(0)}%
-                      <span className="text-[11px] text-ink-muted font-body ml-1">
-                        success
-                      </span>
-                    </span>
-                    {score !== null && (
-                      <span
-                        className="font-mono text-ink shrink-0"
-                        title={
-                          `Mean graded score: sub-goal marks reached + success, ` +
-                          `max ${maxMarks + 1} per round` +
-                          (unscored > 0 ? ` (${unscored} round(s) submitted without a mark count)` : "")
-                        }
-                      >
-                        {score.toFixed(2)}
-                        <span className="text-[11px] text-ink-muted font-body ml-1">
-                          / {maxMarks + 1} score{unscored > 0 ? "*" : ""}
-                        </span>
-                      </span>
-                    )}
-                    <div
-                      className="flex items-center gap-1.5 font-mono shrink-0"
+                  {/* One metric per line: label | value | pairwise record. */}
+                  <div className="grid grid-cols-[auto_1fr_auto] items-baseline gap-x-3 gap-y-1 text-xs">
+                    <span className="text-[11px] text-ink-muted font-body">success</span>
+                    <span className="font-mono text-ink">{successRate.toFixed(0)}%</span>
+                    <WdlRecord
+                      wins={stats.wins}
+                      draws={stats.draws}
+                      losses={stats.losses}
                       title="Pairwise record on binary success"
-                    >
-                      <span className="text-teal font-medium">{stats.wins}W</span>
-                      <span className="text-ink-muted">{stats.draws}D</span>
-                      <span className="text-coral font-medium">{stats.losses}L</span>
-                    </div>
+                    />
                     {score !== null && (
-                      <div
-                        className="flex items-center gap-1.5 font-mono shrink-0 pl-3 border-l border-warm-200"
-                        title={`Pairwise record on the graded 0..${maxMarks + 1} score`}
-                      >
-                        <span className="text-teal font-medium">{stats.scoreWins}W</span>
-                        <span className="text-ink-muted">{stats.scoreDraws}D</span>
-                        <span className="text-coral font-medium">{stats.scoreLosses}L</span>
-                        <span className="text-[11px] text-ink-muted font-body">score</span>
-                      </div>
+                      <>
+                        <span
+                          className="text-[11px] text-ink-muted font-body"
+                          title={
+                            `Mean graded score: sub-goal marks reached + success, ` +
+                            `max ${maxMarks + 1} per round` +
+                            (unscored > 0
+                              ? ` (${unscored} round(s) submitted without a mark count)`
+                              : "")
+                          }
+                        >
+                          score{unscored > 0 ? "*" : ""}
+                        </span>
+                        <span className="font-mono text-ink">
+                          {score.toFixed(2)}
+                          <span className="text-ink-muted"> / {maxMarks + 1}</span>
+                        </span>
+                        <WdlRecord
+                          wins={stats.scoreWins}
+                          draws={stats.scoreDraws}
+                          losses={stats.scoreLosses}
+                          title={`Pairwise record on the graded 0..${maxMarks + 1} score`}
+                        />
+                      </>
                     )}
                   </div>
                 </div>
@@ -258,9 +273,43 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
           </button>
         )}
       </div>
+      {/* One grid row per round: Round | one cell per policy (session order,
+          matching the cards above) | chevron. Policy names live in the header
+          row, so a pill only carries the outcome and never wraps. */}
+      {(() => {
+        const columns = detail.policies.map((p) => ({ policy_id: p._id as string, name: p.name }));
+        const known = new Set(columns.map((c) => c.policy_id));
+        for (const round of detail.rounds) {
+          for (const result of round.results) {
+            if (!known.has(result.policy_id)) {
+              known.add(result.policy_id);
+              columns.push({ policy_id: result.policy_id, name: result.policyName });
+            }
+          }
+        }
+        const gridStyle = {
+          gridTemplateColumns: `4.5rem repeat(${columns.length}, minmax(0, 1fr)) 0.75rem`,
+        };
+        return (
       <div className="space-y-2">
+        <div className="grid items-center gap-x-2 px-3" style={gridStyle}>
+          <span className="text-[10px] uppercase tracking-wider text-ink-muted/70 font-medium">
+            Round
+          </span>
+          {columns.map((c) => (
+            <span
+              key={c.policy_id}
+              className="text-[11px] font-mono text-ink-light truncate"
+              title={c.name}
+            >
+              {c.name}
+            </span>
+          ))}
+          <span />
+        </div>
         {detail.rounds.map((round) => {
           const isExpanded = expandAll || expandedRound === round.index;
+          const byPolicy = new Map(round.results.map((r) => [r.policy_id, r]));
 
           return (
             <div
@@ -272,30 +321,37 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
                   if (expandAll) return;
                   setExpandedRound(isExpanded ? null : round.index);
                 }}
-                className="w-full flex items-center gap-3 px-3 py-2 hover:bg-warm-50 transition-colors cursor-pointer text-left"
+                className="w-full grid items-center gap-x-2 px-3 py-2 hover:bg-warm-50 transition-colors cursor-pointer text-left"
+                style={gridStyle}
               >
-                <span className="text-xs font-mono text-ink-muted w-16 shrink-0">
+                <span className="text-xs font-mono text-ink-muted">
                   Round {round.index}
                 </span>
-                <div className="flex gap-2 flex-wrap flex-1">
-                  {round.results.map((result, i) => (
+                {columns.map((c) => {
+                  const result = byPolicy.get(c.policy_id);
+                  if (!result) {
+                    return (
+                      <span key={c.policy_id} className="text-[11px] text-ink-muted/50 px-2">
+                        —
+                      </span>
+                    );
+                  }
+                  return (
                     <span
-                      key={i}
-                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${
+                      key={c.policy_id}
+                      className={`block truncate px-2 py-0.5 rounded text-[11px] font-medium text-center ${
                         TONE_PILL[outcomeTone(result.success, result.num_subtask_marks)]
                       }`}
+                      title={`${c.name} — episode ${result.episode_index}`}
                     >
-                      {result.policyName}
-                      <span className="text-[10px]">
-                        {outcomeLabel(
-                          result.success,
-                          result.num_subtask_marks,
-                          detail.max_subtask_marks
-                        )}
-                      </span>
+                      {outcomeLabel(
+                        result.success,
+                        result.num_subtask_marks,
+                        detail.max_subtask_marks
+                      )}
                     </span>
-                  ))}
-                </div>
+                  );
+                })}
                 {datasetInfo && (
                   <svg
                     width="12"
@@ -311,6 +367,7 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
                     <polyline points="9 18 15 12 9 6" />
                   </svg>
                 )}
+                {!datasetInfo && <span />}
               </button>
 
               {isExpanded && datasetInfo && (
@@ -331,6 +388,8 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
           );
         })}
       </div>
+        );
+      })()}
 
       {datasetError && (
         <p className="text-xs text-ink-muted mt-3">
