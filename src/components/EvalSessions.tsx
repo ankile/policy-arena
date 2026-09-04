@@ -17,6 +17,7 @@ import {
   toggleId,
 } from "../lib/joinSessions";
 import JoinedSessions, { type SessionListRow } from "./JoinedSessions";
+import { TaskFilterChips } from "./TaskFilterChips";
 import { RoundVideos } from "./RoundVideos";
 import { roundVideoSpecs } from "../lib/roundVideoSpecs";
 import {
@@ -251,8 +252,9 @@ export default function EvalSessions() {
     modeCounts.set(mode, (modeCounts.get(mode) ?? 0) + 1);
   }
 
-  // Unique tasks for filter pills (from mode-filtered sessions)
-  const allTasks = [...new Set(modeFiltered.map((s) => s.task).filter(Boolean) as string[])].sort();
+  // Unique tasks for filter pills (from mode-filtered sessions); ordering is
+  // done by TaskFilterChips (mainline first).
+  const allTasks = modeFiltered.map((s) => s.task).filter(Boolean) as string[];
 
   return (
     <div
@@ -353,39 +355,7 @@ export default function EvalSessions() {
         </div>
 
         {/* Task filter */}
-        {allTasks.length > 1 && (
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium mr-1">
-              Task
-            </span>
-            <button
-              onClick={() => setTaskFilter("all")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                taskFilter === "all"
-                  ? "bg-teal text-white shadow-sm"
-                  : "bg-white border border-warm-200 text-ink-muted hover:border-warm-300 hover:text-ink"
-              }`}
-            >
-              All
-            </button>
-            {allTasks.map((task) => {
-              const isActive = taskFilter === task;
-              return (
-                <button
-                  key={task}
-                  onClick={() => setTaskFilter(task)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                    isActive
-                      ? "bg-teal text-white shadow-sm"
-                      : "bg-white border border-warm-200 text-ink-muted hover:border-warm-300 hover:text-ink"
-                  }`}
-                >
-                  {task}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        <TaskFilterChips tasks={allTasks} value={taskFilter} onChange={setTaskFilter} />
       </div>
 
       {filteredSessions.length === 0 ? (

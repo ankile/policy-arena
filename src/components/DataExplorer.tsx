@@ -17,6 +17,7 @@ import {
 import OutcomeReview from "./OutcomeReview";
 import StageReview from "./StageReview";
 import { StatusBadge, StatusSelect } from "./StatusBadge";
+import { TaskFilterChips } from "./TaskFilterChips";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1019,8 +1020,8 @@ export default function DataExplorer() {
     ? datasets
     : datasets.filter((d) => d.effective_status === "mainline");
 
-  // Compute unique tasks for filter pills
-  const allTasks = [...new Set(visibleDatasets.map((d) => d.task))].sort();
+  // Tasks for filter pills; TaskFilterChips dedupes and orders them (mainline first).
+  const allTasks = visibleDatasets.map((d) => d.task);
 
   // Compute source type counts and episode counts (from all datasets before task filter)
   const sourceTypeCounts = new Map<string, number>();
@@ -1129,39 +1130,7 @@ export default function DataExplorer() {
         </div>
 
         {/* Task filter */}
-        {allTasks.length > 1 && (
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium mr-1">
-              Task
-            </span>
-            <button
-              onClick={() => setTaskFilter("all")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                taskFilter === "all"
-                  ? "bg-teal text-white shadow-sm"
-                  : "bg-white border border-warm-200 text-ink-muted hover:border-warm-300 hover:text-ink"
-              }`}
-            >
-              All
-            </button>
-            {allTasks.map((task) => {
-              const isActive = taskFilter === task;
-              return (
-                <button
-                  key={task}
-                  onClick={() => setTaskFilter(task)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                    isActive
-                      ? "bg-teal text-white shadow-sm"
-                      : "bg-white border border-warm-200 text-ink-muted hover:border-warm-300 hover:text-ink"
-                  }`}
-                >
-                  {task}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        <TaskFilterChips tasks={allTasks} value={taskFilter} onChange={setTaskFilter} />
       </div>
 
       {/* Aggregate summary */}
