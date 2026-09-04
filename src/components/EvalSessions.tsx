@@ -19,7 +19,7 @@ import {
 import JoinedSessions, { type SessionListRow } from "./JoinedSessions";
 import { RoundVideos } from "./RoundVideos";
 import { roundVideoSpecs } from "../lib/roundVideoSpecs";
-import { TONE_PILL, meanScore, outcomeLabel, outcomeTone } from "../lib/outcomeScore";
+import { TONE_PILL, episodeScore, meanScore, outcomeLabel, outcomeTone } from "../lib/outcomeScore";
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString("en-US", {
@@ -111,6 +111,11 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
             losses: number;
             // Graded rounds (success + marks) for the 0..N+1 score column.
             graded: Array<{ success: boolean; marks: number | null }>;
+            // Pairwise W/D/L on the graded score (a round where both arms
+            // failed but only one reached a sub-goal is a graded win).
+            scoreWins: number;
+            scoreDraws: number;
+            scoreLosses: number;
           }
         >();
 
@@ -121,6 +126,9 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
             draws: 0,
             losses: 0,
             graded: [],
+            scoreWins: 0,
+            scoreDraws: 0,
+            scoreLosses: 0,
           });
         }
 
@@ -148,6 +156,20 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
               } else {
                 statsA.draws += 1;
                 statsB.draws += 1;
+              }
+              if (maxMarks > 0) {
+                const scoreA = episodeScore(a.success, a.num_subtask_marks);
+                const scoreB = episodeScore(b.success, b.num_subtask_marks);
+                if (scoreA > scoreB) {
+                  statsA.scoreWins += 1;
+                  statsB.scoreLosses += 1;
+                } else if (scoreA < scoreB) {
+                  statsA.scoreLosses += 1;
+                  statsB.scoreWins += 1;
+                } else {
+                  statsA.scoreDraws += 1;
+                  statsB.scoreDraws += 1;
+                }
               }
             }
           }
@@ -191,11 +213,25 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
                         </span>
                       </span>
                     )}
-                    <div className="flex items-center gap-1.5 font-mono shrink-0">
+                    <div
+                      className="flex items-center gap-1.5 font-mono shrink-0"
+                      title="Pairwise record on binary success"
+                    >
                       <span className="text-teal font-medium">{stats.wins}W</span>
                       <span className="text-ink-muted">{stats.draws}D</span>
                       <span className="text-coral font-medium">{stats.losses}L</span>
                     </div>
+                    {score !== null && (
+                      <div
+                        className="flex items-center gap-1.5 font-mono shrink-0 pl-3 border-l border-warm-200"
+                        title={`Pairwise record on the graded 0..${maxMarks + 1} score`}
+                      >
+                        <span className="text-teal font-medium">{stats.scoreWins}W</span>
+                        <span className="text-ink-muted">{stats.scoreDraws}D</span>
+                        <span className="text-coral font-medium">{stats.scoreLosses}L</span>
+                        <span className="text-[11px] text-ink-muted font-body">score</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               );

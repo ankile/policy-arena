@@ -249,8 +249,27 @@ export function validateResultsAgainstFrameOutcomes(
   }
 }
 
+/**
+ * _resumed_args_compatible: `args` may gain/lose CLI keys across a resume (the
+ * eval CLI evolves between sessions — 2026-09-03 routing_d1 R8 threearm resumed
+ * under a build that added arena_session_status); every key present in BOTH
+ * must match. Non-object args fall back to strict equality.
+ */
+function resumedArgsCompatible(previous: unknown, current: unknown): boolean {
+  const isObj = (v: unknown): v is Record<string, unknown> =>
+    typeof v === "object" && v !== null && !Array.isArray(v);
+  if (!isObj(previous) || !isObj(current)) {
+    return dumpsSorted((previous ?? null) as Json) === dumpsSorted((current ?? null) as Json);
+  }
+  for (const key of Object.keys(previous)) {
+    if (!(key in current)) continue;
+    if (dumpsSorted(previous[key] as Json) !== dumpsSorted(current[key] as Json)) return false;
+  }
+  return true;
+}
+
 /** _is_resumed_eval_prefix: previous is an exact earlier checkpoint of current. */
-function isResumedEvalPrefix(previous: Payload, current: Payload): boolean {
+export function isResumedEvalPrefix(previous: Payload, current: Payload): boolean {
   const identityKeys = ["dataset_name", "arena_session_id"];
   if (!identityKeys.some((k) => k in previous && k in current)) return false;
   if (identityKeys.some((k) => dumpsSorted((previous[k] ?? null) as Json) !== dumpsSorted((current[k] ?? null) as Json))) {
@@ -279,12 +298,13 @@ function isResumedEvalPrefix(previous: Payload, current: Payload): boolean {
   }
   const stableKeys = new Set([...Object.keys(previous), ...Object.keys(current)]);
   for (const key of RESUMABLE_DYNAMIC_KEYS) stableKeys.delete(key);
+  stableKeys.delete("args");
   for (const key of stableKeys) {
     if (dumpsSorted((previous[key] ?? null) as Json) !== dumpsSorted((current[key] ?? null) as Json)) {
       return false;
     }
   }
-  return true;
+  return resumedArgsCompatible(previous.args, current.args);
 }
 
 export interface CanonicalizeFileResult {

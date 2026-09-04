@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { liveSubtaskFramesByEpisode, subtaskFramesForValidation } from "../convex/apply/results";
+import {
+  isResumedEvalPrefix,
+  liveSubtaskFramesByEpisode,
+  subtaskFramesForValidation,
+} from "../convex/apply/results";
 
 // Rollout rows as save_results_file writes them: live 'g' marks land in
 // subtask_frames; an older row has no key at all.
@@ -50,5 +54,42 @@ describe("live subtask marks from results.json", () => {
     expect([...subtaskFramesForValidation(progress, livePayload())]).toEqual([[0, [5]]]);
     // Record-only (collection datasets have no results.json).
     expect([...subtaskFramesForValidation(progress, null)]).toEqual([[0, [5]]]);
+  });
+});
+
+describe("resumed eval prefix", () => {
+  const rollout = (ep: number) => ({ episode_index: ep, policy_id: 0, outcome: "failure", num_steps: 5 });
+  const current = () => ({
+    dataset_name: "same-eval",
+    arena_session_id: "session-1",
+    timestamp: "finished",
+    summary: [{ policy_id: 0, num_rounds: 2 }],
+    rollouts: [rollout(0), rollout(1)],
+    arena_submitted_round_indices: [0, 1],
+    args: { environment: "routing_d1", arena_session_status: "testing" },
+  });
+  const previous = () => ({
+    ...current(),
+    timestamp: "checkpoint",
+    summary: [{ policy_id: 0, num_rounds: 1 }],
+    rollouts: [rollout(0)],
+    arena_submitted_round_indices: [0],
+    args: { environment: "routing_d1" },
+  });
+
+  test("tolerates a CLI key added to args by the resuming build", () => {
+    expect(isResumedEvalPrefix(previous(), current())).toBe(true);
+  });
+
+  test("a shared args key with a different value is a different run", () => {
+    const prev = previous();
+    prev.args = { environment: "marker_d2" };
+    expect(isResumedEvalPrefix(prev, current())).toBe(false);
+  });
+
+  test("a diverging rollout prefix is not a resume", () => {
+    const prev = previous();
+    prev.rollouts = [{ ...rollout(0), outcome: "success" }];
+    expect(isResumedEvalPrefix(prev, current())).toBe(false);
   });
 });
