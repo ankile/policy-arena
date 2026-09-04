@@ -16,6 +16,7 @@ import {
   type LabelEvent,
   type ReviewEpisode,
 } from "../lib/hf-api";
+import { placeSubtaskMark } from "../lib/subtaskMarks";
 import { CommitPanel } from "./review/CommitPanel";
 import { HelpOverlay } from "./review/HelpOverlay";
 import { LabelHistoryPanel } from "./review/LabelHistoryPanel";
@@ -239,7 +240,7 @@ const HELP_KEYS: [string, string][] = [
   ["space", "play / pause"],
   ["s / f / t", "set outcome success / failure / timeout + mark here"],
   ["m", "move the outcome mark to this frame"],
-  ["g", "toggle a subtask mark at this frame"],
+  ["g", "subtask mark here (moves the nearest one when full; on a marked frame: remove)"],
   ["x", "toggle soft truncation"],
   ["u", "unmark: reset to the detected outcome"],
   ["c", "confirm + save, advance to the next episode"],
@@ -291,7 +292,9 @@ export default function OutcomeReview({
   const [signalErrors, setSignalErrors] = useState<Map<number, string>>(
     () => new Map()
   );
-  const [filter, setFilter] = useSearchParam("queue", "failure");
+  // Default queue is every outcome; the status filter ("unaddressed") already
+  // narrows the first-time flow to episodes nobody has treated yet.
+  const [filter, setFilter] = useSearchParam("queue", "all");
   const [selectedEpisode, setSelectedEpisode] = useSearchParamNumber("episode");
   const [frame, setFrame] = useState(0);
   const [pending, setPending] = useState<PendingReview>(EMPTY_PENDING);
@@ -738,7 +741,7 @@ export default function OutcomeReview({
       );
       if (countError) {
         setActionError(
-          `Cannot confirm: ${countError}; press g to toggle a subtask mark.`
+          `Cannot confirm: ${countError}; press g to place a subtask mark.`
         );
         return;
       }
@@ -958,18 +961,12 @@ export default function OutcomeReview({
           return;
         }
         const markAt = controlsRef.current?.pause() ?? frame;
-        const marks = pending.subtaskFrames;
-        if (marks.includes(markAt)) {
-          updatePending({ subtaskFrames: marks.filter((m) => m !== markAt) });
-          setActionError(null);
-        } else if (marks.length >= subtaskMarksRequired) {
-          setActionError(
-            `Already have ${subtaskMarksRequired} subtask mark(s); press g on a marked frame to remove one.`
-          );
-        } else {
-          updatePending({ subtaskFrames: [...marks, markAt].sort((a, b) => a - b) });
-          setActionError(null);
-        }
+        // Add below the cap; at the cap, MOVE the nearest mark here; on a
+        // marked frame, remove it (rule + tests in lib/subtaskMarks.ts).
+        updatePending({
+          subtaskFrames: placeSubtaskMark(pending.subtaskFrames, markAt, subtaskMarksRequired),
+        });
+        setActionError(null);
         return;
       }
       case "x":
