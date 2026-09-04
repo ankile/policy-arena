@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { StatusBadge, StatusSelect } from "./StatusBadge";
@@ -20,6 +20,7 @@ import JoinedSessions, { type SessionListRow } from "./JoinedSessions";
 import { RoundVideos } from "./RoundVideos";
 import { roundVideoSpecs } from "../lib/roundVideoSpecs";
 import { TONE_PILL, episodeScore, meanScore, outcomeLabel, outcomeTone } from "../lib/outcomeScore";
+import { formatPValue, pairedRows, type PairedRow } from "../lib/pairedStats";
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString("en-US", {
@@ -67,10 +68,138 @@ function WdlRecord({
   );
 }
 
+function PairedStatsTable({
+  rows,
+  policyNames,
+  maxMarks,
+}: {
+  rows: PairedRow[];
+  policyNames: Map<string, string>;
+  maxMarks: number;
+}) {
+  const th = "px-2 py-1 text-[10px] uppercase tracking-wider text-ink-muted font-medium whitespace-nowrap";
+  const td = "px-2 py-1 font-mono text-xs text-ink whitespace-nowrap";
+  const anyDropped = rows.some((r) => r.droppedUnscored > 0);
+  return (
+    <div className="mt-2 rounded-lg border border-warm-200 bg-warm-50/40 overflow-x-auto">
+      <table className="w-full text-left">
+        <thead className="border-b border-warm-200">
+          <tr>
+            <th className={th}>A vs B</th>
+            <th className={th}>Metric</th>
+            <th className={`${th} text-right`}>n</th>
+            <th className={`${th} text-right`}>A</th>
+            <th className={`${th} text-right`}>B</th>
+            <th className={`${th} text-right`} title="Paired per-round difference, mean(A) - mean(B)">
+              Δ A−B
+            </th>
+            <th className={th} title="Paired bootstrap 95% CI on Δ (20,000 resamples of rounds)">
+              95% CI
+            </th>
+            <th className={th} title="Rounds where A beat / tied / lost to B">
+              W/D/L
+            </th>
+            <th
+              className={`${th} text-right`}
+              title="Exact two-sided sign test on the discordant rounds (= exact McNemar for binary success)"
+            >
+              sign p
+            </th>
+            <th
+              className={`${th} text-right`}
+              title="Two-sided sign-flip permutation test of mean Δ = 0 (20,000 flips); weighs the size of each round's difference"
+            >
+              flip p
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const nameA = policyNames.get(row.policyA) ?? row.policyA;
+            const nameB = policyNames.get(row.policyB) ?? row.policyB;
+            const isScore = row.metric === "score";
+            const fmt = (x: number) => (isScore ? x.toFixed(2) : `${(x * 100).toFixed(0)}%`);
+            const fmtDelta = (x: number) =>
+              isScore
+                ? `${x >= 0 ? "+" : ""}${x.toFixed(2)}`
+                : `${x >= 0 ? "+" : ""}${(x * 100).toFixed(0)} pp`;
+            const s = row.stats;
+            return (
+              <tr key={`${row.policyA}:${row.policyB}:${row.metric}`} className="border-b border-warm-100 last:border-b-0">
+                <td className={`${td} font-body max-w-[16rem]`}>
+                  <span className="flex items-baseline gap-1 min-w-0">
+                    <span className="truncate" title={nameA}>{nameA}</span>
+                    <span className="text-ink-muted shrink-0">vs</span>
+                    <span className="truncate" title={nameB}>{nameB}</span>
+                  </span>
+                </td>
+                <td className={`${td} font-body text-ink-muted`}>
+                  {isScore ? `score 0–${maxMarks + 1}` : "success"}
+                  {row.droppedUnscored > 0 ? "*" : ""}
+                </td>
+                {s === null ? (
+                  <td className={`${td} text-ink-muted`} colSpan={8}>
+                    no paired rounds
+                  </td>
+                ) : (
+                  <>
+                    <td className={`${td} text-right`}>{s.n}</td>
+                    <td className={`${td} text-right`}>{fmt(s.meanA)}</td>
+                    <td className={`${td} text-right`}>{fmt(s.meanB)}</td>
+                    <td className={`${td} text-right font-medium`}>{fmtDelta(s.delta)}</td>
+                    <td className={`${td} text-ink-muted`}>
+                      [{fmtDelta(s.ciLo)}, {fmtDelta(s.ciHi)}]
+                    </td>
+                    <td className={td}>
+                      <WdlRecord
+                        wins={s.wins}
+                        draws={s.draws}
+                        losses={s.losses}
+                        title={`${nameA} record vs ${nameB}`}
+                      />
+                    </td>
+                    <td className={`${td} text-right ${s.signPValue < 0.05 ? "font-semibold" : ""}`}>
+                      {formatPValue(s.signPValue)}
+                    </td>
+                    <td className={`${td} text-right ${s.signFlipPValue < 0.05 ? "font-semibold" : ""}`}>
+                      {formatPValue(s.signFlipPValue)}
+                    </td>
+                  </>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <div className="px-2 py-1.5 text-[10px] text-ink-muted font-body border-t border-warm-200">
+        Paired by round. Δ is A−B; CI from a paired bootstrap over rounds; sign p
+        is the exact sign test on discordant rounds (McNemar for success); flip p
+        is a sign-flip permutation test of mean Δ. Bold: p &lt; 0.05.
+        {anyDropped &&
+          " * Score rows use only rounds where both arms carry a mark count."}
+      </div>
+    </div>
+  );
+}
+
 function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
   const detail = useQuery(api.evalSessions.getDetail, { id: sessionId });
   const [expandedRound, setExpandedRound] = useSearchParamNumber("round");
   const [expandAll, setExpandAll] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
+  // 20k bootstrap + 20k sign-flip resamples per row: only when the drawer is
+  // open, and only once per detail payload.
+  const pairedTable = useMemo<PairedRow[] | null>(
+    () =>
+      detail && statsOpen
+        ? pairedRows(
+            detail.policies.map((p) => p._id as string),
+            detail.rounds,
+            detail.max_subtask_marks,
+          )
+        : null,
+    [detail, statsOpen],
+  );
   const [datasetInfo, setDatasetInfo] = useState<{
     episodeMap: Map<number, Omit<EpisodeMetadata, "success">>;
     cameraKey: string;
@@ -254,6 +383,39 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
           </div>
         );
       })()}
+
+      {/* Paired-test drawer: per policy pair, the paired per-round delta with
+          a bootstrap CI and the two paired tests the Python pairwise summary
+          reports (exact sign / McNemar, sign-flip permutation). */}
+      <div className="mb-4 -mt-1">
+        <button
+          onClick={() => setStatsOpen((v) => !v)}
+          className="flex items-center gap-1 text-[11px] text-ink-muted hover:text-ink transition-colors cursor-pointer"
+          aria-expanded={statsOpen}
+        >
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={`transition-transform ${statsOpen ? "rotate-90" : ""}`}
+          >
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+          Paired tests
+        </button>
+        {statsOpen && pairedTable && (
+          <PairedStatsTable
+            rows={pairedTable}
+            policyNames={new Map(detail.policies.map((p) => [p._id as string, p.name]))}
+            maxMarks={detail.max_subtask_marks}
+          />
+        )}
+      </div>
 
       {/* Rounds */}
       <div className="flex items-center justify-between gap-3 mb-2">
