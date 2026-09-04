@@ -63,6 +63,51 @@ export function rolloutsByEpisode(payload: Payload): Map<number, Rollout> {
   return new Map(rollouts.map((r) => [Number(r.episode_index), r]));
 }
 
+/**
+ * live_subtask_frames_from_results: per-episode LIVE (eval-time) subtask marks
+ * from a results.json payload. rollout_episode records the operator's live 'g'
+ * press as `subtask_frames` on the rollout row and finalize_episode_data writes
+ * the same reward=1.0 / done=0 spike apply writes, so an episode nobody has
+ * reviewed yet legitimately carries a mid-episode spike. Older results files
+ * have no key (no live marks).
+ */
+export function liveSubtaskFramesByEpisode(payload: Payload | null): Map<number, number[]> {
+  const out = new Map<number, number[]>();
+  if (payload === null) return out;
+  for (const [ep, rollout] of rolloutsByEpisode(payload)) {
+    const frames = (rollout.subtask_frames as unknown[] | undefined) ?? [];
+    if (frames.length > 0) {
+      out.set(ep, [...new Set(frames.map((f) => Number(f)))].sort((a, b) => a - b));
+    }
+  }
+  return out;
+}
+
+/**
+ * subtask_frames_for_validation: subtask frames the frame validator must
+ * tolerate, per episode — live eval-time marks overridden per episode by the
+ * review record. A reviewed episode (present in changed_episodes) is
+ * authoritative even with no marks: apply zeroed its pre-outcome reward and
+ * wrote exactly the recorded spikes. An UNREVIEWED episode keeps the live spike.
+ * Without the live fallback a partial review of an in-progress eval could never
+ * apply (2026-09-03 routing_d1 R8 umirel, 20 of 50 rounds reviewed).
+ */
+export function subtaskFramesForValidation(
+  progress: ProgressRecord,
+  payload: Payload | null
+): Map<number, number[]> {
+  const out = liveSubtaskFramesByEpisode(payload);
+  for (const [epStr, entry] of Object.entries(progress.changed_episodes)) {
+    const epIdx = parseInt(epStr, 10);
+    const frames = [...new Set((entry.subtask_frames ?? []).map((f) => Number(f)))].sort(
+      (a, b) => a - b
+    );
+    if (frames.length > 0) out.set(epIdx, frames);
+    else out.delete(epIdx);
+  }
+  return out;
+}
+
 export function recomputeSummaryFromRollouts(payload: Payload): void {
   validateSummaryPolicyIds(payload);
   const rollouts = payload.rollouts as Rollout[];

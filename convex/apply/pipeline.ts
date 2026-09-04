@@ -53,7 +53,10 @@ import {
 } from "./labelHistory";
 import type { LabelSource } from "./labelHistory";
 import { DEFAULT_LEDGER_NAMES, repairLedger } from "./ledgers";
-import { canonicalizeResultsTexts } from "./results";
+import {
+  canonicalizeResultsTexts,
+  subtaskFramesForValidation,
+} from "./results";
 import { dumpsIndent4 } from "./pyjson";
 import type { Json } from "./pyjson";
 
@@ -307,16 +310,16 @@ export async function headlessApply(args: {
   mergeOverlayIntoProgress(progress, overlay);
   changedFiles.set(PROGRESS_FILENAME, serializeProgress(progress));
 
-  const subtaskByEp = new Map<number, number[]>();
-  for (const [epStr, entry] of Object.entries(progress.changed_episodes)) {
-    const frames = entry.subtask_frames ?? [];
-    if (frames.length > 0) {
-      subtaskByEp.set(
-        parseInt(epStr, 10),
-        [...new Set(frames.map(asInt))].sort((a, b) => a - b)
-      );
-    }
-  }
+  // Subtask frames the validator tolerates: live eval-time marks from
+  // results.json (unreviewed episodes still carry their live spike), overridden
+  // per episode by the merged progress record.
+  const resultsText = store.paths.includes(RESULTS_FILENAME)
+    ? await fetchText(store, RESULTS_FILENAME)
+    : null;
+  const subtaskByEp = subtaskFramesForValidation(
+    progress,
+    resultsText === null ? null : (JSON.parse(resultsText) as Record<string, unknown>)
+  );
 
   // --- Apply edits + refresh stats + repair ledgers.
   const changedEpisodes = new Set(Object.keys(progress.changed_episodes).map((s) => parseInt(s, 10)));
@@ -363,13 +366,13 @@ export async function headlessApply(args: {
   }
 
   // --- Canonicalize root results.json against the post-edit frame data.
-  if (store.paths.includes(RESULTS_FILENAME)) {
+  if (resultsText !== null) {
     const frameOutcomes = new Map<number, FrameOutcome>();
     for (const [epIdx, ep] of episodes) {
       frameOutcomes.set(epIdx, detectFrameOutcome(ep, subtaskByEp.get(epIdx) ?? []));
     }
     const canonical = canonicalizeResultsTexts({
-      resultsText: await fetchText(store, RESULTS_FILENAME),
+      resultsText,
       progressRecord: changedEpisodes.size > 0 ? progress : null,
       existingBackupText: await fetchOptionalText(store, RESULTS_BACKUP_FILENAME),
       overridesFilename: PROGRESS_FILENAME,
