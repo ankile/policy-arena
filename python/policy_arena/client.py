@@ -9,6 +9,16 @@ from urllib.request import Request, urlopen
 from convex import ConvexClient, ConvexInt64, convex_to_json, json_to_convex
 
 from policy_arena.types import DatasetInput, PolicyInput, RoundInput, RoundResultInput
+from policy_arena.prediction_hashes import (
+    CONTENT_PROTOCOL,
+    MAX_BATCH_BYTES,
+    canonical_bytes,
+    canonical_digest,
+    episode_index_value,
+    manifest_digest,
+    prediction_digest,
+    prediction_payload,
+)
 
 DEFAULT_API_KEY_PATH = "~/.config/sir/policy_arena_api_key"
 
@@ -46,7 +56,9 @@ def _normalize_convex_json_numbers(value):
     if isinstance(value, list):
         return [_normalize_convex_json_numbers(item) for item in value]
     if isinstance(value, dict):
-        return {key: _normalize_convex_json_numbers(item) for key, item in value.items()}
+        return {
+            key: _normalize_convex_json_numbers(item) for key, item in value.items()
+        }
     return value
 
 
@@ -209,7 +221,9 @@ class PolicyArenaClient:
 
     def set_session_operator(self, session_id: str, operator: str) -> str:
         """Set the operator (HF username, from the operators registry) on a session."""
-        return self._mutation("evalSessions:setOperator", {"id": session_id, "operator": operator})
+        return self._mutation(
+            "evalSessions:setOperator", {"id": session_id, "operator": operator}
+        )
 
     def add_operator(self, hf_username: str) -> str:
         """Register an eval operator (HF username) in the arena's operators registry."""
@@ -258,7 +272,9 @@ class PolicyArenaClient:
             idempotency_key=idempotency_key,
         )
 
-    def get_pair_counts(self, environment: str | None = None) -> dict[str, dict[str, int]]:
+    def get_pair_counts(
+        self, environment: str | None = None
+    ) -> dict[str, dict[str, int]]:
         """Get pairwise co-occurrence counts across all arena sessions.
 
         Returns ``{model_id_a: {model_id_b: count, ...}, ...}`` where count
@@ -295,15 +311,16 @@ class PolicyArenaClient:
             for c in remaining:
                 mid = c["model_id"]
                 total = sum(
-                    pair_counts.get(mid, {}).get(sel, 0)
-                    for sel in selected_model_ids
+                    pair_counts.get(mid, {}).get(sel, 0) for sel in selected_model_ids
                 )
                 weights.append(1.0 / (1.0 + total))
 
             # Debug: show weights for first pick (or all if small pool)
             if pick_num == 0 or len(remaining) <= 6:
-                print(f"  [diverse_sample] pick {pick_num + 1}/{k}, "
-                      f"pool={len(remaining)} candidates:")
+                print(
+                    f"  [diverse_sample] pick {pick_num + 1}/{k}, "
+                    f"pool={len(remaining)} candidates:"
+                )
                 for c, w in zip(remaining, weights):
                     print(f"    {c['model_id'].split('/')[-1]}: weight={w:.3f}")
 
@@ -352,7 +369,10 @@ class PolicyArenaClient:
 
         if pair_counts is not None:
             return self._diverse_sample(
-                candidates, num_opponents, pair_counts, seed_model_ids,
+                candidates,
+                num_opponents,
+                pair_counts,
+                seed_model_ids,
             )
 
         return random.sample(candidates, num_opponents)
@@ -382,9 +402,7 @@ class PolicyArenaClient:
 
     def delete_session(self, session_id: str) -> dict:
         """Delete an eval session and recompute ELO for all policies."""
-        return self._mutation(
-            "evalSessions:deleteSession", {"id": session_id}
-        )
+        return self._mutation("evalSessions:deleteSession", {"id": session_id})
 
     def remove_policy_from_session(self, session_id: str, model_id: str) -> dict:
         """Remove a policy from an eval session and recompute ELO."""
@@ -453,9 +471,7 @@ class PolicyArenaClient:
             datasets = [d for d in datasets if d.get("dataset_role") in dataset_roles]
         return datasets
 
-    def update_dataset_task(
-        self, repo_id: str, task: str, environment: str
-    ) -> str:
+    def update_dataset_task(self, repo_id: str, task: str, environment: str) -> str:
         """Re-categorize a dataset to a different task/environment."""
         return self._mutation(
             "datasets:updateTask",
@@ -631,28 +647,12 @@ class PolicyArenaClient:
     def push_stage_prefills(
         self, rows: list[dict], *, source: str, chunk_size: int = 50
     ) -> dict:
-        """Push labeling-pipeline predictions as review prefills (service-only).
-
-        Each row must carry task / dataset_repo / episode_index /
-        taxonomy_version / label / pipeline / evidence (see
-        ``stagePrefills.upsertBatch``). ``episode_index`` is wrapped to int64
-        here; everything else is sent as-is (numbers arrive as float64, which
-        the UI and the gold exporter both handle).
-        """
-        if not rows:
-            raise ValueError("push_stage_prefills called with zero rows")
-        totals = {"inserted": 0, "replaced": 0}
-        for start in range(0, len(rows), chunk_size):
-            chunk = [
-                {**row, "episode_index": ConvexInt64(int(row["episode_index"]))}
-                for row in rows[start : start + chunk_size]
-            ]
-            result = self._mutation(
-                "stagePrefills:upsertBatch", {"rows": chunk, "source": source}
-            )
-            totals["inserted"] += int(result["inserted"])
-            totals["replaced"] += int(result["replaced"])
-        return totals
+        """Legacy prediction writes are frozen to preserve existing evidence."""
+        raise RuntimeError(
+            "Legacy stage prefills are immutable. Use upload_stage_prediction_run "
+            "to append a new prediction version; activate_stage_prediction_run "
+            "selects it separately."
+        )
 
     def prune_stale_stage_prefills(
         self,
@@ -662,21 +662,11 @@ class PolicyArenaClient:
         keep_episode_indices: list[int],
         task: str | None = None,
     ) -> int:
-        """Delete prefills for episodes NOT in this push (wholesale-replace tail).
-
-        Pass ``task`` so a repo hypothetically holding two tasks' prefills under
-        one shared taxonomy string ("s7_v1" is shared by four lines) can never
-        have the other task's rows deleted.
-        """
-        args: dict = {
-            "dataset_repo": dataset_repo,
-            "taxonomy_version": taxonomy_version,
-            "keep_episode_indices": [ConvexInt64(int(e)) for e in keep_episode_indices],
-        }
-        if task is not None:
-            args["task"] = task
-        result = self._mutation("stagePrefills:pruneStale", args)
-        return int(result["pruned"])
+        """Legacy prediction deletion is disabled to preserve history."""
+        raise RuntimeError(
+            "Legacy stage prefills are immutable and cannot be pruned. "
+            "Use upload_stage_prediction_run for a new version."
+        )
 
     def fetch_stage_prefills(
         self, dataset_repo: str, *, taxonomy_version: str | None = None
@@ -687,6 +677,263 @@ class PolicyArenaClient:
         if taxonomy_version is not None:
             args["taxonomy_version"] = taxonomy_version
         return self.client.query("stagePrefills:forRepo", args)
+
+    def begin_stage_prediction_run(
+        self,
+        *,
+        run_key: str,
+        dataset_repo: str,
+        task: str,
+        taxonomy_version: str,
+        taxonomy_hash: str,
+        pipeline: dict,
+        expected_count: int,
+        manifest_sha256: str,
+        source: str,
+        provenance,
+    ) -> str:
+        """Create or resume an immutable dataset-scoped run. Conflicts fail."""
+        if type(expected_count) is not int or not 1 <= expected_count <= 10000:
+            raise ValueError("expected_count must be an integer between 1 and 10000")
+        args = {
+            "run_key": run_key,
+            "dataset_repo": dataset_repo,
+            "task": task,
+            "taxonomy_version": taxonomy_version,
+            "taxonomy_hash": taxonomy_hash,
+            "pipeline": pipeline,
+            "expected_count": expected_count,
+            "manifest_sha256": manifest_sha256,
+            "source": source,
+            "provenance": provenance,
+        }
+        canonical_digest(args)  # Reject non-JSON and lossy integers before a write.
+        return self._mutation("stagePredictions:begin", args)
+
+    def append_stage_predictions(self, run_id: str, rows: list[dict]) -> dict:
+        """Append at most 50 rows; identical rows are no-ops, changes fail."""
+        if not 1 <= len(rows) <= 50:
+            raise ValueError("append_stage_predictions requires 1 to 50 rows")
+        payloads = [prediction_payload(row) for row in rows]
+        manifest_digest(payloads)  # Reject duplicate episode identities.
+        if (
+            sum(
+                len(
+                    canonical_bytes({**row, "episode_index": str(row["episode_index"])})
+                )
+                for row in payloads
+            )
+            > MAX_BATCH_BYTES
+        ):
+            raise ValueError("Prediction batch exceeds 1 MiB; reduce batch size")
+        return self._mutation(
+            "stagePredictions:appendBatch",
+            {
+                "run_id": run_id,
+                "rows": [
+                    {**row, "episode_index": ConvexInt64(row["episode_index"])}
+                    for row in payloads
+                ],
+            },
+        )
+
+    def publish_stage_prediction_run(self, run_id: str) -> str:
+        """Seal a run after the server verifies its count and manifest hash."""
+        return self._mutation("stagePredictions:publish", {"run_id": run_id})
+
+    def activate_stage_prediction_run(
+        self, run_id: str, *, expected_active_run_id: str | None
+    ) -> str:
+        """Select a published run using compare-and-swap, recording an audit row.
+
+        Obtain ``expected_active_run_id`` from ``list_stage_prediction_runs``.
+        A concurrent selection change fails; it is never silently overwritten.
+        """
+        return self._mutation(
+            "stagePredictions:activate",
+            {"run_id": run_id, "expected_active_run_id": expected_active_run_id},
+        )
+
+    def get_stage_prediction_run(self, run_id: str) -> dict | None:
+        return self.client.query("stagePredictions:getRun", {"run_id": run_id})
+
+    def fetch_stage_prediction(self, prediction_id: str) -> dict | None:
+        """Retrieve the exact immutable row referenced by a saved review."""
+        return self.client.query(
+            "stagePredictions:getPrediction", {"prediction_id": prediction_id}
+        )
+
+    def restore_legacy_stage_predictions(
+        self, dataset_repo: str, *, taxonomy_version: str, expected_active_run_id: str
+    ) -> None:
+        """Restore the preserved legacy selection with compare-and-swap."""
+        if not isinstance(expected_active_run_id, str) or not expected_active_run_id:
+            raise ValueError("Restoring legacy requires the current active run ID")
+        return self._mutation(
+            "stagePredictions:restoreLegacy",
+            {
+                "dataset_repo": dataset_repo,
+                "taxonomy_version": taxonomy_version,
+                "expected_active_run_id": expected_active_run_id,
+            },
+        )
+
+    def list_stage_prediction_runs(
+        self, dataset_repo: str, *, taxonomy_version: str
+    ) -> dict:
+        """Published runs, active_run_id, and the preserved legacy row count."""
+        return self.client.query(
+            "stagePredictions:listForRepo",
+            {"dataset_repo": dataset_repo, "taxonomy_version": taxonomy_version},
+        )
+
+    def fetch_stage_predictions(
+        self, run_id: str, *, page_size: int = 50
+    ) -> list[dict]:
+        """Read every page of one explicit run, including a staging run for audit."""
+        return self._fetch_stage_prediction_pages(
+            "stagePredictions:forRun", {"run_id": run_id}, page_size
+        )
+
+    def fetch_stage_prediction_selection_history(
+        self, dataset_repo: str, *, taxonomy_version: str, page_size: int = 50
+    ) -> list[dict]:
+        """Read the complete selection audit trail for a dataset and taxonomy."""
+        return self._fetch_stage_prediction_pages(
+            "stagePredictions:selectionHistory",
+            {"dataset_repo": dataset_repo, "taxonomy_version": taxonomy_version},
+            page_size,
+        )
+
+    def _fetch_stage_prediction_pages(
+        self, query_name: str, args: dict, page_size: int
+    ) -> list[dict]:
+        if type(page_size) is not int or not 1 <= page_size <= 50:
+            raise ValueError("page_size must be an integer between 1 and 50")
+        rows: list[dict] = []
+        cursor = None
+        seen_cursors = set()
+        while True:
+            result = self.client.query(
+                query_name,
+                {
+                    **args,
+                    "paginationOpts": {"numItems": page_size, "cursor": cursor},
+                },
+            )
+            rows.extend(result["page"])
+            if result["isDone"]:
+                return rows
+            cursor = result["continueCursor"]
+            if not isinstance(cursor, str) or not cursor or cursor in seen_cursors:
+                raise RuntimeError("Stage prediction pagination did not advance")
+            seen_cursors.add(cursor)
+
+    def stage_prediction_history(
+        self, dataset_repo: str, episode_index: int, *, taxonomy_version: str
+    ) -> dict:
+        return self.client.query(
+            "stagePredictions:historyForEpisode",
+            {
+                "dataset_repo": dataset_repo,
+                "episode_index": ConvexInt64(episode_index_value(episode_index)),
+                "taxonomy_version": taxonomy_version,
+            },
+        )
+
+    def upload_stage_prediction_run(
+        self,
+        rows: list[dict],
+        *,
+        run_key: str,
+        dataset_repo: str,
+        task: str,
+        taxonomy_version: str,
+        taxonomy_hash: str,
+        pipeline: dict,
+        source: str,
+        provenance,
+        chunk_size: int = 50,
+    ) -> str:
+        """Validate, resume, verify stored bytes, and publish. Never activates.
+
+        All source rows are validated before the first write. Interrupted uploads
+        can be retried with the exact same inputs and run_key. Failed read-back
+        verification leaves an uploading run unpublished for inspection.
+        """
+        if type(chunk_size) is not int or not 1 <= chunk_size <= 50:
+            raise ValueError("chunk_size must be an integer between 1 and 50")
+        if not 1 <= len(rows) <= 10000:
+            raise ValueError("An upload requires 1 to 10000 prediction rows")
+        payloads = [prediction_payload(row) for row in rows]
+        expected_manifest = manifest_digest(payloads)
+        metadata = {
+            "run_key": run_key,
+            "dataset_repo": dataset_repo,
+            "task": task,
+            "taxonomy_version": taxonomy_version,
+            "taxonomy_hash": taxonomy_hash,
+            "pipeline": pipeline,
+            "expected_count": len(payloads),
+            "manifest_sha256": expected_manifest,
+            "source": source,
+            "provenance": provenance,
+        }
+        run_id = self.begin_stage_prediction_run(**metadata)
+        batch: list[dict] = []
+        batch_bytes = 0
+        for payload in payloads:
+            row_bytes = len(
+                canonical_bytes(
+                    {**payload, "episode_index": str(payload["episode_index"])}
+                )
+            )
+            if batch and (
+                len(batch) == chunk_size or batch_bytes + row_bytes > MAX_BATCH_BYTES
+            ):
+                self.append_stage_predictions(run_id, batch)
+                batch = []
+                batch_bytes = 0
+            batch.append(payload)
+            batch_bytes += row_bytes
+        if batch:
+            self.append_stage_predictions(run_id, batch)
+        run = self.get_stage_prediction_run(run_id)
+        if run is None:
+            raise RuntimeError("Stage prediction run is missing during verification")
+        if run["content_protocol"] != CONTENT_PROTOCOL:
+            raise RuntimeError(
+                "Stage prediction run uses an unsupported content protocol"
+            )
+        if canonical_digest({key: run[key] for key in metadata}) != canonical_digest(
+            metadata
+        ):
+            raise RuntimeError(
+                "Stage prediction run metadata failed read-back verification"
+            )
+        stored = self.fetch_stage_predictions(run_id)
+        if len(stored) != len(payloads):
+            raise RuntimeError(
+                "Stage prediction row count failed read-back verification"
+            )
+        for row in stored:
+            if row["run_id"] != run_id:
+                raise RuntimeError(
+                    "Stage prediction read-back returned a different run"
+                )
+            if prediction_digest(row, stored=True) != row["content_sha256"]:
+                raise RuntimeError(
+                    "Stage prediction content SHA failed read-back verification"
+                )
+        if manifest_digest(stored, stored=True) != expected_manifest:
+            raise RuntimeError(
+                "Stage prediction manifest failed read-back verification"
+            )
+        self.publish_stage_prediction_run(run_id)
+        published = self.get_stage_prediction_run(run_id)
+        if published is None or published["status"] != "published":
+            raise RuntimeError("Stage prediction run did not publish")
+        return run_id
 
     def save_stage_review(
         self,
@@ -701,6 +948,11 @@ class PolicyArenaClient:
         episode_duration_s: float | None = None,
         reviewer_override: str | None = None,
         saved_at_override: float | None = None,
+        prediction_id: str | None = None,
+        prediction_sha256: str | None = None,
+        legacy_prefill_id: str | None = None,
+        copied_from_review_id: str | None = None,
+        prefill_pushed_at: float | None = None,
     ) -> str:
         """Record a stage review (service path — parity replays and backfills)."""
         args: dict = {
@@ -720,6 +972,23 @@ class PolicyArenaClient:
             args["reviewer_override"] = reviewer_override
         if saved_at_override is not None:
             args["saved_at_override"] = float(saved_at_override)
+        if (prediction_id is None) != (prediction_sha256 is None):
+            raise ValueError(
+                "prediction_id and prediction_sha256 must be supplied together"
+            )
+        if prediction_id is not None and legacy_prefill_id is not None:
+            raise ValueError(
+                "A review cannot reference both versioned and legacy predictions"
+            )
+        if prediction_id is not None:
+            args["prediction_id"] = prediction_id
+            args["prediction_sha256"] = prediction_sha256
+        if legacy_prefill_id is not None:
+            args["legacy_prefill_id"] = legacy_prefill_id
+        if copied_from_review_id is not None:
+            args["copied_from_review_id"] = copied_from_review_id
+        if prefill_pushed_at is not None:
+            args["prefill_pushed_at"] = float(prefill_pushed_at)
         return self._mutation("stageReviews:save", args)
 
     def fetch_stage_reviews(
@@ -765,7 +1034,9 @@ class PolicyArenaClient:
             {"dataset_repo": dataset_repo, "corrections": normalized},
         )
 
-    def set_session_subtask_marks(self, dataset_repo: str, marks: dict[int, int]) -> dict:
+    def set_session_subtask_marks(
+        self, dataset_repo: str, marks: dict[int, int]
+    ) -> dict:
         """Backfill per-round sub-goal mark counts on the session registered for a dataset.
 
         ``marks`` maps EVERY episode of the session to its count; the mutation

@@ -82,12 +82,34 @@ export const forTask = query({
       args.includeAll === true ||
       (statusByRepo.get(repo) ?? effectiveStatus(undefined, args.task, taskStatuses)) ===
         "mainline";
-    const prefills = (
+    const legacyPrefills = (
       await ctx.db
         .query("stagePrefills")
         .withIndex("by_task", (q) => q.eq("task", args.task))
         .collect()
     ).filter((p) => p.taxonomy_version === tax && repoVisible(p.dataset_repo));
+    const selections = (await ctx.db.query("stagePredictionSelections")
+      .withIndex("by_task", (q) => q.eq("task", args.task)).collect())
+      .filter((s) => s.taxonomy_version === tax && s.run_id !== null && repoVisible(s.dataset_repo));
+    const selectedRepos = new Set(selections.map((s) => s.dataset_repo));
+    type CoveragePrediction = {
+      dataset_repo: string; episode_index: bigint; label: Record<string, unknown>;
+      violation_codes?: string[]; pipeline: { name: string; version: string; git_commit: string };
+      evidence: unknown;
+    };
+    const prefills: CoveragePrediction[] = legacyPrefills.filter((p) => !selectedRepos.has(p.dataset_repo));
+    for (const selected of selections) {
+      const run = await ctx.db.get(selected.run_id!);
+      if (!run || run.status !== "published") throw new Error("coverage selection references an unpublished or missing run");
+      const members = await ctx.db.query("stagePredictionMembers")
+        .withIndex("by_run_episode", (q) => q.eq("run_id", run._id)).collect();
+      for (const member of members) prefills.push({
+        dataset_repo: run.dataset_repo, episode_index: member.episode_index,
+        label: member.stage === undefined ? {} : { [stageField]: member.stage },
+        violation_codes: member.flagged ? ["review_required"] : [],
+        pipeline: run.pipeline, evidence: { model: run.provenance?.model ?? "unknown" },
+      });
+    }
     const reviews = (
       await ctx.db
         .query("stageReviews")

@@ -96,6 +96,26 @@ const operationsByScope = {
       mutationName: getFunctionName(api.stageTaskSpecs.upsert),
     },
     {
+      operation: "stagePredictions/begin",
+      mutationName: getFunctionName(api.stagePredictions.begin),
+    },
+    {
+      operation: "stagePredictions/appendBatch",
+      mutationName: getFunctionName(api.stagePredictions.appendBatch),
+    },
+    {
+      operation: "stagePredictions/publish",
+      mutationName: getFunctionName(api.stagePredictions.publish),
+    },
+    {
+      operation: "stagePredictions/activate",
+      mutationName: getFunctionName(api.stagePredictions.activate),
+    },
+    {
+      operation: "stagePredictions/restoreLegacy",
+      mutationName: getFunctionName(api.stagePredictions.restoreLegacy),
+    },
+    {
       operation: "stagePrefills/upsertBatch",
       mutationName: getFunctionName(api.stagePrefills.upsertBatch),
     },

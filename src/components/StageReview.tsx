@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 import {
   validateStageLabel,
   type ExportedStageSpec,
@@ -8,11 +8,6 @@ import {
 } from "../../convex/stageConsistency";
 import {
   explorerCameraKeys,
-  fetchAppliedProgress,
-  fetchEpisodeFrameSignals,
-  fetchLabelHistory,
-  fetchLedgerArms,
-  fetchReviewEpisodes,
   selectPrimaryCameraKey,
   type AppliedProgress,
   type EpisodeFrameSignals,
@@ -20,7 +15,16 @@ import {
   type ReviewEpisode,
 } from "../lib/hf-api";
 import { normalizeStageSpec } from "../lib/stage-spec";
-import { useSearchParam, useSearchParamNumber } from "../lib/useSearchParam";
+import {
+  attributionDescription,
+  resolvePredictionSelection,
+  seedStageReview,
+  stageDisplay,
+  type PredictionAttribution,
+} from "../lib/stagePredictionReview";
+import { useStageReviewDraft } from "../lib/useStageReviewDraft";
+import { stageReviewDataSource, type StageReviewDataSource } from "../lib/stageReviewDataSource";
+import { useSearchParam, useSearchParamNumber, useSearchParamNavigationGuard } from "../lib/useSearchParam";
 import { EvidencePanel, type StagePrefillView } from "./review/EvidencePanel";
 import { HelpOverlay } from "./review/HelpOverlay";
 import { LabelHistoryPanel } from "./review/LabelHistoryPanel";
@@ -38,8 +42,8 @@ import { isTypingTarget, useWindowKeydown } from "./review/useWindowKeydown";
 // ---------------------------------------------------------------------------
 // Stage-label review (Phase 2). Web successor to the cv2 CorrectionUIServer:
 // per (episode, taxonomy_version) the surface shows the CURRENT label — the
-// reviewer's own committed row if one exists, else the labeling pipeline's
-// most recent prediction (stagePrefills) — and captures verdicts into the
+// reviewer's own saved row if one exists, else a pinned immutable prediction
+// version or a frozen legacy prefill. Verdicts capture their source in the
 // append-only stageReviews table. The form, its instant consistency feedback,
 // and the fps math are all driven by the EXPORTED spec (stageTaskSpecs); no
 // task names or field names appear below.
@@ -52,12 +56,14 @@ import { isTypingTarget, useWindowKeydown } from "./review/useWindowKeydown";
 type StatusFilter = "unreviewed" | "draft" | "confirmed" | "corrected" | "uncertain" | "all";
 
 interface StageReviewRecord {
+  id: Id<"stageReviews">;
   episodeIndex: number;
   status: string;
   label: StageLabelRow | null;
   reviewer: string;
   savedAt: number;
   blind: boolean;
+  attribution: PredictionAttribution;
 }
 
 const STATUS_GLYPH: Record<string, string> = {
@@ -111,20 +117,24 @@ export default function StageReview({
   task,
   onExit,
   onOpenOutcomeReview,
+  dataSource = stageReviewDataSource,
 }: {
   repoId: string;
   task?: string;
   onExit: () => void;
   /** Jump to outcome review for this dataset (episode param carries over). */
   onOpenOutcomeReview: () => void;
+  dataSource?: StageReviewDataSource;
 }) {
+  const { useQuery, useMutation, usePaginatedQuery, fetchAppliedProgress,
+    fetchEpisodeFrameSignals, fetchLabelHistory, fetchLedgerArms, fetchReviewEpisodes } = dataSource;
   const viewer = useQuery(api.users.viewer);
   const specRows = useQuery(api.stageTaskSpecs.forTask, task ? { task } : "skip");
   const taskSpec = useQuery(api.taskSpecs.forTask, task ? { task } : "skip");
   const saveReview = useMutation(api.stageReviews.save);
   // Stage labeling is gated on the outcome-editor flow: every episode must
-  // carry an outcome decision (web review, or the applied HF record) BEFORE it
-  // may be stage-labeled — and a successful outcome seeds the stage prefill.
+  // carry an outcome decision (web review, or the applied HF record) before it
+  // may be stage-labeled. Only legacy forms inherit successful outcomes.
   const outcomeReviews = useQuery(api.reviews.latestForRepo, { dataset_repo: repoId });
 
   // -- Taxonomy (schema) selection: live by default, candidates addressable --
@@ -157,10 +167,51 @@ export default function StageReview({
     api.stageReviews.latestForRepo,
     taxonomyVersion ? { dataset_repo: repoId, taxonomy_version: taxonomyVersion } : "skip"
   );
-  const prefillRows = useQuery(
+  const [predictionParam, setPredictionParam] = useSearchParam("prediction", "");
+  const legacyPrefillRows = useQuery(
     api.stagePrefills.forRepo,
+    taxonomyVersion && predictionParam === "legacy"
+      ? { dataset_repo: repoId, taxonomy_version: taxonomyVersion } : "skip"
+  );
+
+  const predictionVersions = useQuery(
+    api.stagePredictions.listForRepo,
     taxonomyVersion ? { dataset_repo: repoId, taxonomy_version: taxonomyVersion } : "skip"
   );
+  // Capture the default once by writing its concrete identity into the URL.
+  // A publication in another session must not switch an in-progress form.
+  useEffect(() => {
+    if (predictionParam || predictionVersions === undefined) return;
+    setPredictionParam(predictionVersions.active_run_id ?? "legacy");
+  }, [predictionParam, predictionVersions, setPredictionParam]);
+  const predictionSelection = predictionVersions !== undefined && predictionParam
+    ? resolvePredictionSelection(predictionParam, predictionVersions.runs)
+    : null;
+  const selectedRun = predictionVersions?.runs.find((run) => run._id === predictionParam);
+  const predictionPages = usePaginatedQuery(
+    api.stagePredictions.forRun,
+    predictionSelection?.runId ? { run_id: predictionSelection.runId } : "skip",
+    { initialNumItems: 50 }
+  );
+  const { status: predictionPageStatus, loadMore: loadMorePredictions } = predictionPages;
+  useEffect(() => {
+    if (predictionSelection?.runId && predictionPageStatus === "CanLoadMore") {
+      loadMorePredictions(50);
+    }
+  }, [predictionSelection?.runId, predictionPageStatus, loadMorePredictions]);
+  const prefillRows = predictionParam === "legacy"
+    ? legacyPrefillRows
+    : predictionSelection?.runId && predictionPages.status === "Exhausted"
+      ? predictionPages.results
+      : undefined;
+  const predictionError = predictionSelection?.error ?? (
+    selectedRun && predictionPages.status === "Exhausted" &&
+    predictionPages.results.length !== selectedRun.expected_count
+      ? `Prediction version ${selectedRun._id} has ${predictionPages.results.length} episodes; its published manifest requires ${selectedRun.expected_count}.`
+      : null
+  );
+  const predictionsReady = predictionSelection !== null &&
+    predictionError === null && prefillRows !== undefined;
 
   // -- Blind mode (default ON): policy/arm identity hidden AND unfetched -----
   const [blindParam, setBlindParam] = useSearchParam("blind", "1");
@@ -199,7 +250,7 @@ export default function StageReview({
     return () => {
       cancelled = true;
     };
-  }, [repoId]);
+  }, [repoId, fetchReviewEpisodes]);
 
   useEffect(() => {
     let cancelled = false;
@@ -217,7 +268,7 @@ export default function StageReview({
     return () => {
       cancelled = true;
     };
-  }, [repoId]);
+  }, [repoId, fetchLabelHistory]);
 
   useEffect(() => {
     let cancelled = false;
@@ -236,7 +287,7 @@ export default function StageReview({
     return () => {
       cancelled = true;
     };
-  }, [repoId, blind]);
+  }, [repoId, blind, fetchLedgerArms]);
 
   // -- Outcome gate: the applied HF outcome-edit record (cv2-era + worker
   // applies) complements the web outcome-review ledger. Tri-state like
@@ -261,7 +312,7 @@ export default function StageReview({
     return () => {
       cancelled = true;
     };
-  }, [repoId]);
+  }, [repoId, fetchAppliedProgress]);
 
   // Frame signals, fetched lazily for the SELECTED episode only — needed to
   // resolve the outcome of a keep-as-is (skip) decision, whose recorded
@@ -317,16 +368,37 @@ export default function StageReview({
   const prefillByEpisode = useMemo(() => {
     const map = new Map<number, StagePrefillView>();
     for (const row of prefillRows ?? []) {
+      const violationCodes = [...new Set([
+        ...(row.violation_codes ?? []),
+        ...("validation_codes" in row ? row.validation_codes : []),
+      ])];
+      const reasons = [...new Set([
+        ...(row.review_reason ?? "").split(";").map((reason) => reason.trim()).filter(Boolean),
+        ...violationCodes.map((code) => `consistency:${code}`),
+      ])];
       map.set(Number(row.episode_index), {
         label: row.label as Record<string, unknown>,
-        reviewReason: row.review_reason ?? null,
-        violationCodes: row.violation_codes ?? [],
-        confidence: row.confidence ?? null,
+        reviewReason: reasons.length ? reasons.join(";") : null,
+        violationCodes,
+        confidence: row.confidence == null ? null
+          : Object.hasOwn(CONFIDENCE_DOT, row.confidence) ? row.confidence : "invalid",
         voteSummary: (row.vote_summary as Record<string, unknown> | undefined) ?? null,
         episodeDurationS: row.episode_duration_s ?? null,
         pipeline: row.pipeline,
         evidence: row.evidence as Record<string, unknown>,
         pushedAt: row.pushed_at,
+        attribution: "run_id" in row
+          ? {
+              prediction_id: row._id,
+              prediction_sha256: row.content_sha256,
+              episode_duration_s: row.episode_duration_s,
+            }
+          : {
+              legacy_prefill_id: row._id,
+              prefill_pushed_at: row.pushed_at,
+              episode_duration_s: row.episode_duration_s,
+            },
+        canonicalResponse: "canonical_response" in row ? row.canonical_response : undefined,
       });
     }
     return map;
@@ -336,17 +408,26 @@ export default function StageReview({
   // labeling means another reviewer's decision must never leak into the form.
   const ownReviewByEpisode = useMemo(() => {
     const map = new Map<number, StageReviewRecord>();
-    const username = viewer?.username;
-    if (!username) return map;
+    const userId = viewer?.userId;
+    if (!userId) return map;
     for (const row of reviews?.episodes ?? []) {
-      if (row.reviewer !== username) continue;
+      if (row.reviewer_user_id !== userId) continue;
       map.set(Number(row.episode_index), {
+        id: row._id,
         episodeIndex: Number(row.episode_index),
         status: row.status,
         label: (row.label as StageLabelRow | undefined) ?? null,
         reviewer: row.reviewer,
         savedAt: row.saved_at,
         blind: row.blind ?? false,
+        attribution: {
+          copied_from_review_id: row.copied_from_review_id,
+          prediction_id: row.prediction_id,
+          prediction_sha256: row.prediction_sha256,
+          legacy_prefill_id: row.legacy_prefill_id,
+          prefill_pushed_at: row.prefill_pushed_at,
+          episode_duration_s: row.episode_duration_s,
+        },
       });
     }
     return map;
@@ -357,19 +438,28 @@ export default function StageReview({
   // off; the adjudicator deliberately unblinds to their progress + notes).
   const otherReviewsByEpisode = useMemo(() => {
     const map = new Map<number, StageReviewRecord[]>();
-    const username = viewer?.username;
+    const userId = viewer?.userId;
     for (const row of reviews?.episodes ?? []) {
-      if (username && row.reviewer === username) continue;
+      if (userId && row.reviewer_user_id === userId) continue;
       const ep = Number(row.episode_index);
       map.set(ep, [
         ...(map.get(ep) ?? []),
         {
+          id: row._id,
           episodeIndex: ep,
           status: row.status,
           label: (row.label as StageLabelRow | undefined) ?? null,
           reviewer: row.reviewer,
           savedAt: row.saved_at,
           blind: row.blind ?? false,
+          attribution: {
+            copied_from_review_id: row.copied_from_review_id,
+            prediction_id: row.prediction_id,
+            prediction_sha256: row.prediction_sha256,
+            legacy_prefill_id: row.legacy_prefill_id,
+            prefill_pushed_at: row.prefill_pushed_at,
+            episode_duration_s: row.episode_duration_s,
+          },
         },
       ]);
     }
@@ -519,7 +609,7 @@ export default function StageReview({
     return () => {
       cancelled = true;
     };
-  }, [currentEpisode, currentResolvedOutcome, outcomeSignalErrors, repoId]);
+  }, [currentEpisode, currentResolvedOutcome, outcomeSignalErrors, repoId, fetchEpisodeFrameSignals]);
 
   useEffect(() => {
     if (selectedEpisode !== null) return;
@@ -564,129 +654,93 @@ export default function StageReview({
 
 
   // -- Working state ------------------------------------------------------------
-  const [pending, setPending] = useState<StageLabelRow | null>(null);
   const [frame, setFrame] = useState(0);
-  const [dirty, setDirty] = useState(false);
   const [viewerDrift, setViewerDrift] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showEvidence, setShowEvidence] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
-  // Browser cannot verify seek landings (no requestVideoFrameCallback):
-  // committed verdicts are blocked — marks would be unverified gold times.
   const [unverifiable, setUnverifiable] = useState(false);
-  // A failed background draft save must persist (episode-tagged), not be
-  // wiped by the next episode's reset like actionError is.
   const [draftError, setDraftError] = useState<string | null>(null);
-  // What the reviewer was actually SHOWN at prefill time — a mid-session
-  // prefill re-publish must not silently repoint prefill_pushed_at/duration.
-  const [shownPrefill, setShownPrefill] = useState<{
-    pushedAt: number;
-    durationS: number | null;
-  } | null>(null);
-  // The form was seeded from a SUCCESS outcome decision (top rung + success
-  // final state + failure mode none) — surfaced as a chip so the reviewer
-  // knows why those fields arrived pre-set.
-  const [inheritedSuccess, setInheritedSuccess] = useState(false);
+  const saveInFlight = useRef(false);
+  const allowSavedNavigation = useRef(false);
 
-  // The blind flag on saved rows is an attestation about the SESSION, not the
-  // toggle's momentary position: once unblinded, rows stop claiming blind.
+  // Once arm identity has been revealed, saved reviews cannot claim blindness.
   const everUnblindedRef = useRef(false);
   useEffect(() => {
     if (!blind) everUnblindedRef.current = true;
   }, [blind]);
+  const unblind = () => {
+    everUnblindedRef.current = true;
+    setBlindParam("0");
+  };
   const controlsRef = useRef<ViewerControls | null>(null);
-  const prefilledFor = useRef<number | null>(null);
+  const sourceKey = selectedEpisode !== null && taxonomyVersion && predictionParam
+    ? JSON.stringify([repoId, taxonomyVersion, predictionParam, selectedEpisode, viewer?.userId])
+    : null;
+  const seed = useMemo(() => {
+    if (selectedEpisode === null || !spec || !currentEpisode || !predictionsReady ||
+        reviews === undefined || viewer === undefined || !outcomeGateReady) return null;
+    const resolved = resolveOutcome(selectedEpisode);
+    if (resolved === null) return null;
+    if (resolved.source === "detected" && resolved.outcome === null &&
+        !outcomeSignalErrors.has(selectedEpisode)) return null;
+    const own = ownReviewByEpisode.get(selectedEpisode);
+    const prediction = prefillByEpisode.get(selectedEpisode);
+    return seedStageReview({
+      own,
+      prediction,
+      outcome: resolved.outcome,
+      spec,
+      legacy: predictionParam === "legacy",
+    });
+  }, [selectedEpisode, spec, currentEpisode, predictionsReady, reviews, viewer,
+      outcomeGateReady, resolveOutcome, outcomeSignalErrors, ownReviewByEpisode,
+      prefillByEpisode, predictionParam]);
+  const { draft, edit: editDraft, replaceLabel, markSaved, unsavedCount } =
+    useStageReviewDraft(sourceKey, seed);
+  const pending = predictionsReady ? draft?.label ?? null : null;
+  const dirty = draft?.dirty ?? false;
+  const inheritedSuccess = draft?.inheritedSuccess ?? false;
+  const shownAttribution = draft?.attribution;
+  const formDisabled = saving || pending === null || !predictionsReady;
 
-  // Selection/schema change: immediately clear the previous episode's state.
+  useSearchParamNavigationGuard(useCallback((current, next) => {
+    const leavesReview = ["tab", "dataset", "view"].some((key) => current.get(key) !== next.get(key));
+    if (!leavesReview || allowSavedNavigation.current) return true;
+    if (saving || saveInFlight.current) {
+      setDraftError("A stage review is being saved. Stay on this page until the save finishes.");
+      return false;
+    }
+    if (unsavedCount > 0) {
+      setDraftError("Unsaved stage edits are still in this review. Save them before changing tabs or datasets.");
+      return false;
+    }
+    return true;
+  }, [saving, unsavedCount]));
+
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect -- imperative reset of
-       working state on selection change, not derived render state. */
-    setPending(null);
+    /* eslint-disable react-hooks/set-state-in-effect -- reset video controls on source change */
     setFrame(0);
-    setDirty(false);
     setViewerDrift(null);
     setActionError(null);
-    setInheritedSuccess(false);
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [selectedEpisode, taxonomyVersion]);
+    controlsRef.current?.pause();
+  }, [sourceKey]);
 
-  // Prefill precedence: own latest row > pipeline prediction > empty; a
-  // SUCCESS outcome decision then overlays the deterministic triple (top rung,
-  // success final state, failure mode none) — timings stay manual.
-  useEffect(() => {
-    if (selectedEpisode === null || spec === null) return;
-    // Both Convex sources must settle before prefilling (undefined = loading).
-    if (reviews === undefined || prefillRows === undefined || viewer === undefined) return;
-    // The outcome gate must settle too: the prefill depends on the decision.
-    if (!outcomeGateReady) return;
-    const resolved = resolveOutcome(selectedEpisode);
-    if (resolved === null) return; // gated — the notice card renders instead
-    if (
-      resolved.source === "detected" &&
-      resolved.outcome === null &&
-      !outcomeSignalErrors.has(selectedEpisode)
-    ) {
-      return; // keep-as-is decision, signals still loading
-    }
-    if (prefilledFor.current === selectedEpisode && pending !== null) return;
-    prefilledFor.current = selectedEpisode;
-    const own = ownReviewByEpisode.get(selectedEpisode);
-    const prefill = prefillByEpisode.get(selectedEpisode);
-    const loaded = own?.label ? { ...own.label } : prefill ? { ...prefill.label } : {};
-    // Success inheritance: the human outcome decision outranks the pipeline
-    // prediction on the triple, but never the reviewer's own saved row.
-    const inherit = own === undefined && resolved.outcome === "success";
-    if (inherit) {
-      loaded[spec.stage_field] = spec.ladder.success_level;
-      loaded[spec.final_state_field] = spec.success_final_state;
-      loaded[spec.failure_mode_field] = "none";
-    }
-    setPending(loaded);
-    setInheritedSuccess(inherit);
-    setShownPrefill(
-      prefill ? { pushedAt: prefill.pushedAt, durationS: prefill.episodeDurationS } : null
-    );
-    setDirty(false);
-    setActionError(null);
-  }, [
-    selectedEpisode,
-    spec,
-    reviews,
-    prefillRows,
-    viewer,
-    outcomeGateReady,
-    resolveOutcome,
-    outcomeSignalErrors,
-    ownReviewByEpisode,
-    prefillByEpisode,
-    pending,
-  ]);
-
-  // Duration for time-bounds: what was SHOWN at prefill time; for episodes the
-  // pipeline never covered, the raw recording length is still a hard upper
-  // bound (lenient — it includes the reset tail — but it catches a typed 999).
-  const episodeDurationS =
-    shownPrefill?.durationS ??
+  // Bounds belong to the original source of the human draft, even if another
+  // model is selected for inspection. Raw length bounds source-free reviews.
+  const episodeDurationS = shownAttribution?.episode_duration_s ??
     (spec && currentEpisode ? currentEpisode.rawLength / spec.fps : null);
-
   const violations = useMemo(
     () => (spec && pending ? validateStageLabel(spec, pending, episodeDurationS) : []),
     [spec, pending, episodeDurationS]
   );
-
   const edit = useCallback((patch: StageLabelRow) => {
-    setPending((prev) => {
-      const next = { ...(prev ?? {}) };
-      for (const [key, value] of Object.entries(patch)) {
-        if (value === undefined) delete next[key];
-        else next[key] = value;
-      }
-      return next;
-    });
-    setDirty(true);
+    if (formDisabled || saveInFlight.current) return;
+    editDraft(patch);
     setActionError(null);
-  }, []);
+  }, [editDraft, formDisabled]);
 
   const jumpToFrame = useCallback((next: number) => {
     controlsRef.current?.pause();
@@ -714,6 +768,7 @@ export default function StageReview({
   // drifted becomes a wrong gold timestamp that survives after the drift
   // banner clears — refuse the mark itself, not just the later verdict.
   const markFrame = useCallback((): number | null => {
+    if (formDisabled || saveInFlight.current) return null;
     if (viewerDrift !== null) {
       setActionError(
         "Frame drift detected — re-seek (arrow keys) until the banner clears before marking."
@@ -721,7 +776,7 @@ export default function StageReview({
       return null;
     }
     return controlsRef.current?.pause() ?? frame;
-  }, [frame, viewerDrift]);
+  }, [frame, viewerDrift, formDisabled]);
 
   // -- Save flow ------------------------------------------------------------------
   const doSave = useCallback(
@@ -731,7 +786,7 @@ export default function StageReview({
       label: StageLabelRow | null,
       { isDraft = false }: { isDraft?: boolean } = {}
     ): Promise<boolean> => {
-      if (!spec || !task) return false;
+      if (!spec || !task || !draft || !predictionsReady) return false;
       try {
         await saveReview({
           task,
@@ -740,7 +795,7 @@ export default function StageReview({
           taxonomy_version: spec.taxonomy_version,
           status,
           label: label ?? undefined,
-          prefill_pushed_at: shownPrefill?.pushedAt,
+          ...draft.attribution,
           blind: blind && !everUnblindedRef.current,
           episode_duration_s: episodeDurationS ?? undefined,
         });
@@ -752,7 +807,7 @@ export default function StageReview({
         return false;
       }
     },
-    [spec, task, saveReview, repoId, shownPrefill, blind, episodeDurationS]
+    [spec, task, saveReview, repoId, draft, predictionsReady, blind, episodeDurationS]
   );
 
   const advance = useCallback(
@@ -769,7 +824,7 @@ export default function StageReview({
 
   const verdict = useCallback(
     async (status: "confirmed" | "uncertain") => {
-      if (selectedEpisode === null || saving || !spec) return;
+      if (selectedEpisode === null || formDisabled || saveInFlight.current || !spec) return;
       if (!outcomeGateReady || resolveOutcome(selectedEpisode) === null) {
         setActionError(
           `Episode ${selectedEpisode} has no outcome decision yet — the outcome ` +
@@ -777,7 +832,7 @@ export default function StageReview({
         );
         return;
       }
-      if (prefilledFor.current !== selectedEpisode || pending === null) {
+      if (pending === null || draft?.key !== sourceKey) {
         setActionError(`Episode ${selectedEpisode} is still loading — wait for the prefill.`);
         return;
       }
@@ -811,18 +866,24 @@ export default function StageReview({
         );
         return;
       }
+      saveInFlight.current = true;
       setSaving(true);
       setActionError(null);
+      const savedKey = draft.key;
       const ok = await doSave(selectedEpisode, status, pending);
+      saveInFlight.current = false;
       setSaving(false);
       if (ok) {
-        setDirty(false);
+        markSaved(savedKey);
         advance(selectedEpisode);
       }
     },
     [
       selectedEpisode,
-      saving,
+      formDisabled,
+      draft,
+      sourceKey,
+      markSaved,
       spec,
       outcomeGateReady,
       resolveOutcome,
@@ -836,30 +897,39 @@ export default function StageReview({
     ]
   );
 
-  // Navigation with unsaved edits drafts them (lossless; drafts collapse
-  // server-side, so this cannot grow the table unboundedly). Two exceptions:
-  // while a verdict save is in flight navigation is refused entirely, and
-  // edits over the reviewer's own COMMITTED verdict are discarded with a
-  // notice — a stray keypress must not demote a committed row to a draft
-  // (the server rejects such drafts too).
-  const navigateTo = useCallback(
-    (episodeIndex: number) => {
-      if (saving) return;
-      if (dirty && pending !== null && selectedEpisode !== null) {
-        const own = ownReviewByEpisode.get(selectedEpisode);
-        if (own && (own.status === "confirmed" || own.status === "corrected")) {
-          setDraftError(
-            `Episode ${selectedEpisode}: unsaved edits over your ${own.status} review were ` +
-              "discarded — committed verdicts change only by re-confirming (c)."
-          );
-        } else {
-          void doSave(selectedEpisode, "draft", pending, { isDraft: true });
-        }
+  // Source/episode changes and exits await autosave. A failed save keeps the
+  // form open. Committed reviews can only be changed by an explicit verdict.
+  const leaveForm = useCallback(async (next: () => void, exiting = false) => {
+    if (saveInFlight.current || saving) return;
+    if (exiting && unsavedCount > (dirty ? 1 : 0)) {
+      setDraftError("Save the retained edits in the other episode or prediction version before leaving stage review.");
+      return;
+    }
+    if (dirty && pending !== null && selectedEpisode !== null && draft !== null) {
+      const own = ownReviewByEpisode.get(selectedEpisode);
+      if (own && (own.status === "confirmed" || own.status === "corrected")) {
+        setDraftError(`Episode ${selectedEpisode}: confirm or mark uncertain before leaving; ` +
+          `unsaved edits to your ${own.status} review are still in the form.`);
+        return;
       }
-      setSelectedEpisode(episodeIndex);
-    },
-    [saving, dirty, pending, selectedEpisode, ownReviewByEpisode, doSave, setSelectedEpisode]
-  );
+      saveInFlight.current = true;
+      setSaving(true);
+      const ok = await doSave(selectedEpisode, "draft", pending, { isDraft: true });
+      saveInFlight.current = false;
+      setSaving(false);
+      if (!ok) return;
+      markSaved(draft.key);
+    }
+    setDraftError(null);
+    allowSavedNavigation.current = true;
+    try { next(); } finally { allowSavedNavigation.current = false; }
+  }, [saving, dirty, pending, selectedEpisode, draft, ownReviewByEpisode, doSave, markSaved, unsavedCount]);
+  const navigateTo = useCallback((episodeIndex: number) => {
+    if (episodeIndex === selectedEpisode) return;
+    void leaveForm(() => setSelectedEpisode(episodeIndex));
+  }, [leaveForm, selectedEpisode, setSelectedEpisode]);
+  const exitReview = () => void leaveForm(onExit, true);
+  const openOutcomeReview = () => void leaveForm(onOpenOutcomeReview, true);
 
   // -- Keyboard ----------------------------------------------------------------
   function handleKey(event: KeyboardEvent) {
@@ -874,7 +944,7 @@ export default function StageReview({
     }
     if (key === "Escape" || key === "q") {
       event.preventDefault();
-      onExit();
+      exitReview();
       return;
     }
     if (key === "?") {
@@ -882,7 +952,7 @@ export default function StageReview({
       setShowHelp(true);
       return;
     }
-    if (!currentEpisode || !spec) return;
+    if (!currentEpisode || !spec || formDisabled || saveInFlight.current) return;
 
     if (/^[0-9]$/.test(key)) {
       event.preventDefault();
@@ -1036,7 +1106,7 @@ export default function StageReview({
     return (
       <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8">
         <button
-          onClick={onExit}
+          onClick={exitReview}
           className="text-xs text-ink-muted hover:text-teal mb-4 cursor-pointer"
         >
           &larr; Back to explorer
@@ -1053,7 +1123,7 @@ export default function StageReview({
     return (
       <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8">
         <button
-          onClick={onExit}
+          onClick={exitReview}
           className="text-xs text-ink-muted hover:text-teal mb-4 cursor-pointer"
         >
           &larr; Back to explorer
@@ -1069,7 +1139,7 @@ export default function StageReview({
     return (
       <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8">
         <button
-          onClick={onExit}
+          onClick={exitReview}
           className="text-xs text-ink-muted hover:text-teal mb-4 cursor-pointer"
         >
           &larr; Back to explorer
@@ -1113,7 +1183,7 @@ export default function StageReview({
       <div className="px-6 py-4 border-b border-warm-100 bg-warm-50 flex items-center justify-between gap-4">
         <div>
           <button
-            onClick={onExit}
+            onClick={exitReview}
             className="text-xs text-ink-muted hover:text-teal cursor-pointer"
           >
             &larr; Back to explorer
@@ -1128,10 +1198,16 @@ export default function StageReview({
             <select
               value={spec.taxonomy_version}
               onChange={(e) => {
-                setSchemaParam(e.target.value === liveRow?.taxonomy_version ? "" : e.target.value);
+                const next = e.target.value;
+                void leaveForm(() => {
+                  setSchemaParam(next === liveRow?.taxonomy_version ? "" : next);
+                  setPredictionParam("");
+                });
                 e.currentTarget.blur();
               }}
               className="rounded-lg border border-warm-200 bg-white px-2 py-1 text-xs font-mono text-ink cursor-pointer"
+              disabled={saving}
+              aria-label="Taxonomy version"
               title="Taxonomy (schema) version — candidates coexist with the live one"
             >
               {specRows.map((row) => (
@@ -1142,13 +1218,36 @@ export default function StageReview({
               ))}
             </select>
           )}
+          <label className="flex flex-col gap-1 text-[10px] font-mono text-ink-muted">
+            Prediction version
+            <select
+              aria-label="Prediction version"
+              value={predictionParam}
+              disabled={saving || predictionVersions === undefined}
+              onChange={(event) => {
+                const next = event.target.value;
+                void leaveForm(() => setPredictionParam(next));
+                event.currentTarget.blur();
+              }}
+              className="max-w-[300px] rounded-lg border border-warm-200 bg-white px-2 py-1 text-xs text-ink"
+            >
+              {!predictionParam && <option value="">Loading versions…</option>}
+              {predictionSelection?.error && <option value={predictionParam}>Unavailable version</option>}
+              <option value="legacy">Legacy predictions ({predictionVersions?.legacy_count ?? 0})</option>
+              {predictionVersions?.runs.map((run) => (
+                <option key={run._id} value={run._id}>
+                  {blind ? run._id : run.run_key}{run._id === predictionVersions.active_run_id ? " (active)" : " (historical)"}
+                </option>
+              ))}
+            </select>
+          </label>
           {!specRow?.live && (
             <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gold-light text-gold">
               candidate taxonomy
             </span>
           )}
           <button
-            onClick={() => setBlindParam(blind ? "0" : "1")}
+            onClick={() => { if (blind) unblind(); else setBlindParam("1"); }}
             className={`px-2 py-1 rounded-lg text-xs font-medium cursor-pointer ${
               blind
                 ? "bg-teal/10 text-teal border border-teal/40"
@@ -1223,11 +1322,38 @@ export default function StageReview({
             {awaitingOutcome.length > 8 ? ", …" : ""}).
           </span>
           <button
-            onClick={onOpenOutcomeReview}
+            onClick={openOutcomeReview}
             className="shrink-0 px-2 py-1 rounded-lg text-xs font-medium bg-white border border-gold text-gold hover:bg-gold/10 cursor-pointer"
           >
             Open outcome review &rarr;
           </button>
+        </div>
+      )}
+
+      {predictionError && (
+        <div role="alert" className="m-4 rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-sm text-coral">
+          {predictionError} The review form is disabled.
+        </div>
+      )}
+      {!predictionsReady && !predictionError && (
+        <div role="status" className="m-4 text-sm text-ink-muted">
+          Loading prediction version{predictionSelection?.runId
+            ? `: ${predictionPages.results.length} of ${selectedRun?.expected_count ?? "?"} episodes`
+            : "…"}. The review form will open after the complete version loads.
+        </div>
+      )}
+      {selectedRun && (
+        <div className="px-6 py-2 border-b border-warm-100 text-[11px] font-mono text-ink-muted break-all">
+          {selectedRun._id === predictionVersions?.active_run_id ? "Active" : "Historical"} prediction version: {blind ? selectedRun._id : selectedRun.run_key}
+          {!blind && <>{" · "}{selectedRun.pipeline.name}@{selectedRun.pipeline.version}</>}
+          {" · published "}{new Date(selectedRun.published_at).toISOString()}
+          {" · "}{selectedRun._id}
+        </div>
+      )}
+      {unsavedCount > (dirty ? 1 : 0) && (
+        <div role="alert" className="m-4 rounded-lg border border-gold/40 bg-gold-light px-4 py-3 text-sm text-ink">
+          Unsaved edits are retained in this tab for another episode or prediction version.
+          Return to that selection to save them before closing the tab.
         </div>
       )}
 
@@ -1357,7 +1483,7 @@ export default function StageReview({
                         </span>
                       )}
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-warm-100 text-ink">
-                        {stage != null ? `S${stage}` : "—"}
+                        {stageDisplay(stage)}
                       </span>
                     </span>
                   </div>
@@ -1418,11 +1544,10 @@ export default function StageReview({
                 Episode {currentEpisode.episodeIndex} has no outcome decision yet.
               </p>
               <p className="mt-1 text-sm text-ink-muted">
-                The outcome review flow must run before stage labeling — a
-                successful outcome then pre-fills the stage form automatically.
+                The outcome review flow must run before stage labeling.
               </p>
               <button
-                onClick={onOpenOutcomeReview}
+                onClick={openOutcomeReview}
                 className="mt-4 px-4 py-1.5 rounded-lg text-xs font-medium bg-teal text-white hover:bg-teal/90 cursor-pointer"
               >
                 Open outcome review &rarr;
@@ -1468,9 +1593,9 @@ export default function StageReview({
                     your {currentOwn.status} · {formatClock(currentOwn.savedAt)}
                   </span>
                 )}
-                {currentPrefill && !currentOwn && (
+                {currentPrefill && !currentOwn && !blind && (
                   <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-warm-100 text-ink-muted">
-                    prefilled from {currentPrefill.pipeline.name}@{currentPrefill.pipeline.version}
+                    selected model {currentPrefill.pipeline.name}@{currentPrefill.pipeline.version}
                   </span>
                 )}
                 {episodeDurationS !== null && (
@@ -1487,6 +1612,20 @@ export default function StageReview({
                   <span className="ml-1 font-mono text-[10px] opacity-60">e</span>
                 </button>
               </div>
+
+              {draft && (
+                <div className="mb-3 rounded-lg border border-warm-200 px-3 py-2 text-[11px] text-ink-muted">
+                  <p>{draft.fromOwnReview
+                    ? "Your saved label is in the form. The selected model prediction is shown in model evidence."
+                    : draft.attribution.copied_from_review_id
+                      ? "The form was copied from another human review. Its original prediction source is preserved."
+                      : currentPrefill
+                      ? "The form started from the selected prediction; edits are your review."
+                      : "No model prediction seeded this form."}</p>
+                  <p className="mt-1 font-mono break-all">Review source: {attributionDescription(draft.attribution)}</p>
+                  {inheritedSuccess && <p className="mt-1">Legacy form fields inherit the human success outcome. The original prediction remains in model evidence.</p>}
+                </div>
+              )}
 
               {currentOutcomeSignalError !== null && (
                 <div className="mb-3 rounded-lg border border-gold/40 bg-gold-light px-3 py-2 text-xs text-ink font-mono">
@@ -1532,18 +1671,25 @@ export default function StageReview({
                   violations={violations}
                   frame={frame}
                   markFrame={markFrame}
-                  markDisabled={viewerDrift !== null}
+                  markDisabled={viewerDrift !== null || formDisabled}
                   onEdit={edit}
                   onSeekTime={seekTime}
-                  disabled={saving}
+                  disabled={formDisabled}
+                  blind={blind}
                 />
+              )}
+
+              {blind && (
+                <button onClick={unblind} className="mt-3 text-xs text-teal hover:underline cursor-pointer">
+                  Show provenance and unblind
+                </button>
               )}
 
               {statusFilter === "adjudicate" &&
                 selectedEpisode !== null &&
                 (otherReviewsByEpisode.get(selectedEpisode) ?? []).map((other) => (
                   <div
-                    key={other.reviewer}
+                    key={other.id}
                     className="mt-3 rounded-lg border border-gold/40 bg-gold-light px-3 py-2"
                   >
                     <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-ink">
@@ -1553,26 +1699,30 @@ export default function StageReview({
                       <span className="text-ink-muted">{formatClock(other.savedAt)}</span>
                       {other.label && spec && (
                         <span className="text-ink-muted">
-                          S{String(other.label[spec.stage_field] ?? "?")} ·{" "}
-                          {String(other.label[spec.failure_mode_field] ?? "—")} →{" "}
-                          {String(other.label[spec.final_state_field] ?? "—")}
+                          {stageDisplay(other.label[spec.stage_field])} ·{" "}
+                          {blind && !spec.failure_modes.includes(String(other.label[spec.failure_mode_field]))
+                            ? "invalid failure value" : String(other.label[spec.failure_mode_field] ?? "—")} →{" "}
+                          {blind && !spec.final_states.includes(String(other.label[spec.final_state_field]))
+                            ? "invalid final state" : String(other.label[spec.final_state_field] ?? "—")}
                         </span>
                       )}
                       <div className="flex-1" />
                       {other.label && (
                         <button
                           onClick={() => {
-                            setPending({ ...other.label });
-                            setDirty(true);
+                            if (!formDisabled && !saveInFlight.current) replaceLabel(other.label!, {
+                              ...other.attribution, copied_from_review_id: other.id,
+                            });
                           }}
                           className="px-2 py-0.5 rounded text-[10px] font-mono bg-white border border-gold text-gold hover:bg-gold/10 cursor-pointer"
+                          disabled={formDisabled}
                           title={`load ${other.reviewer}'s label into the form as your starting point`}
                         >
                           load their label
                         </button>
                       )}
                     </div>
-                    {typeof other.label?.notes === "string" && other.label.notes && (
+                    {!blind && typeof other.label?.notes === "string" && other.label.notes && (
                       <p className="mt-1 text-[11px] font-body text-ink whitespace-pre-wrap">
                         {other.label.notes}
                       </p>
@@ -1589,7 +1739,7 @@ export default function StageReview({
               {/* Verdict bar */}
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <button
-                  disabled={saving}
+                  disabled={formDisabled}
                   onClick={() => void verdict("uncertain")}
                   className="px-3 py-1.5 rounded-lg text-xs font-medium border border-warm-200 text-ink-muted hover:border-warm-300 cursor-pointer"
                 >
@@ -1598,7 +1748,7 @@ export default function StageReview({
                 </button>
                 <div className="flex-1" />
                 <button
-                  disabled={saving}
+                  disabled={formDisabled}
                   onClick={() => void verdict("confirmed")}
                   className={`px-4 py-1.5 rounded-lg text-xs font-medium ${
                     saving
@@ -1620,7 +1770,7 @@ export default function StageReview({
             <div className="text-[10px] font-mono uppercase tracking-wide text-ink-muted mb-2">
               Model evidence
             </div>
-            <EvidencePanel spec={spec} prefill={currentPrefill} onSeekTime={seekTime} />
+            <EvidencePanel spec={spec} prefill={currentPrefill} onSeekTime={seekTime} blind={blind} onUnblind={unblind} />
           </div>
         )}
       </div>

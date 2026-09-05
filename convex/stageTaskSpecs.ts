@@ -1,6 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { requireEditorOrService } from "./access";
+import { canonicalDigest } from "./stagePredictionContract";
 
 /**
  * Stage-label task specs are EXPORTED DATA: the Python stage-labeling registry
@@ -78,39 +79,14 @@ export const upsert = mutation({
         q.eq("task", args.task).eq("taxonomy_version", args.taxonomy_version)
       )
       .unique();
-    // A version's vocabulary is immutable ONCE LABELS REFERENCE IT: a hash
-    // change on re-upsert is allowed only while no live committed review row
-    // exists under this (task, taxonomy_version) — day-0 fingerprint-formula
-    // changes stay possible, but repointing a version that already has stored
-    // human labels is refused (bump the version instead).
-    if (existing && existing.taxonomy_hash !== args.taxonomy_hash) {
-      const reviewRows = (
-        await ctx.db
-          .query("stageReviews")
-          .withIndex("by_task", (q) => q.eq("task", args.task))
-          .collect()
-      ).filter((r) => r.taxonomy_version === args.taxonomy_version);
-      const latest = new Map<string, (typeof reviewRows)[number]>();
-      for (const row of reviewRows) {
-        const key = `${row.episode_index}|${row.reviewer_user_id ?? `svc:${row.reviewer}`}`;
-        const prev = latest.get(key);
-        const newer =
-          prev === undefined ||
-          row.saved_at > prev.saved_at ||
-          (row.saved_at === prev.saved_at && row._creationTime > prev._creationTime);
-        if (newer) latest.set(key, row);
-      }
-      const committed = [...latest.values()].filter(
-        (r) => r.status === "confirmed" || r.status === "corrected"
-      );
-      if (committed.length > 0) {
-        throw new Error(
-          `taxonomy_hash changed for ${args.task}@${args.taxonomy_version} ` +
-            `(${existing.taxonomy_hash} -> ${args.taxonomy_hash}) but ` +
-            `${committed.length} committed review(s) reference this version; ` +
-            "bump the taxonomy_version instead of mutating a referenced vocabulary"
-        );
-      }
+    // Versions are immutable, including when only drafts or predictions refer
+    // to them. Compare actual content; a caller-supplied hash cannot authorize
+    // changing the meaning of previously stored labels.
+    if (existing && (
+      existing.taxonomy_hash !== args.taxonomy_hash ||
+      await canonicalDigest(existing.spec) !== await canonicalDigest(args.spec)
+    )) {
+      throw new Error("stage taxonomy content is immutable; bump taxonomy_version instead");
     }
     const siblings = await ctx.db
       .query("stageTaskSpecs")

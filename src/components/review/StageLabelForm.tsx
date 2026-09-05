@@ -18,10 +18,12 @@ function violationFields(violations: Violation[]): Set<string> {
 function TimeInput({
   value,
   flagged,
+  disabled,
   onCommit,
 }: {
   value: number | null;
   flagged: boolean;
+  disabled: boolean;
   onCommit: (t: number | null) => void;
 }) {
   const [text, setText] = useState(value === null ? "" : String(value));
@@ -34,6 +36,7 @@ function TimeInput({
     <input
       type="text"
       inputMode="decimal"
+      disabled={disabled}
       value={text}
       onChange={(e) => setText(e.target.value)}
       onBlur={() => {
@@ -90,7 +93,7 @@ function TimeControls({
 }) {
   return (
     <>
-      <TimeInput value={t} flagged={flagged} onCommit={onCommit} />
+      <TimeInput value={t} flagged={flagged} disabled={disabled} onCommit={onCommit} />
       <span className="text-[10px] font-mono text-ink-muted w-10">
         {t !== null ? `f${Math.round(t * fps)}` : ""}
       </span>
@@ -144,8 +147,10 @@ export function StageLabelForm({
   onEdit,
   onSeekTime,
   disabled,
+  blind = false,
 }: {
   spec: ExportedStageSpec;
+  blind?: boolean;
   row: StageLabelRow;
   violations: Violation[];
   /** Current playhead frame (display only). */
@@ -207,7 +212,7 @@ export function StageLabelForm({
     const unknown = value !== "" && !options.includes(value);
     return (
       <select
-        value={value}
+        value={blind && unknown ? "__invalid_prediction__" : value}
         disabled={disabled}
         onChange={(e) => {
           onEdit({ [field]: e.target.value || undefined });
@@ -219,8 +224,8 @@ export function StageLabelForm({
       >
         <option value="">— unset —</option>
         {unknown && (
-          <option value={value} disabled>
-            ⚠ {value} (not in taxonomy {spec.taxonomy_version})
+          <option value={blind ? "__invalid_prediction__" : value} disabled>
+            ⚠ {blind ? "Invalid value; unblind to inspect" : value} (not in taxonomy {spec.taxonomy_version})
           </option>
         )}
         {options.map((option) => (
@@ -409,21 +414,23 @@ export function StageLabelForm({
       </div>
 
       {/* Notes */}
-      <textarea
+      {blind ? (
+        <p className="mt-3 text-xs text-ink-muted">Free-text notes are hidden while blind; their stored content is preserved.</p>
+      ) : <textarea
         value={typeof row.notes === "string" ? (row.notes as string) : ""}
         disabled={disabled}
         onChange={(e) => onEdit({ notes: e.target.value || undefined })}
         placeholder="notes…"
         rows={2}
         className="w-full rounded-lg border border-warm-200 bg-white px-2 py-1.5 text-xs font-body text-ink"
-      />
+      />}
 
       {/* Live violations */}
       {violations.length > 0 && (
         <div className="rounded-lg border border-coral/30 bg-coral-light px-3 py-2 space-y-0.5">
           {violations.map((v, i) => (
             <p key={i} className="text-[11px] font-mono text-coral">
-              [{v.code}] {v.message}
+              [{v.code}] {blind ? `${v.fields.join(", ")} needs review. Unblind to inspect raw details.` : v.message}
             </p>
           ))}
         </div>

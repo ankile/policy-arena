@@ -68,6 +68,10 @@ export const save = mutation({
     label: v.optional(v.record(v.string(), v.any())),
     notes: v.optional(v.string()),
     prefill_pushed_at: v.optional(v.float64()),
+    prediction_id: v.optional(v.id("stagePredictions")),
+    prediction_sha256: v.optional(v.string()),
+    legacy_prefill_id: v.optional(v.id("stagePrefills")),
+    copied_from_review_id: v.optional(v.id("stageReviews")),
     blind: v.optional(v.boolean()),
     episode_duration_s: v.optional(v.float64()),
     // Attribution override for scripted replays/backfills of historical
@@ -99,19 +103,85 @@ export const save = mutation({
     }
     const spec = specRow.spec as ExportedStageSpec;
 
-    // Time bounds use the AUTHORITATIVE duration from the prefill row when one
-    // exists — a client-supplied (or omitted) duration must not be able to
-    // disable the bounds check the Python oracle will later enforce. Resolved
-    // for every save so the stored row keeps its validation context even after
-    // the prefill is pruned by a re-publish.
-    const prefills = await ctx.db
-      .query("stagePrefills")
-      .withIndex("by_repo_episode", (q) =>
+    // Pin exactly the prediction the reviewer saw. An active-run change must
+    // never alter the validation duration or attribution of an in-flight form.
+    if (args.prediction_id !== undefined && args.legacy_prefill_id !== undefined) {
+      throw new Error("choose one prediction source");
+    }
+    if ((args.prediction_id === undefined) !== (args.prediction_sha256 === undefined)) {
+      throw new Error("prediction_id and prediction_sha256 must be supplied together");
+    }
+    const copiedReview = args.copied_from_review_id === undefined ? null : await ctx.db.get(args.copied_from_review_id);
+    if (args.copied_from_review_id !== undefined && (!copiedReview || !copiedReview.label ||
+        !["confirmed", "corrected", "uncertain"].includes(copiedReview.status) ||
+        copiedReview.task !== args.task || copiedReview.dataset_repo !== args.dataset_repo ||
+        copiedReview.episode_index !== args.episode_index || copiedReview.taxonomy_version !== args.taxonomy_version)) {
+      throw new Error("copied human review identity mismatch");
+    }
+    if (copiedReview && (copiedReview.prediction_id !== args.prediction_id ||
+        copiedReview.prediction_sha256 !== args.prediction_sha256 ||
+        copiedReview.legacy_prefill_id !== args.legacy_prefill_id ||
+        copiedReview.prefill_pushed_at !== args.prefill_pushed_at)) {
+      throw new Error("copied human review prediction provenance mismatch");
+    }
+    let predictionRunId: Id<"stagePredictionRuns"> | undefined;
+    let legacyPrefillId = args.legacy_prefill_id;
+    let resolvedDuration = copiedReview?.episode_duration_s ?? args.episode_duration_s;
+    let resolvedPushedAt = args.prefill_pushed_at;
+    if (args.prediction_id !== undefined) {
+      const prediction = await ctx.db.get(args.prediction_id);
+      if (!prediction || prediction.content_sha256 !== args.prediction_sha256) {
+        throw new Error("prediction reference is missing or its hash does not match");
+      }
+      const run = await ctx.db.get(prediction.run_id);
+      if (!run || run.status !== "published" || run.task !== args.task ||
+          run.dataset_repo !== args.dataset_repo || run.taxonomy_version !== args.taxonomy_version ||
+          prediction.episode_index !== args.episode_index || run.taxonomy_hash !== specRow.taxonomy_hash) {
+        throw new Error("prediction reference does not match this episode and schema, or run is unpublished");
+      }
+      predictionRunId = run._id;
+      resolvedDuration = prediction.episode_duration_s;
+      resolvedPushedAt = run.published_at;
+    } else {
+      const prefills = await ctx.db.query("stagePrefills").withIndex("by_repo_episode", (q) =>
         q.eq("dataset_repo", args.dataset_repo).eq("episode_index", args.episode_index)
-      )
-      .collect();
-    const prefill = prefills.find((p) => p.taxonomy_version === args.taxonomy_version);
-    const resolvedDuration = prefill?.episode_duration_s ?? args.episode_duration_s;
+      ).collect();
+      const prefill = prefills.find((p) => p.task === args.task && p.taxonomy_version === args.taxonomy_version);
+      if (legacyPrefillId !== undefined) {
+        if (!prefill || prefill._id !== legacyPrefillId) throw new Error("legacy prediction identity mismatch");
+        if (args.prefill_pushed_at !== undefined && args.prefill_pushed_at !== prefill.pushed_at) throw new Error("legacy prediction timestamp mismatch");
+        resolvedDuration = prefill.episode_duration_s ?? resolvedDuration;
+        resolvedPushedAt = prefill.pushed_at;
+      } else if (args.prefill_pushed_at !== undefined) {
+        // Old saved reviews can reference generations replaced before history
+        // was introduced. Preserve those references as unresolved; never claim
+        // that today's frozen row was the historical prediction shown.
+        if (prefill && args.prefill_pushed_at === prefill.pushed_at) {
+          legacyPrefillId = prefill._id;
+          resolvedDuration = prefill.episode_duration_s ?? resolvedDuration;
+        } else if (copiedReview && copiedReview.episode_duration_s !== undefined) {
+          resolvedDuration = copiedReview.episode_duration_s;
+        } else if (principal !== "service") {
+          const userId = await getAuthUserId(ctx);
+          const history = (await ctx.db.query("stageReviews").withIndex("by_repo_episode", (q) =>
+            q.eq("dataset_repo", args.dataset_repo).eq("episode_index", args.episode_index)
+          ).collect()).filter((r) => r.task === args.task && r.taxonomy_version === args.taxonomy_version &&
+            r.reviewer_user_id === userId && r.prefill_pushed_at === args.prefill_pushed_at &&
+            r.prediction_id === undefined && r.episode_duration_s !== undefined);
+          let original: (typeof history)[number] | undefined;
+          for (const row of history) if (!original || isNewer(row, original)) original = row;
+          if (!original) throw new Error("unresolved legacy timestamp requires an existing review with preserved duration");
+          resolvedDuration = original.episode_duration_s;
+        }
+      } else if (prefill && copiedReview?.episode_duration_s === undefined) {
+        // Legacy clients without a source reference still get the established
+        // authoritative time bound, but no invented prediction attribution.
+        resolvedDuration = prefill.episode_duration_s ?? resolvedDuration;
+      }
+    }
+    if (resolvedDuration !== undefined && (!Number.isFinite(resolvedDuration) || resolvedDuration <= 0)) {
+      throw new Error("episode_duration_s must be finite and positive");
+    }
 
     let label = args.label;
     if (args.status === "cleared") {
@@ -171,7 +241,13 @@ export const save = mutation({
       status: args.status,
       label,
       notes: args.notes,
-      prefill_pushed_at: args.prefill_pushed_at,
+      prefill_pushed_at: resolvedPushedAt,
+      prediction_id: args.prediction_id,
+      prediction_sha256: args.prediction_sha256,
+      prediction_run_id: predictionRunId,
+      legacy_prefill_id: legacyPrefillId,
+      copied_from_review_id: args.copied_from_review_id,
+      taxonomy_hash: specRow.taxonomy_hash,
       blind: args.blind,
       // Persisted so a stored row stays re-validatable even after its prefill
       // is pruned by a re-publish (the bounds context must ride the row).

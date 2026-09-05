@@ -4,6 +4,7 @@ import { api } from "../convex/_generated/api";
 import { computeArenaStats, visibleSessions } from "./lib/arenaRatings";
 
 import AuthControls from "./components/AuthControls";
+import { AppTabNavigation } from "./components/AppTabNavigation";
 import DataExplorer from "./components/DataExplorer";
 import CoverageDashboard from "./components/CoverageDashboard";
 import EvalSessions from "./components/EvalSessions";
@@ -78,12 +79,8 @@ function EnvironmentTag({ env }: { env: string }) {
 }
 
 type SortKey = "elo" | "success" | "winRate" | "avgSuccessSteps";
-type Tab = "leaderboard" | "sessions" | "pairings" | "explorer" | "coverage";
-
-type TabConfig = { id: Tab; label: string };
-
 function App() {
-  const [activeTab, setActiveTabRaw] = useSearchParam("tab", "leaderboard");
+  const [activeTab] = useSearchParam("tab", "leaderboard");
   const [selectedEnv, setSelectedEnv] = useSearchParam("env", "all");
   const [expandedPolicy, setExpandedPolicy] = useSearchParamNullable("policy");
   const [sortBy, setSortBy] = useSearchParam("sort", "elo") as [SortKey, (v: string) => void];
@@ -110,10 +107,6 @@ function App() {
     [sessionOutcomes, showAll],
   );
 
-  const setActiveTab = (tab: string) => {
-    clearSearchParams("policy", "session", "mode", "round", "source", "task", "dataset", "episode", "outcome", "env", "sort", "policyA", "policyB", "pRound", "rollouts", "view", "join", "queue", "arm", "status", "sstatus", "sconf", "sflag", "sarm", "schema", "blind");
-    setActiveTabRaw(tab);
-  };
 
   const visibleEnvs = (envList ?? []).filter(
     (e) => showAll || e.status === "mainline"
@@ -156,13 +149,6 @@ function App() {
     null,
   );
 
-  const tabs: TabConfig[] = [
-    { id: "leaderboard", label: "Leaderboard" },
-    { id: "sessions", label: "Eval Sessions" },
-    { id: "pairings", label: "Pairings" },
-    { id: "explorer", label: "Data Explorer" },
-    { id: "coverage", label: "Coverage" },
-  ];
 
   return (
     <div className="min-h-screen bg-cream font-body text-ink">
@@ -212,21 +198,7 @@ function App() {
           className="flex items-center justify-between gap-3 mb-8 flex-wrap"
           style={{ animation: "fade-up 0.6s ease-out 0.1s both" }}
         >
-          <div className="flex gap-1 bg-warm-100 rounded-xl p-1 w-fit">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-5 py-2 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer ${
-                  activeTab === tab.id
-                    ? "bg-white text-ink shadow-sm"
-                    : "text-ink-muted hover:text-ink"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <AppTabNavigation activeTab={activeTab} />
           <div className="flex items-center gap-2">
             <div className="flex gap-1 bg-warm-100 rounded-xl p-1">
               {(

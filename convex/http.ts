@@ -241,6 +241,31 @@ const routes: MachineRouteOptions[] = [
     mutation: api.stageTaskSpecs.upsert,
   },
   {
+    operation: "stagePredictions/begin",
+    scope: "ingest",
+    mutation: api.stagePredictions.begin,
+  },
+  {
+    operation: "stagePredictions/appendBatch",
+    scope: "ingest",
+    mutation: api.stagePredictions.appendBatch,
+  },
+  {
+    operation: "stagePredictions/publish",
+    scope: "ingest",
+    mutation: api.stagePredictions.publish,
+  },
+  {
+    operation: "stagePredictions/activate",
+    scope: "ingest",
+    mutation: api.stagePredictions.activate,
+  },
+  {
+    operation: "stagePredictions/restoreLegacy",
+    scope: "ingest",
+    mutation: api.stagePredictions.restoreLegacy,
+  },
+  {
     operation: "stagePrefills/upsertBatch",
     scope: "ingest",
     mutation: api.stagePrefills.upsertBatch,

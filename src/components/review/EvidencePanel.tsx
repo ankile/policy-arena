@@ -1,11 +1,13 @@
+import { attributionDescription, stageDisplay, type PredictionAttribution } from "../../lib/stagePredictionReview";
 import type { ExportedStageSpec } from "../../../convex/stageConsistency";
 
 // ---------------------------------------------------------------------------
 // Model-evidence rail for the stage review: the prefill's pipeline identity,
 // review-reason flags, confidence, sample-vote summary, and click-to-seek
 // telemetry. Collapsed by default (cv2 parity: form an opinion before seeing
-// the model's). Policy/arm identity is deliberately NOT rendered here — blind
-// redaction happens at the data layer in StageReview, not per widget.
+// the model's). Raw model text/provenance can contain arm identity and is
+// rendered only after explicit unblinding; structured prediction fields remain
+// visible. Independent annotation without predictions is a separate follow-up.
 // ---------------------------------------------------------------------------
 
 export interface StagePrefillView {
@@ -18,6 +20,8 @@ export interface StagePrefillView {
   pipeline: { name: string; version: string; git_commit: string };
   evidence: Record<string, unknown>;
   pushedAt: number;
+  attribution: PredictionAttribution;
+  canonicalResponse?: unknown;
 }
 
 const CONFIDENCE_CHIP: Record<string, string> = {
@@ -30,10 +34,14 @@ export function EvidencePanel({
   spec,
   prefill,
   onSeekTime,
+  blind,
+  onUnblind,
 }: {
   spec: ExportedStageSpec;
   prefill: StagePrefillView | null;
   onSeekTime: (timeS: number) => void;
+  blind: boolean;
+  onUnblind: () => void;
 }) {
   if (prefill === null) {
     return (
@@ -43,7 +51,7 @@ export function EvidencePanel({
       </div>
     );
   }
-  const reasons = (prefill.reviewReason ?? "")
+  const reasons = (blind ? "" : prefill.reviewReason ?? "")
     .split(";")
     .map((r) => r.trim())
     .filter(Boolean);
@@ -55,12 +63,12 @@ export function EvidencePanel({
   return (
     <div className="space-y-3 text-xs">
       <div className="flex flex-wrap items-center gap-1.5">
-        <span
+        {!blind && <span
           className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-warm-100 text-ink"
           title={`git ${prefill.pipeline.git_commit} · pushed ${new Date(prefill.pushedAt).toLocaleString()}`}
         >
           {prefill.pipeline.name}@{prefill.pipeline.version}
-        </span>
+        </span>}
         {prefill.confidence && (
           <span
             className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
@@ -100,14 +108,16 @@ export function EvidencePanel({
         </div>
         <div className="space-y-0.5 font-mono text-[11px] text-ink">
           <p>
-            {spec.stage_field}: S{String(label[spec.stage_field] ?? "?")}
+            {spec.stage_field}: {stageDisplay(label[spec.stage_field])}
           </p>
-          <p className="text-ink-muted">{String(label[spec.failure_mode_field] ?? "—")}</p>
-          <p className="text-ink-muted">→ {String(label[spec.final_state_field] ?? "—")}</p>
+          <p className="text-ink-muted">{blind && !spec.failure_modes.includes(String(label[spec.failure_mode_field]))
+            ? "Invalid failure value; unblind to inspect" : String(label[spec.failure_mode_field] ?? "—")}</p>
+          <p className="text-ink-muted">→ {blind && !spec.final_states.includes(String(label[spec.final_state_field]))
+            ? "Invalid final state; unblind to inspect" : String(label[spec.final_state_field] ?? "—")}</p>
         </div>
       </div>
 
-      {prefill.voteSummary && (
+      {!blind && prefill.voteSummary && (
         <div>
           <div className="text-[10px] font-mono uppercase tracking-wide text-ink-muted mb-1">
             Sample votes
@@ -142,7 +152,25 @@ export function EvidencePanel({
         </div>
       )}
 
-      {typeof prefill.evidence.run_name === "string" && (
+      {blind ? (
+        <div className="text-[11px] text-ink-muted">
+          <p>Pipeline identity, free-text notes, and raw evidence are hidden while blind.</p>
+          <button onClick={onUnblind} className="mt-2 text-teal hover:underline cursor-pointer">
+            Show provenance and unblind
+          </button>
+        </div>
+      ) : <details className="text-[11px] font-mono text-ink-muted">
+        <summary className="cursor-pointer">Full prediction and provenance</summary>
+        <p className="mt-2 break-all">{attributionDescription(prefill.attribution)}</p>
+        <pre className="mt-2 whitespace-pre-wrap break-all">{JSON.stringify({
+          label: prefill.label,
+          canonical_response: prefill.canonicalResponse,
+          pipeline: prefill.pipeline,
+          evidence: prefill.evidence,
+        }, null, 2)}</pre>
+      </details>}
+
+      {!blind && typeof prefill.evidence.run_name === "string" && (
         <p className="text-[10px] font-mono text-ink-muted/70 break-all">
           run {prefill.evidence.run_name}
           {typeof prefill.evidence.model === "string" ? ` · ${prefill.evidence.model}` : ""}

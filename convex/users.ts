@@ -11,6 +11,7 @@ export const viewer = query({
     const user = await ctx.db.get(userId);
     if (!user) return null;
     return {
+      userId,
       name: user.name ?? user.username ?? "unknown",
       username: user.username ?? null,
       image: user.image ?? null,

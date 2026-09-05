@@ -2,6 +2,7 @@ import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { statusValidator } from "./statusShared";
+import { CONTENT_PROTOCOL, pipelineValidator, predictionFields } from "./stagePredictionContract";
 
 export default defineSchema({
   ...authTables,
@@ -174,13 +175,8 @@ export default defineSchema({
     .index("by_task", ["task"])
     .index("by_task_version", ["task", "taxonomy_version"]),
 
-  // VLM stage-label predictions ("prefills"): the most up-to-date prediction
-  // per (dataset_repo, episode_index, taxonomy_version), pushed by
-  // sir/tools/publish_stage_prefills.py when a labeling pipeline's output is
-  // published. Service-write-only, replaced wholesale on re-publish —
-  // prediction HISTORY lives in git run dirs and the HF .label_history.jsonl
-  // ledger, not here. `label` is the full editable-field row keyed by the
-  // spec's own field names (opaque; interpreted against stageTaskSpecs).
+  // Frozen legacy predictions. Existing documents and timestamps are retained
+  // byte-for-byte; all new writes go through immutable stagePredictions.
   stagePrefills: defineTable({
     task: v.string(),
     dataset_repo: v.string(),
@@ -205,6 +201,80 @@ export default defineSchema({
     .index("by_task", ["task"])
     .index("by_repo_episode", ["dataset_repo", "episode_index"]),
 
+  stagePredictionRuns: defineTable({
+    run_key: v.string(),
+    dataset_repo: v.string(),
+    task: v.string(),
+    taxonomy_version: v.string(),
+    taxonomy_hash: v.string(),
+    spec_content_sha256: v.string(),
+    content_protocol: v.literal(CONTENT_PROTOCOL),
+    pipeline: pipelineValidator,
+    expected_count: v.float64(),
+    manifest_sha256: v.string(),
+    identity_sha256: v.string(),
+    source: v.string(),
+    provenance: v.any(),
+    status: v.union(v.literal("uploading"), v.literal("published")),
+    received_count: v.float64(),
+    created_at: v.float64(),
+    published_at: v.optional(v.float64()),
+  })
+    .index("by_key", ["run_key"])
+    .index("by_repo_taxonomy", ["dataset_repo", "taxonomy_version"])
+    .index("by_task", ["task"]),
+
+  stagePredictions: defineTable({
+    ...predictionFields,
+    validation_codes: v.array(v.string()),
+    run_id: v.id("stagePredictionRuns"),
+    content_sha256: v.string(),
+  })
+    .index("by_run_episode", ["run_id", "episode_index"]),
+
+  // Published descriptors omit potentially large immutable provenance so the
+  // selector/history can inspect many runs without reading their payloads.
+  stagePredictionCatalog: defineTable({
+    run_id: v.id("stagePredictionRuns"),
+    run_key: v.string(),
+    dataset_repo: v.string(),
+    task: v.string(),
+    taxonomy_version: v.string(),
+    pipeline: pipelineValidator,
+    expected_count: v.float64(),
+    published_at: v.float64(),
+  }).index("by_repo_taxonomy", ["dataset_repo", "taxonomy_version"]),
+
+  // Compact immutable index: publication and coverage never read raw model
+  // payloads. History size cannot inflate the active coverage read budget.
+  stagePredictionMembers: defineTable({
+    run_id: v.id("stagePredictionRuns"),
+    prediction_id: v.id("stagePredictions"),
+    episode_index: v.int64(),
+    content_sha256: v.string(),
+    stage: v.optional(v.float64()),
+    flagged: v.boolean(),
+  }).index("by_run_episode", ["run_id", "episode_index"]),
+
+  stagePredictionSelections: defineTable({
+    dataset_repo: v.string(),
+    task: v.string(),
+    taxonomy_version: v.string(),
+    run_id: v.union(v.id("stagePredictionRuns"), v.null()),
+    generation: v.float64(),
+  })
+    .index("by_repo_taxonomy", ["dataset_repo", "taxonomy_version"])
+    .index("by_task", ["task"]),
+
+  stagePredictionSelectionHistory: defineTable({
+    dataset_repo: v.string(),
+    taxonomy_version: v.string(),
+    previous_run_id: v.union(v.id("stagePredictionRuns"), v.null()),
+    run_id: v.union(v.id("stagePredictionRuns"), v.null()),
+    generation: v.float64(),
+    selected_at: v.float64(),
+  }).index("by_repo_taxonomy", ["dataset_repo", "taxonomy_version"]),
+
   // Append-only human stage reviews (multi-reviewer). Latest row per
   // (dataset_repo, episode_index, taxonomy_version, reviewer) wins; "cleared"
   // folds out. Gold consolidation (sir refresh_stage_gold) pulls committed
@@ -219,8 +289,14 @@ export default defineSchema({
     label: v.optional(v.record(v.string(), v.any())),
     notes: v.optional(v.string()),
     prefill_pushed_at: v.optional(v.float64()), // which prefill generation was shown
+    prediction_id: v.optional(v.id("stagePredictions")),
+    prediction_sha256: v.optional(v.string()),
+    prediction_run_id: v.optional(v.id("stagePredictionRuns")),
+    legacy_prefill_id: v.optional(v.id("stagePrefills")),
+    copied_from_review_id: v.optional(v.id("stageReviews")),
+    taxonomy_hash: v.optional(v.string()),
     blind: v.optional(v.boolean()), // reviewed with policy/arm identity hidden
-    // Bounds context persisted with the row (prefills can be pruned later).
+    // Bounds context persists even for unresolved pre-cutover source generations.
     episode_duration_s: v.optional(v.float64()),
     reviewer: v.string(),
     reviewer_user_id: v.optional(v.id("users")),

@@ -16,6 +16,7 @@ import {
 } from "../lib/dataset-classification";
 import OutcomeReview from "./OutcomeReview";
 import StageReview from "./StageReview";
+import { navigateToDataset } from "../lib/appNavigation";
 import { StatusBadge, StatusSelect } from "./StatusBadge";
 import { TaskFilterChips } from "./TaskFilterChips";
 
@@ -551,7 +552,7 @@ function DatasetDetail({
         task={dataset?.task}
         onExit={() => {
           setSelectedIndex(null);
-          clearSearchParams("sstatus", "sconf", "sflag", "sarm", "schema", "blind");
+          clearSearchParams("sstatus", "sconf", "sflag", "sarm", "schema", "prediction", "blind");
           setView("explorer");
         }}
         // The "episode" param means episode_index in BOTH review views, so it
@@ -954,13 +955,8 @@ export default function DataExplorer() {
   const [taskFilter, setTaskFilter] = useSearchParam("task", "all");
   const [showParam] = useSearchParam("show", "mainline");
   const showAll = showParam === "all";
-  const [selectedRepoId, setSelectedRepoIdRaw] = useSearchParamNullable("dataset");
-
-  const setSelectedRepoId = (id: string | null) => {
-    if (id === null)
-      clearSearchParams("episode", "outcome", "view", "queue", "arm", "status");
-    setSelectedRepoIdRaw(id);
-  };
+  const [selectedRepoId] = useSearchParamNullable("dataset");
+  const setSelectedRepoId = navigateToDataset;
 
   const datasetQueryArgs: {
     source_type?: string;
