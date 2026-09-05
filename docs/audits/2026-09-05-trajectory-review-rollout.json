@@ -1,0 +1,341 @@
+{
+  "format": "arena-snapshot-audit/v1",
+  "ignored_tables": {
+    "_tables": "Convex export table metadata",
+    "authAccounts": "Authentication state",
+    "authRateLimits": "Authentication state",
+    "authRefreshTokens": "Authentication state",
+    "authSessions": "Authentication state",
+    "authVerificationCodes": "Authentication state",
+    "authVerifiers": "Authentication state",
+    "users": "Authentication profile state",
+    "workerHeartbeats": "Transient worker heartbeats"
+  },
+  "ok": true,
+  "require_empty_predictions": true,
+  "tables": {
+    "applyJobs": {
+      "added_ids": [],
+      "after": {
+        "count": 23,
+        "present": true,
+        "sha256": "a525fe6abdb78b59e891ca29a178d92ad09f1db6b51e2b4856f23a68715484f0"
+      },
+      "before": {
+        "count": 23,
+        "present": true,
+        "sha256": "a525fe6abdb78b59e891ca29a178d92ad09f1db6b51e2b4856f23a68715484f0"
+      },
+      "changed_ids": [],
+      "check": "preserve",
+      "ok": true,
+      "removed_ids": []
+    },
+    "datasets": {
+      "added_ids": [],
+      "after": {
+        "count": 361,
+        "present": true,
+        "sha256": "3594ac30de5c040e079653bffa1b53b5e722f405def461a587bf1b6b9b845c09"
+      },
+      "before": {
+        "count": 361,
+        "present": true,
+        "sha256": "3594ac30de5c040e079653bffa1b53b5e722f405def461a587bf1b6b9b845c09"
+      },
+      "changed_ids": [],
+      "check": "preserve",
+      "ok": true,
+      "removed_ids": []
+    },
+    "eloHistory": {
+      "added_ids": [],
+      "after": {
+        "count": 0,
+        "present": true,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "before": {
+        "count": 0,
+        "present": true,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "changed_ids": [],
+      "check": "preserve",
+      "ok": true,
+      "removed_ids": []
+    },
+    "evalSessions": {
+      "added_ids": [],
+      "after": {
+        "count": 129,
+        "present": true,
+        "sha256": "192a60c262ded5f4dea9b41cc11458578897186edfbad910559c320d5241052e"
+      },
+      "before": {
+        "count": 129,
+        "present": true,
+        "sha256": "192a60c262ded5f4dea9b41cc11458578897186edfbad910559c320d5241052e"
+      },
+      "changed_ids": [],
+      "check": "preserve",
+      "ok": true,
+      "removed_ids": []
+    },
+    "operators": {
+      "added_ids": [],
+      "after": {
+        "count": 5,
+        "present": true,
+        "sha256": "d07572d589b8ff4f00eb8da2bf94f85f228f4c2e6a5b2d9e4d9d480eaf283444"
+      },
+      "before": {
+        "count": 5,
+        "present": true,
+        "sha256": "d07572d589b8ff4f00eb8da2bf94f85f228f4c2e6a5b2d9e4d9d480eaf283444"
+      },
+      "changed_ids": [],
+      "check": "preserve",
+      "ok": true,
+      "removed_ids": []
+    },
+    "outcomeReviews": {
+      "added_ids": [],
+      "after": {
+        "count": 369,
+        "present": true,
+        "sha256": "9cacbc9512d1b981bd5934529b8ae453916db865be3ac55a900844d0e1063769"
+      },
+      "before": {
+        "count": 369,
+        "present": true,
+        "sha256": "9cacbc9512d1b981bd5934529b8ae453916db865be3ac55a900844d0e1063769"
+      },
+      "changed_ids": [],
+      "check": "preserve",
+      "ok": true,
+      "removed_ids": []
+    },
+    "policies": {
+      "added_ids": [],
+      "after": {
+        "count": 228,
+        "present": true,
+        "sha256": "13071c47a7a3474e45a4502388f4d815f6198a3ce39e68cdc3b2e2a3321cc142"
+      },
+      "before": {
+        "count": 228,
+        "present": true,
+        "sha256": "13071c47a7a3474e45a4502388f4d815f6198a3ce39e68cdc3b2e2a3321cc142"
+      },
+      "changed_ids": [],
+      "check": "preserve",
+      "ok": true,
+      "removed_ids": []
+    },
+    "roundResults": {
+      "added_ids": [],
+      "after": {
+        "count": 9512,
+        "present": true,
+        "sha256": "5b60015865440118cde76acf431a8fae641a30cae8751620f912569df56c1dbf"
+      },
+      "before": {
+        "count": 9512,
+        "present": true,
+        "sha256": "5b60015865440118cde76acf431a8fae641a30cae8751620f912569df56c1dbf"
+      },
+      "changed_ids": [],
+      "check": "preserve",
+      "ok": true,
+      "removed_ids": []
+    },
+    "stagePredictionCatalog": {
+      "added_ids": [],
+      "after": {
+        "count": 0,
+        "present": true,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "before": {
+        "count": 0,
+        "present": true,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "changed_ids": [],
+      "check": "prediction_empty",
+      "ok": true,
+      "removed_ids": []
+    },
+    "stagePredictionMembers": {
+      "added_ids": [],
+      "after": {
+        "count": 0,
+        "present": true,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "before": {
+        "count": 0,
+        "present": true,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "changed_ids": [],
+      "check": "prediction_empty",
+      "ok": true,
+      "removed_ids": []
+    },
+    "stagePredictionRuns": {
+      "added_ids": [],
+      "after": {
+        "count": 0,
+        "present": true,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "before": {
+        "count": 0,
+        "present": true,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "changed_ids": [],
+      "check": "prediction_empty",
+      "ok": true,
+      "removed_ids": []
+    },
+    "stagePredictionSelectionHistory": {
+      "added_ids": [],
+      "after": {
+        "count": 0,
+        "present": true,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "before": {
+        "count": 0,
+        "present": true,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "changed_ids": [],
+      "check": "prediction_empty",
+      "ok": true,
+      "removed_ids": []
+    },
+    "stagePredictionSelections": {
+      "added_ids": [],
+      "after": {
+        "count": 0,
+        "present": true,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "before": {
+        "count": 0,
+        "present": true,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "changed_ids": [],
+      "check": "prediction_empty",
+      "ok": true,
+      "removed_ids": []
+    },
+    "stagePredictions": {
+      "added_ids": [],
+      "after": {
+        "count": 0,
+        "present": true,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "before": {
+        "count": 0,
+        "present": true,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "changed_ids": [],
+      "check": "prediction_empty",
+      "ok": true,
+      "removed_ids": []
+    },
+    "stagePrefills": {
+      "added_ids": [],
+      "after": {
+        "count": 4325,
+        "present": true,
+        "sha256": "2b5c5ea4199d3d0e14fbc594000e8640c8e06983c0439d9e7bd706a3777e5647"
+      },
+      "before": {
+        "count": 4325,
+        "present": true,
+        "sha256": "2b5c5ea4199d3d0e14fbc594000e8640c8e06983c0439d9e7bd706a3777e5647"
+      },
+      "changed_ids": [],
+      "check": "preserve",
+      "ok": true,
+      "removed_ids": []
+    },
+    "stageReviews": {
+      "added_ids": [],
+      "after": {
+        "count": 618,
+        "present": true,
+        "sha256": "7bcca17e6140702faa9c8ee018666da4f72108e4d76eda5c4e21c93d967c51e4"
+      },
+      "before": {
+        "count": 618,
+        "present": true,
+        "sha256": "7bcca17e6140702faa9c8ee018666da4f72108e4d76eda5c4e21c93d967c51e4"
+      },
+      "changed_ids": [],
+      "check": "preserve",
+      "ok": true,
+      "removed_ids": []
+    },
+    "stageTaskSpecs": {
+      "added_ids": [],
+      "after": {
+        "count": 5,
+        "present": true,
+        "sha256": "d767f488b4d016b28a440f601ac20dcea58cd3332d82ceb28095b23d10402e38"
+      },
+      "before": {
+        "count": 5,
+        "present": true,
+        "sha256": "d767f488b4d016b28a440f601ac20dcea58cd3332d82ceb28095b23d10402e38"
+      },
+      "changed_ids": [],
+      "check": "preserve",
+      "ok": true,
+      "removed_ids": []
+    },
+    "taskSpecs": {
+      "added_ids": [],
+      "after": {
+        "count": 5,
+        "present": true,
+        "sha256": "12df00580ac5927236a8217a4153ea485cb3e16346a4c905755b1cfceb698f64"
+      },
+      "before": {
+        "count": 5,
+        "present": true,
+        "sha256": "12df00580ac5927236a8217a4153ea485cb3e16346a4c905755b1cfceb698f64"
+      },
+      "changed_ids": [],
+      "check": "preserve",
+      "ok": true,
+      "removed_ids": []
+    },
+    "taskStatuses": {
+      "added_ids": [],
+      "after": {
+        "count": 12,
+        "present": true,
+        "sha256": "e7b65d356d3aaacc8a5f277b4f132172547d14d1d8bcb61a597e51cca2622dd0"
+      },
+      "before": {
+        "count": 12,
+        "present": true,
+        "sha256": "e7b65d356d3aaacc8a5f277b4f132172547d14d1d8bcb61a597e51cca2622dd0"
+      },
+      "changed_ids": [],
+      "check": "preserve",
+      "ok": true,
+      "removed_ids": []
+    }
+  }
+}
