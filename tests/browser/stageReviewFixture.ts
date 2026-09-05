@@ -1,6 +1,8 @@
 import { getFunctionName, type FunctionArgs } from "convex/server";
 import { api } from "../../convex/_generated/api";
+import type { EpisodeFrameSignals } from "../../src/lib/hf-api";
 import type { StageReviewDataSource } from "../../src/lib/stageReviewDataSource";
+import trajectoryFixtures from "../fixtures/trajectory-review-fixtures.json";
 import fixtureDoc from "../../src/lib/stage-consistency-fixtures.json";
 
 /** Synthetic I/O only. Shared by DOM regression tests and the local visual fixture. */
@@ -40,11 +42,16 @@ export function createStageReviewFixture(
     queries: [] as string[],
     exits: 0,
     armFetches: 0,
+    signalFetches: 0,
+    missingPredictionEpisodes: new Set<number>(),
+    fetchSignals: (async (): Promise<EpisodeFrameSignals> => { throw new Error("Fixture requires an explicit frame-signal response"); }),
     predictionOverrides: {} as Record<string, unknown>,
+    specRows: [{ taxonomy_version: "s10_v1", live: true, spec: spec as Record<string, unknown> }],
+    otherSchemas: [] as Array<{ taxonomy_version: string; run_id: string; expected_count: number; published_at: number }>,
   };
   const queryValues = () => ({
     "users:viewer": { userId: state.viewerUserId, username: state.viewerUsername, isEditor: true },
-    "stageTaskSpecs:forTask": [{ taxonomy_version: "s10_v1", live: true, spec }],
+    "stageTaskSpecs:forTask": state.specRows,
     "taskSpecs:forTask": null,
     "reviews:latestForRepo": { episodes: [0, 1].map((ep) => ({ episode_index: BigInt(ep), status: "confirmed", new_outcome: state.outcome })) },
     "stageReviews:latestForRepo": { episodes: state.reviews, num_confirmed: 0, num_corrected: 0 },
@@ -53,6 +60,7 @@ export function createStageReviewFixture(
       label: prediction("legacy", ep, 2).label,
       pipeline, evidence: {}, episode_duration_s: 15, pushed_at: 1_700_000_000_000,
     })),
+    "stagePredictions:otherSchemasForEpisode": state.otherSchemas,
     "stagePredictions:listForRepo": { runs: state.runs, active_run_id: state.active, legacy_count: 2 },
   });
   const save = async (args: SaveArgs) => {
@@ -76,6 +84,7 @@ export function createStageReviewFixture(
     useMutation: (() => save) as unknown as StageReviewDataSource["useMutation"],
     usePaginatedQuery: ((_query: unknown, args: { run_id: string } | "skip") => ({
       results: args === "skip" ? [] : [prediction(args.run_id, 0, args.run_id === "A" ? 3 : 7), prediction(args.run_id, 1, 2)]
+        .filter((row) => !state.missingPredictionEpisodes.has(Number(row.episode_index)))
         .map((row) => ({ ...row, ...state.predictionOverrides })),
       status: state.ready ? "Exhausted" : "LoadingMore",
       isLoading: !state.ready,
@@ -85,8 +94,24 @@ export function createStageReviewFixture(
     fetchAppliedProgress: async () => null,
     fetchLabelHistory: async () => [],
     fetchLedgerArms: async () => { state.armFetches++; return new Map([[0, "ours"], [1, "baseline"]]); },
-    fetchEpisodeFrameSignals: async () => { throw new Error("Confirmed outcome does not need frame signals"); },
+    fetchEpisodeFrameSignals: async () => { state.signalFetches++; return state.fetchSignals(); },
   };
   const props = { repoId: "org/repo", task: "routing_d1", onExit: () => { state.exits++; }, onOpenOutcomeReview: () => { state.exits++; }, dataSource };
   return { state, props };
+}
+
+/** Configure the same offline I/O path with exported generic contract data. */
+export function configureTrajectoryFixture(fixture: ReturnType<typeof createStageReviewFixture>, sourceName = "routing_d1_v1", caseName = "historical_high_stage_final_failure") {
+  const task = trajectoryFixtures.synthetic.tasks.find((task) => task.source_name === sourceName);
+  if (!task) throw new Error(`Unknown trajectory fixture ${sourceName}`);
+  const selected = task.cases.find((item) => item.name === caseName)
+    ?? trajectoryFixtures.real_campaign_cases.find((item) => item.source_name === sourceName && item.name === caseName);
+  if (!selected?.review_label) throw new Error(`Unknown trajectory case ${caseName}`);
+  const { state, props } = fixture;
+  props.task = task.spec.task;
+  state.specRows = [{ taxonomy_version: task.spec.taxonomy_version, live: true, spec: task.spec }];
+  state.runs = state.runs.map((run) => ({ ...run, task: task.spec.task, taxonomy_version: task.spec.taxonomy_version }));
+  state.predictionOverrides = { label: structuredClone(selected.review_label), canonical_response: selected.canonical,
+    episode_duration_s: selected.duration_s, source_revision: "f".repeat(40) };
+  return { task, selected };
 }

@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { TimeControls } from "./ReviewTimeControls";
+import { TrajectoryLabelForm } from "./TrajectoryLabelForm";
 import type { ExportedStageSpec, StageLabelRow, Violation } from "../../../convex/stageConsistency";
 
 // ---------------------------------------------------------------------------
@@ -13,142 +15,7 @@ function violationFields(violations: Violation[]): Set<string> {
   return new Set(violations.flatMap((v) => v.fields));
 }
 
-/** Local-state numeric input: commits a parsed value (or clears) on change,
- *  never re-renders the video grid per keystroke. */
-function TimeInput({
-  value,
-  flagged,
-  disabled,
-  onCommit,
-}: {
-  value: number | null;
-  flagged: boolean;
-  disabled: boolean;
-  onCommit: (t: number | null) => void;
-}) {
-  const [text, setText] = useState(value === null ? "" : String(value));
-  useEffect(() => {
-    /* eslint-disable-next-line react-hooks/set-state-in-effect -- sync the
-       local draft text to an externally-committed value (controlled bridge). */
-    setText(value === null ? "" : String(value));
-  }, [value]);
-  return (
-    <input
-      type="text"
-      inputMode="decimal"
-      disabled={disabled}
-      value={text}
-      onChange={(e) => setText(e.target.value)}
-      onBlur={() => {
-        const s = text.trim();
-        if (s === "") {
-          onCommit(null);
-          return;
-        }
-        const parsed = Number(s);
-        onCommit(Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : null);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-        e.stopPropagation();
-      }}
-      placeholder="—"
-      className={`w-16 rounded border px-1 py-0.5 text-[11px] font-mono text-right ${
-        flagged ? "border-coral ring-1 ring-coral/40" : "border-warm-200"
-      }`}
-    />
-  );
-}
-
-/** Time input + frame equivalent + mark/seek/clear — shared by bool-paired
- *  and standalone time rows so EVERY event time gets the same affordances. */
-function TimeControls({
-  t,
-  fps,
-  frame,
-  flagged,
-  disabled,
-  markDisabled,
-  markTitle,
-  onCommit,
-  onMark,
-  onSeek,
-  canClear,
-  onClear,
-  clearTitle,
-}: {
-  t: number | null;
-  fps: number;
-  frame: number;
-  flagged: boolean;
-  disabled: boolean;
-  markDisabled: boolean;
-  markTitle: string;
-  onCommit: (t: number | null) => void;
-  onMark: () => void;
-  onSeek: (t: number) => void;
-  canClear: boolean;
-  onClear: () => void;
-  clearTitle: string;
-}) {
-  return (
-    <>
-      <TimeInput value={t} flagged={flagged} disabled={disabled} onCommit={onCommit} />
-      <span className="text-[10px] font-mono text-ink-muted w-10">
-        {t !== null ? `f${Math.round(t * fps)}` : ""}
-      </span>
-      <button
-        disabled={disabled || markDisabled}
-        onClick={onMark}
-        className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
-          markDisabled
-            ? "bg-warm-100 text-ink-muted/40 cursor-not-allowed"
-            : "bg-teal/10 text-teal hover:bg-teal/20 cursor-pointer"
-        }`}
-        title={
-          markDisabled
-            ? "frame drift detected — re-seek until the banner clears"
-            : `${markTitle} (frame ${frame})`
-        }
-      >
-        ◉ mark
-      </button>
-      <button
-        disabled={t === null}
-        onClick={() => t !== null && onSeek(t)}
-        className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
-          t !== null
-            ? "bg-warm-100 text-ink-muted hover:bg-warm-200 cursor-pointer"
-            : "text-ink-muted/30"
-        }`}
-        title={t !== null ? `seek to ${t}s` : undefined}
-      >
-        →
-      </button>
-      <button
-        disabled={disabled || !canClear}
-        onClick={onClear}
-        className="px-1.5 py-0.5 rounded text-[10px] font-mono text-ink-muted hover:text-coral cursor-pointer"
-        title={clearTitle}
-      >
-        ×
-      </button>
-    </>
-  );
-}
-
-export function StageLabelForm({
-  spec,
-  row,
-  violations,
-  frame,
-  markFrame,
-  markDisabled,
-  onEdit,
-  onSeekTime,
-  disabled,
-  blind = false,
-}: {
+export interface StageLabelFormProps {
   spec: ExportedStageSpec;
   blind?: boolean;
   row: StageLabelRow;
@@ -163,7 +30,26 @@ export function StageLabelForm({
   onEdit: (patch: StageLabelRow) => void;
   onSeekTime: (timeS: number) => void;
   disabled: boolean;
-}) {
+  onPendingInputChange?: (id: string, pending: boolean) => void;
+}
+
+export function StageLabelForm(props: StageLabelFormProps) {
+  return props.spec.trajectory ? <TrajectoryLabelForm {...props} /> : <LegacyStageLabelForm {...props} />;
+}
+
+function LegacyStageLabelForm({
+  spec,
+  row,
+  violations,
+  frame,
+  markFrame,
+  markDisabled,
+  onEdit,
+  onSeekTime,
+  disabled,
+  blind = false,
+  onPendingInputChange,
+}: StageLabelFormProps) {
   const flagged = violationFields(violations);
   const stage = typeof row[spec.stage_field] === "number" ? (row[spec.stage_field] as number) : null;
   const boolSet = new Set(spec.bool_fields);
@@ -345,6 +231,7 @@ export function StageLabelForm({
                 </label>
                 {hasTime && (
                   <TimeControls
+                    onPendingInputChange={onPendingInputChange}
                     t={t}
                     fps={spec.fps}
                     frame={frame}
@@ -355,11 +242,12 @@ export function StageLabelForm({
                     onCommit={(next) => onEdit({ [tf]: next ?? undefined })}
                     onMark={() => {
                       const at = markFrame();
-                      if (at === null) return; // drifted display — refused
+                      if (at === null) return false; // drifted display — refused
                       onEdit({
                         [bf]: true,
                         [tf]: Math.round((at / spec.fps) * 100) / 100,
                       });
+                      return true;
                     }}
                     onSeek={onSeekTime}
                     canClear={row[bf] !== undefined || t !== null}
@@ -390,6 +278,7 @@ export function StageLabelForm({
                 {tf}
               </span>
               <TimeControls
+                    onPendingInputChange={onPendingInputChange}
                 t={t}
                 fps={spec.fps}
                 frame={frame}
@@ -400,8 +289,9 @@ export function StageLabelForm({
                 onCommit={(next) => onEdit({ [tf]: next ?? undefined })}
                 onMark={() => {
                   const at = markFrame();
-                  if (at === null) return; // drifted display — refused
+                  if (at === null) return false; // drifted display — refused
                   onEdit({ [tf]: Math.round((at / spec.fps) * 100) / 100 });
+                  return true;
                 }}
                 onSeek={onSeekTime}
                 canClear={t !== null}

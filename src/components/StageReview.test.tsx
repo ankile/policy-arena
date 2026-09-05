@@ -4,7 +4,7 @@ import StageReview from "./StageReview";
 import { AppTabNavigation } from "./AppTabNavigation";
 import { navigateToDataset } from "../lib/appNavigation";
 import { useSearchParam, useSearchParamNullable } from "../lib/useSearchParam";
-import { createStageReviewFixture } from "../../tests/browser/stageReviewFixture";
+import { createStageReviewFixture, configureTrajectoryFixture } from "../../tests/browser/stageReviewFixture";
 
 GlobalRegistrator.register({ url: "http://localhost/" });
 const { act, cleanup, fireEvent, render } = await import("@testing-library/react");
@@ -401,4 +401,206 @@ describe("stage prediction version review", () => {
     expect(new URLSearchParams(window.location.search).get("prediction")).toBe("B");
   });
 
+});
+
+
+describe("generic trajectory review", () => {
+  function genericFixture() {
+    window.history.replaceState(null, "", "/?episode=0&prediction=A");
+    const fixture = createStageReviewFixture();
+    const contract = configureTrajectoryFixture(fixture);
+    const view = render(<StageReview {...fixture.props} />);
+    return { ...fixture, ...contract, view };
+  }
+  test("preserves historical events and final failure while inspecting full generic predictions", async () => {
+    const { state, view, selected } = genericFixture();
+    await settle();
+    expect(view.getByTestId("trajectory-form")).toBeTruthy();
+    expect((view.getByRole("combobox", { name: "Task success" }) as HTMLSelectElement).value).toBe("false");
+    expect((view.getByRole("combobox", { name: "Maximum stage" }) as HTMLSelectElement).value).toBe(selected.review_label!.max_stage_id);
+    expect(state.saves).toHaveLength(0);
+    fireEvent.click(view.getByRole("button", { name: /model evidence/ }));
+    expect(view.container.textContent).toContain(`Prediction source revision: ${"f".repeat(40)}`);
+    expect(view.container.textContent).toContain("Prediction duration: 30s");
+    expect(state.saves).toHaveLength(0);
+  });
+  test("nested occurrence edits retain untouched attempts and exact prediction attribution on source switch", async () => {
+    const { state, view, selected } = genericFixture();
+    await settle();
+    const original = structuredClone(selected.review_label!);
+    fireEvent.change(view.getByRole("spinbutton", { name: "Action 1 occurrence 1 attempt" }), { target: { value: "2" } });
+    await act(async () => chooseVersion(view, "B"));
+    expect(state.saves).toHaveLength(1);
+    const saved = state.saves[0];
+    expect(saved.prediction_id).toBe("A-prediction-0");
+    expect(saved.taxonomy_version).toBe("trajectory-review/v1/routing_d1/v1");
+    expect(saved.label!.stage_transitions).toEqual(original.stage_transitions);
+    expect(saved.label!.failure_events).toEqual(original.failure_events);
+    const expected = structuredClone(original.key_action_observations);
+    expected[0].occurrences[0].attempt_index = 2;
+    expect(saved.label!.key_action_observations).toEqual(expected);
+    expect(saved.label!.trajectory_identity).toEqual(original.trajectory_identity);
+    expect(saved.status).toBe("draft");
+  });
+  test("event edits and unknown scalar values remain blind, then explicit unblind reveals evidence", async () => {
+    window.history.replaceState(null, "", "/?episode=0&prediction=A");
+    const fixture = createStageReviewFixture();
+    const { selected } = configureTrajectoryFixture(fixture);
+    const label = structuredClone(selected.review_label!);
+    const sentinel = "POLICY_IDENTITY_SENTINEL";
+    label.confidence = sentinel;
+    label.notes = sentinel;
+    label.stage_transitions[0].confidence = sentinel;
+    label.stage_transitions[0].evidence = sentinel;
+    fixture.state.predictionOverrides.label = label;
+    const view = render(<StageReview {...fixture.props} />);
+    await settle();
+    expect(view.container.textContent).not.toContain(sentinel);
+    expect(view.container.innerHTML).not.toContain(sentinel);
+    await act(async () => fireEvent.click(view.getAllByRole("button", { name: "Show provenance and unblind" })[0]));
+    expect((view.getByRole("textbox", { name: "Transition 1 evidence" }) as HTMLTextAreaElement).value).toBe(sentinel);
+    fireEvent.change(view.getByRole("textbox", { name: "Review notes" }), { target: { value: "reviewed evidence" } });
+    await act(async () => key("u"));
+    expect(fixture.state.saves[0].blind).toBe(false);
+    expect(fixture.state.saves[0].label!.notes).toBe("reviewed evidence");
+  });
+  test("other-schema availability waits for saving and never translates the old label", async () => {
+    const { state, props, view } = genericFixture();
+    await settle();
+    state.otherSchemas = [{ taxonomy_version: "trajectory-review/v1/routing_d1/v2", run_id: "C", expected_count: 26, published_at: 2 }];
+    await act(async () => view.rerender(<StageReview {...props} />));
+    let release: (() => void) | undefined;
+    state.save = () => new Promise<void>((resolve) => { release = resolve; });
+    fireEvent.change(view.getByRole("spinbutton", { name: "Attempt count" }), { target: { value: "3" } });
+    await act(async () => fireEvent.click(view.getByRole("button", { name: /Open trajectory-review.*26 episodes/ })));
+    expect(state.saves[0].taxonomy_version).toBe("trajectory-review/v1/routing_d1/v1");
+    expect(new URLSearchParams(window.location.search).get("prediction")).toBe("A");
+    await act(async () => release?.());
+    expect(new URLSearchParams(window.location.search).get("schema")).toBe("trajectory-review/v1/routing_d1/v2");
+    expect(new URLSearchParams(window.location.search).get("prediction")).toBe("C");
+  });
+});
+
+
+test("generic timestamps keep exact source precision through untouched blur and explicit edits", async () => {
+  window.history.replaceState(null, "", "/?episode=0&prediction=A");
+  const fixture = createStageReviewFixture();
+  const { selected } = configureTrajectoryFixture(fixture);
+  const label = structuredClone(selected.review_label!);
+  label.stage_transitions[0].time_s = 1.234567;
+  fixture.state.predictionOverrides.label = label;
+  const view = render(<StageReview {...fixture.props} />);
+  await settle();
+  const timeInput = view.getByRole("group", { name: "Transition 1 time" }).querySelector("input")!;
+  fireEvent.focus(timeInput); fireEvent.blur(timeInput);
+  await act(async () => chooseVersion(view, "B"));
+  expect(fixture.state.saves).toHaveLength(0);
+  const nextInput = view.getByRole("group", { name: "Transition 1 time" }).querySelector("input")!;
+  fireEvent.change(nextInput, { target: { value: "1.234568" } }); fireEvent.blur(nextInput);
+  await act(async () => chooseVersion(view, "A"));
+  expect(fixture.state.saves).toHaveLength(1);
+  expect((fixture.state.saves[0].label!.stage_transitions as Array<{ time_s: number }>)[0].time_s).toBe(1.234568);
+  expect(fixture.state.saves[0].prediction_id).toBe("B-prediction-0");
+});
+
+
+test("focused timestamp edits participate in actual global navigation and beforeunload guards before blur", async () => {
+  const { state, view } = fixture("?tab=explorer&dataset=org%2Frepo&view=stage&episode=0&prediction=A", [], true);
+  await settle();
+  const input = view.container.querySelector('input[inputmode="decimal"]')!;
+  fireEvent.focus(input); fireEvent.change(input, { target: { value: "12.345" } });
+  const unload = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(unload);
+  expect(unload.defaultPrevented).toBe(true);
+  fireEvent.click(view.getByRole("button", { name: "Leaderboard" }));
+  expect(view.queryByTestId("route")).toBeNull();
+  expect((input as HTMLInputElement).value).toBe("12.345");
+  expect(state.saves).toHaveLength(0);
+});
+
+test("invalid timestamp text stays visible and blocks saves and every source navigation until repaired", async () => {
+  const { state, view } = fixture("?tab=explorer&dataset=org%2Frepo&view=stage&episode=0&prediction=A", [], true);
+  await settle();
+  const input = view.container.querySelector('input[inputmode="decimal"]')!;
+  fireEvent.change(input, { target: { value: "unfinished" } }); fireEvent.blur(input);
+  expect((input as HTMLInputElement).value).toBe("unfinished");
+  expect(input.getAttribute("aria-invalid")).toBe("true");
+  const unload = new Event("beforeunload", { cancelable: true }); window.dispatchEvent(unload);
+  expect(unload.defaultPrevented).toBe(true);
+  await act(async () => chooseVersion(view, "B"));
+  fireEvent.click(view.getByRole("button", { name: "Leaderboard" }));
+  await act(async () => key("u"));
+  expect(new URLSearchParams(window.location.search).get("prediction")).toBe("A");
+  expect(view.queryByTestId("route")).toBeNull();
+  expect(state.saves).toHaveLength(0);
+  fireEvent.change(input, { target: { value: "2.5" } });
+  await act(async () => chooseVersion(view, "B"));
+  expect(state.saves).toHaveLength(1);
+  expect(state.saves[0].label!.rope_grasped_time_s).toBe(2.5);
+  expect(new URLSearchParams(window.location.search).get("prediction")).toBe("B");
+});
+
+test("fractional episode URLs cannot throw during the cross-schema availability query", async () => {
+  const { state, view } = fixture("?episode=1.2&prediction=A");
+  await settle();
+  expect(view.container.textContent).toContain("Stage review");
+  expect(state.saves).toHaveLength(0);
+});
+
+for (const control of ["clear", "mark"] as const) {
+  test(`generic ${control} resolves invalid local timestamp text even when the stored value stays the same`, async () => {
+    window.history.replaceState(null, "", "/?episode=0&prediction=A");
+    const fixture = createStageReviewFixture(); const { selected } = configureTrajectoryFixture(fixture);
+    const label = structuredClone(selected.review_label!);
+    label.primary_failure_time_s = null; label.stage_transitions[0].time_s = 0;
+    fixture.state.predictionOverrides.label = label;
+    const view = render(<StageReview {...fixture.props} />); await settle();
+    const groupName = control === "clear" ? "Primary failure time" : "Transition 1 time";
+    let group = view.getByRole("group", { name: groupName });
+    fireEvent.change(group.querySelector("input")!, { target: { value: "-" } });
+    const button = control === "clear" ? group.querySelector('[title="Clear Primary failure time"]')!
+      : Array.from(group.querySelectorAll("button")).find((item) => item.textContent!.includes("mark"))!;
+    fireEvent.click(button); await settle();
+    group = view.getByRole("group", { name: groupName });
+    expect((group.querySelector("input") as HTMLInputElement).value).toBe(control === "clear" ? "" : "0");
+    expect(view.container.textContent).not.toContain("unfinished or invalid text");
+    await act(async () => key("u"));
+    expect(fixture.state.saves).toHaveLength(1);
+  });
+}
+
+test("source-free generic annotation waits for policy signals and pins the valid prefix instead of the reset tail", async () => {
+  window.history.replaceState(null, "", "/?episode=0&prediction=A");
+  const fixture = createStageReviewFixture(); configureTrajectoryFixture(fixture);
+  fixture.state.missingPredictionEpisodes.add(0);
+  fixture.state.runs = fixture.state.runs.map((run) => ({ ...run, expected_count: 1 }));
+  let release: (() => void) | undefined;
+  fixture.state.fetchSignals = () => new Promise((resolve) => { release = () => resolve({ detectedOutcome: "failure",
+    validLength: 120, lastValidFrame: 119, doneOnsetFrame: null, rewardSpikeFrames: [] }); });
+  const view = render(<StageReview {...fixture.props} />); await settle();
+  expect(view.container.textContent).toContain("Loading the validated policy-phase duration");
+  expect(view.queryByTestId("trajectory-form")).toBeNull();
+  await act(async () => key("u")); expect(fixture.state.saves).toHaveLength(0);
+  await act(async () => release?.());
+  expect(view.container.textContent).toContain("policy 8.0s / raw 450f");
+  expect((view.getByRole("combobox", { name: "Task success" }) as HTMLSelectElement).value).toBe("__invalid__");
+  const input = view.getByRole("group", { name: "Primary failure time" }).querySelector("input")!;
+  fireEvent.change(input, { target: { value: "9" } });
+  expect(view.container.textContent).toContain("trajectory_time_bounds");
+  await act(async () => key("u"));
+  expect(fixture.state.saves[0].episode_duration_s).toBe(8);
+  expect(fixture.state.saves[0].prediction_id).toBeUndefined();
+  expect(fixture.state.saves[0].label!.task_success).toBeNull();
+});
+
+test("source-free policy-signal errors fail closed without silently using raw length", async () => {
+  window.history.replaceState(null, "", "/?episode=0&prediction=A");
+  const fixture = createStageReviewFixture(); configureTrajectoryFixture(fixture);
+  fixture.state.missingPredictionEpisodes.add(0);
+  fixture.state.runs = fixture.state.runs.map((run) => ({ ...run, expected_count: 1 }));
+  fixture.state.fetchSignals = async () => { throw new Error("invalid policy prefix"); };
+  const view = render(<StageReview {...fixture.props} />); await settle();
+  expect(view.container.textContent).toContain("Cannot determine policy-phase duration: invalid policy prefix");
+  expect(view.queryByTestId("trajectory-form")).toBeNull();
+  await act(async () => key("u")); expect(fixture.state.saves).toHaveLength(0);
 });

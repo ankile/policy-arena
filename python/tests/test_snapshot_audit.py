@@ -1,6 +1,7 @@
 """Local synthetic ZIP tests for the read-only deployment preservation audit."""
 
 import importlib.util
+from copy import deepcopy
 import json
 import subprocess
 import sys
@@ -163,6 +164,261 @@ class SnapshotAuditTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, expected, result.stderr)
             self.assertEqual(json.loads(result.stdout)["ok"], expected == 0)
+
+    @staticmethod
+    def planned_spec(task, version, live=True):
+        return {
+            "task": task,
+            "taxonomy_version": version,
+            "taxonomy_hash": "a" * 64,
+            "spec": {
+                "task": task,
+                "taxonomy_version": version,
+                "taxonomy_hash": "a" * 64,
+                "ladder": [{"index": 1, "description": "preserve-source-payload"}],
+            },
+            "live": live,
+            "source": "immutable-campaign-source",
+        }
+
+    @staticmethod
+    def registered_spec(planned, identity):
+        return {
+            **deepcopy(planned),
+            "_id": identity,
+            "_creationTime": 100,
+            "exported_at": 200,
+        }
+
+    def planned_snapshots(self):
+        expected = [
+            self.planned_spec("marker", "trajectory/v3"),
+            self.planned_spec("marker", "trajectory/v4", live=False),
+            self.planned_spec("square", "trajectory/v3"),
+            self.planned_spec("routing", "trajectory/v1"),
+        ]
+        old = [
+            self.registered_spec(self.planned_spec(task, "legacy/v1"), "old-" + task)
+            for task in ("marker", "square", "routing")
+        ]
+        old.append(
+            self.registered_spec(
+                self.planned_spec("marker", "legacy/candidate", live=False),
+                "old-candidate",
+            )
+        )
+        after = [{**row, "live": False} for row in old]
+        after.extend(
+            self.registered_spec(row, f"new-{index}")
+            for index, row in enumerate(expected)
+        )
+        return old, after, expected
+
+    def compare_specs(self, old, new, expected, *, other_before=None, other_after=None):
+        before = self.write(
+            "before.zip", {**(other_before or {}), "stageTaskSpecs": old}
+        )
+        after = self.write("after.zip", {**(other_after or {}), "stageTaskSpecs": new})
+        return audit.compare_snapshots(before, after, expected_stage_specs=expected)
+
+    def test_exact_four_planned_additions_and_three_live_demotions_pass(self):
+        old, new, expected = self.planned_snapshots()
+        result = self.compare_specs(old, new, expected)
+        self.assertTrue(result["ok"])
+        changes = result["tables"]["stageTaskSpecs"]["planned_changes"]
+        self.assertEqual(changes["allowed_added_ids"], [f"new-{i}" for i in range(4)])
+        self.assertEqual(
+            changes["allowed_demoted_ids"], ["old-marker", "old-routing", "old-square"]
+        )
+        self.assertNotIn("preserve-source-payload", json.dumps(result))
+        self.assertNotIn("immutable-campaign-source", json.dumps(result))
+        # Convex serializes number fields as float64; planned JSON may use ints.
+        new[4]["spec"]["ladder"][0]["index"] = 1.0
+        self.assertTrue(self.compare_specs(old, new, expected)["ok"])
+        # Without explicit authorization the same additions/demotions still fail.
+        self.assertFalse(self.compare_specs(old, new, None)["ok"])
+
+    def test_planned_registration_rejects_changed_source_payload_or_metadata(self):
+        old, baseline, expected = self.planned_snapshots()
+        changes = [
+            ("spec", {**old[0]["spec"], "ladder": []}),
+            ("source", "changed-producer"),
+            ("exported_at", old[0]["exported_at"] + 1),
+            ("taxonomy_hash", "b" * 64),
+            ("_creationTime", old[0]["_creationTime"] + 1),
+            ("unexpected", "added-metadata"),
+        ]
+        for field, value in changes:
+            with self.subTest(field=field):
+                new = deepcopy(baseline)
+                new[0][field] = value
+                result = self.compare_specs(old, new, expected)
+                self.assertFalse(result["ok"])
+                self.assertIn(
+                    "old-marker",
+                    result["tables"]["stageTaskSpecs"]["planned_changes"][
+                        "unexpected_changed_ids"
+                    ],
+                )
+        # Even a number serialization change is forbidden in preserved rows.
+        new = deepcopy(baseline)
+        new[0]["spec"]["ladder"][0]["index"] = 1.0
+        self.assertFalse(self.compare_specs(old, new, expected)["ok"])
+
+    def test_planned_registration_requires_exact_new_payload_and_metadata_shape(self):
+        old, baseline, expected = self.planned_snapshots()
+        bad_fields = [
+            ("source", "unexpected-source"),
+            ("taxonomy_hash", "b" * 64),
+            ("spec", {**expected[0]["spec"], "ladder": []}),
+            ("live", False),
+            ("extra", "unexpected"),
+            ("task", ["malformed", "unhashable"]),
+            ("_creationTime", True),
+            ("exported_at", -1),
+        ]
+        for field, value in bad_fields:
+            with self.subTest(field=field):
+                new = deepcopy(baseline)
+                new[4][field] = value
+                result = self.compare_specs(old, new, expected)
+                self.assertFalse(result["ok"])
+                self.assertIn(
+                    "new-0",
+                    result["tables"]["stageTaskSpecs"]["planned_changes"][
+                        "unexpected_added_ids"
+                    ],
+                )
+        new = deepcopy(baseline)
+        new[4]["spec"]["ladder"][0]["index"] = True
+        self.assertFalse(self.compare_specs(old, new, expected)["ok"])
+        del new[4]["exported_at"]
+        self.assertFalse(self.compare_specs(old, new, expected)["ok"])
+
+    def test_planned_registration_rejects_missing_duplicate_or_extra_new_rows(self):
+        old, baseline, expected = self.planned_snapshots()
+        cases = {
+            "missing": baseline[:-1],
+            "duplicate": [*baseline, {**baseline[-1], "_id": "duplicate"}],
+            "extra": [
+                *baseline,
+                self.registered_spec(self.planned_spec("extra", "v1"), "extra"),
+            ],
+        }
+        for name, new in cases.items():
+            with self.subTest(name=name):
+                self.assertFalse(self.compare_specs(old, new, expected)["ok"])
+        result = self.compare_specs(old, baseline[:-1], expected)
+        self.assertEqual(
+            result["tables"]["stageTaskSpecs"]["planned_changes"][
+                "missing_expected_specs"
+            ],
+            [{"task": "routing", "taxonomy_version": "trajectory/v1"}],
+        )
+
+    def test_demotions_require_a_matched_new_live_version_of_the_same_task(self):
+        old, baseline, expected = self.planned_snapshots()
+        # Keeping the old live schema would produce two live versions.
+        new = deepcopy(baseline)
+        new[0]["live"] = True
+        result = self.compare_specs(old, new, expected)
+        self.assertFalse(result["ok"])
+        self.assertEqual(
+            result["tables"]["stageTaskSpecs"]["planned_changes"][
+                "unexpected_live_ids"
+            ],
+            ["old-marker"],
+        )
+        candidate = self.planned_spec("marker", "candidate/v2", live=False)
+        candidate_row = self.registered_spec(candidate, "new-candidate")
+        # Candidate addition permits no old live demotion.
+        self.assertTrue(
+            self.compare_specs(old, [*old, candidate_row], [candidate])["ok"]
+        )
+        self.assertFalse(
+            self.compare_specs(old, [*baseline[:4], candidate_row], [candidate])["ok"]
+        )
+        self.assertFalse(self.compare_specs(old, baseline[:4], [])["ok"])
+        other = self.registered_spec(self.planned_spec("other", "v1"), "old-other")
+        self.assertFalse(
+            self.compare_specs(
+                [*old, other], [*baseline, {**other, "live": False}], expected
+            )["ok"]
+        )
+
+    def test_planned_registration_never_allows_deletion_or_other_table_changes(self):
+        old, new, expected = self.planned_snapshots()
+        self.assertFalse(self.compare_specs(old, new[1:], expected)["ok"])
+        for table in audit.REQUIRED_PRESERVED_TABLES:
+            if table == "stageTaskSpecs":
+                continue
+            with self.subTest(table=table):
+                result = self.compare_specs(
+                    old,
+                    new,
+                    expected,
+                    other_before={table: [{"_id": "protected", "value": "before"}]},
+                    other_after={table: [{"_id": "protected", "value": "after"}]},
+                )
+                self.assertFalse(result["ok"])
+        # The existing prediction-table policy is independent of schema additions.
+        result = self.compare_specs(
+            old,
+            new,
+            expected,
+            other_after={"stagePredictions": [{"_id": "new-prediction"}]},
+        )
+        self.assertTrue(result["ok"])
+
+    def test_expected_plan_must_be_exact_new_unique_schema_identities(self):
+        old, new, expected = self.planned_snapshots()
+        malformed = [
+            {},
+            [None],
+            [{**expected[0], "unknown": True}],
+            [{**expected[0], "live": 1}],
+            [{**expected[0], "source": ""}],
+            [{**expected[0], "spec": {**expected[0]["spec"], "task": "other"}}],
+            [expected[0], expected[0]],
+            [expected[0], {**expected[1], "live": True}],
+            [self.planned_spec("marker", "legacy/v1")],
+        ]
+        for plan in malformed:
+            with self.subTest(plan=plan):
+                with self.assertRaises(audit.SnapshotError):
+                    self.compare_specs(old, new, plan)
+
+    def test_cli_expected_specs_is_explicit_strict_json_and_keeps_safe_reporting(self):
+        old, new, expected = self.planned_snapshots()
+        before = self.write("before.zip", {"stageTaskSpecs": old})
+        after = self.write("after.zip", {"stageTaskSpecs": new})
+        plan_path = self.directory / "plan.json"
+        for payload, status in (
+            (json.dumps(expected), 0),
+            ("[]", 1),
+            ("null", 2),
+            ("{}", 2),
+            ('[{"secret":"unclosed', 2),
+            ('[{"a":1,"a":2}]', 2),
+        ):
+            with self.subTest(payload=payload):
+                plan_path.write_text(payload)
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        str(SCRIPT),
+                        str(before),
+                        str(after),
+                        "--expected-stage-specs",
+                        str(plan_path),
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(result.returncode, status, result.stderr)
+                self.assertEqual(json.loads(result.stdout)["ok"], status == 0)
+                self.assertNotIn("unclosed", result.stdout)
+                self.assertNotIn("preserve-source-payload", result.stdout)
 
 
 if __name__ == "__main__":

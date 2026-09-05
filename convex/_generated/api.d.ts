@@ -49,6 +49,8 @@ import type * as stageTaskSpecs from "../stageTaskSpecs.js";
 import type * as statusShared from "../statusShared.js";
 import type * as statuses from "../statuses.js";
 import type * as taskSpecs from "../taskSpecs.js";
+import type * as trajectoryContract from "../trajectoryContract.js";
+import type * as trajectoryReview from "../trajectoryReview.js";
 import type * as users from "../users.js";
 
 import type {
@@ -99,6 +101,8 @@ declare const fullApi: ApiFromModules<{
   statusShared: typeof statusShared;
   statuses: typeof statuses;
   taskSpecs: typeof taskSpecs;
+  trajectoryContract: typeof trajectoryContract;
+  trajectoryReview: typeof trajectoryReview;
   users: typeof users;
 }>;
 

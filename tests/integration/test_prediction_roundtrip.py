@@ -25,6 +25,12 @@ from policy_arena.client import (
     PolicyArenaClient,
     _normalize_convex_json_numbers,
 )
+from policy_arena.prediction_hashes import canonical_digest, prediction_digest
+from sir.real.stage_labeling.arena_export import (
+    build_trajectory_prediction_row,
+    review_label_to_trajectory,
+    trajectory_to_review_label,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -95,7 +101,9 @@ class LocalPredictionRoundtrip(unittest.TestCase):
                             log.seek(0)
                             self.fail("Local server did not start:\n" + log.read())
                         time.sleep(0.02)
-                    self.exercise(json.loads(ready.read_text())["url"])
+                    url = json.loads(ready.read_text())["url"]
+                    self.exercise(url)
+                    self.exercise_trajectory(url)
                 except Exception:
                     log.flush()
                     log.seek(0)
@@ -264,6 +272,224 @@ class LocalPredictionRoundtrip(unittest.TestCase):
             "Local HTTP integration passed:",
             final["counters"],
             "102 immutable predictions; legacy records and review source duration preserved",
+        )
+
+    def exercise_trajectory(self, url):
+        """Use the same live local server for the four actual generic contracts."""
+        client = PolicyArenaClient(url, api_key=KEY, api_url=url + "/api/v1")
+        client.client = LocalPublicQueries(url)
+        fixtures = json.loads(
+            (ROOT / "tests/fixtures/trajectory-review-fixtures.json").read_text()
+        )
+        baseline = read(url + "/_test/snapshot")["value"]
+        for task in fixtures["synthetic"]["tasks"]:
+            with self.subTest(taxonomy=task["source_name"]):
+                spec = task["spec"]
+                definition = spec["trajectory"]["task_definition"]
+                # This goes through SDK JSON encoding, the authenticated HTTP
+                # router and actual spec hash checks, rather than direct DB seed.
+                client.upsert_stage_task_spec(
+                    task=spec["task"],
+                    taxonomy_version=spec["taxonomy_version"],
+                    taxonomy_hash=spec["taxonomy_hash"],
+                    live=False,
+                    spec=spec,
+                    source="local-integration-trajectory",
+                )
+                registered = next(
+                    row
+                    for row in client.get_stage_task_specs(spec["task"])
+                    if row["taxonomy_version"] == spec["taxonomy_version"]
+                )
+                self.assertEqual(
+                    canonical_digest(registered["spec"]), canonical_digest(spec)
+                )
+                self.assertFalse(registered["live"])
+                fixture = next(
+                    item
+                    for item in task["cases"]
+                    if item["name"] == "historical_high_stage_final_failure"
+                )
+                source_canonical = fixture["canonical"]
+                invalid = copy.deepcopy(source_canonical)
+                invalid["attempt_count"] = 0
+                repo = f"test/local-native-{task['source_name']}"
+                cases = [
+                    (source_canonical, fixture["duration_s"]),
+                    (invalid, fixture["duration_s"]),
+                ]
+                real = next(
+                    (
+                        item
+                        for item in fixtures["real_campaign_cases"]
+                        if item["source_name"] == task["source_name"]
+                    ),
+                    None,
+                )
+                if real is not None:
+                    cases.append((real["canonical"], real["duration_s"]))
+                rows = [
+                    build_trajectory_prediction_row(
+                        canonical,
+                        definition,
+                        episode_index=index,
+                        episode_duration_s=duration_s,
+                        source_revision="c" * 40,
+                        evidence={"fixture": task["source_name"], "case": index},
+                    )
+                    for index, (canonical, duration_s) in enumerate(cases)
+                ]
+                meta = {
+                    "run_key": "local-native/" + task["source_name"],
+                    "dataset_repo": repo,
+                    "task": spec["task"],
+                    "taxonomy_version": spec["taxonomy_version"],
+                    "taxonomy_hash": spec["taxonomy_hash"],
+                    "pipeline": {
+                        "name": "local-native",
+                        "version": "v1",
+                        "git_commit": "a" * 40,
+                    },
+                    "source": "local-integration-trajectory",
+                    "provenance": {"adapter_version": "trajectory-review/v1"},
+                }
+                run_id = client.upload_stage_prediction_run(rows, **meta)
+                stored = client.fetch_stage_predictions(run_id, page_size=1)
+                self.assertEqual(len(stored), len(cases))
+                for row, (canonical, duration_s) in zip(stored, cases, strict=True):
+                    self.assertEqual(
+                        prediction_digest(row, stored=True), row["content_sha256"]
+                    )
+                    self.assertEqual(
+                        review_label_to_trajectory(row["label"], definition), canonical
+                    )
+                    self.assertEqual(row["canonical_response"], canonical)
+                    self.assertEqual(row["episode_duration_s"], duration_s)
+                self.assertIn("trajectory_contract", stored[1]["validation_codes"])
+                self.assertIn(
+                    "trajectory_semantic_invalid", stored[1]["violation_codes"]
+                )
+                self.assertEqual(
+                    client.upload_stage_prediction_run(rows, **meta), run_id
+                )
+                self.assertEqual(client.fetch_stage_predictions(run_id), stored)
+
+                edited_canonical = copy.deepcopy(source_canonical)
+                edited_canonical.update(
+                    notes="Human edited source notes — repeated events stay intact.",
+                    confidence="low",
+                    needs_human_review=True,
+                    review_reasons=["Human request for an additional review"],
+                )
+                events = [
+                    *edited_canonical["stage_transitions"],
+                    *edited_canonical["failure_events"],
+                ]
+                for action in edited_canonical["key_action_observations"]:
+                    events.extend(action["occurrences"])
+                for index, event in enumerate(events):
+                    event["confidence"] = "medium"
+                    event["evidence"] = f"Human evidence for event {index}: 保留"
+                saved_id = client.save_stage_review(
+                    task=spec["task"],
+                    dataset_repo=repo,
+                    episode_index=0,
+                    taxonomy_version=spec["taxonomy_version"],
+                    status="confirmed",
+                    label=trajectory_to_review_label(edited_canonical, definition),
+                    prediction_id=stored[0]["_id"],
+                    prediction_sha256=stored[0]["content_sha256"],
+                    reviewer_override="local-native-reviewer",
+                    episode_duration_s=999,
+                )
+                history = client.client.query(
+                    "stageReviews:historyForEpisode",
+                    {
+                        "dataset_repo": repo,
+                        "episode_index": ConvexInt64(0),
+                    },
+                )
+                saved = next(row for row in history if row["_id"] == saved_id)
+                self.assertEqual(
+                    review_label_to_trajectory(saved["label"], definition),
+                    edited_canonical,
+                )
+                self.assertEqual(saved["episode_duration_s"], fixture["duration_s"])
+                self.assertEqual(saved["prediction_run_id"], run_id)
+                self.assertEqual(saved["taxonomy_hash"], spec["taxonomy_hash"])
+
+                invalid_review = {
+                    "task": spec["task"],
+                    "dataset_repo": repo,
+                    "episode_index": 1,
+                    "taxonomy_version": spec["taxonomy_version"],
+                    "label": stored[1]["label"],
+                    "prediction_id": stored[1]["_id"],
+                    "prediction_sha256": stored[1]["content_sha256"],
+                    "reviewer_override": "local-native-reviewer",
+                }
+                with self.assertRaises(PolicyArenaAPIError):
+                    client.save_stage_review(**invalid_review, status="confirmed")
+                client.save_stage_review(**invalid_review, status="uncertain")
+
+                # Source-free is a provenance statement, not a claim of an
+                # independent/blind evaluation; this test creates no exposure log.
+                annotation = copy.deepcopy(edited_canonical)
+                annotation_episode = 2**63 - 1
+                annotation["sample_id"] = f"{repo}#episode={annotation_episode}"
+                annotation_id = client.save_stage_review(
+                    task=spec["task"],
+                    dataset_repo=repo,
+                    episode_index=annotation_episode,
+                    taxonomy_version=spec["taxonomy_version"],
+                    status="confirmed",
+                    label=trajectory_to_review_label(annotation, definition),
+                    reviewer_override="local-source-free-reviewer",
+                    episode_duration_s=fixture["duration_s"],
+                )
+                annotations = client.client.query(
+                    "stageReviews:historyForEpisode",
+                    {
+                        "dataset_repo": repo,
+                        "episode_index": ConvexInt64(annotation_episode),
+                    },
+                )
+                saved_annotation = next(
+                    row for row in annotations if row["_id"] == annotation_id
+                )
+                self.assertEqual(
+                    review_label_to_trajectory(saved_annotation["label"], definition),
+                    annotation,
+                )
+                for field in (
+                    "prediction_id",
+                    "prediction_sha256",
+                    "prediction_run_id",
+                    "legacy_prefill_id",
+                ):
+                    self.assertNotIn(field, saved_annotation)
+                self.assertEqual(client.fetch_stage_predictions(run_id), stored)
+                self.assertIsNone(
+                    client.list_stage_prediction_runs(
+                        repo, taxonomy_version=spec["taxonomy_version"]
+                    )["active_run_id"]
+                )
+
+        final = read(url + "/_test/snapshot")
+        for table in ("legacy", "outcomes", "applyJobs", "selections"):
+            self.assertEqual(final["value"][table], baseline[table], table)
+        for table in ("specs", "reviews", "runs", "predictions"):
+            by_id = {row["_id"]: row for row in final["value"][table]}
+            for row in baseline[table]:
+                self.assertEqual(by_id[row["_id"]], row, table)
+        self.assertEqual(len(final["value"]["specs"]) - len(baseline["specs"]), 4)
+        self.assertEqual(
+            len(final["value"]["predictions"]) - len(baseline["predictions"]), 11
+        )
+        print(
+            "Local native HTTP integration passed:",
+            final["counters"],
+            "four registered trajectory schemas; eleven lossless predictions; human edits and source-free review roundtrips",
         )
 
 

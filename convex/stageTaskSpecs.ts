@@ -1,6 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { requireEditorOrService } from "./access";
+import { normalizeTrajectoryReviewSpec, trajectoryTaskDefinitionDigest } from "./trajectoryReview";
 import { canonicalDigest } from "./stagePredictionContract";
 
 /**
@@ -72,6 +73,16 @@ export const upsert = mutation({
       throw new Error(
         "spec payload task/taxonomy_version/taxonomy_hash must match the row keys"
       );
+    }
+    if (spec.trajectory !== undefined) {
+      const trajectory = normalizeTrajectoryReviewSpec(spec.trajectory, args.task, args.taxonomy_version);
+      if (await trajectoryTaskDefinitionDigest(trajectory.task_definition) !== trajectory.task_definition_sha256) {
+        throw new Error("trajectory task definition content does not match its SHA-256 pin");
+      }
+      const hashInput = { ...spec }; delete hashInput.taxonomy_hash;
+      if (await canonicalDigest(hashInput) !== args.taxonomy_hash) {
+        throw new Error("trajectory review spec content does not match taxonomy_hash");
+      }
     }
     const existing = await ctx.db
       .query("stageTaskSpecs")

@@ -24,18 +24,20 @@ export function seedStageReview({
   outcome,
   spec,
   legacy,
+  emptyLabel = {},
 }: {
   own?: { label: StageLabelRow | null; attribution: PredictionAttribution };
   prediction?: { label: StageLabelRow; attribution: PredictionAttribution };
   outcome: string | null;
   spec: ExportedStageSpec;
   legacy: boolean;
+  emptyLabel?: StageLabelRow;
 }): ReviewSeed {
   const fromOwnReview = own?.label != null;
-  const label = { ...(fromOwnReview ? own.label : prediction?.label ?? {}) };
+  const label = { ...(fromOwnReview ? own.label : prediction?.label ?? emptyLabel) };
   // Legacy outcome inheritance remains explicit. An immutable prediction is
   // shown exactly as registered, including disagreement with human outcomes.
-  const inheritedSuccess = !fromOwnReview && legacy && outcome === "success";
+  const inheritedSuccess = !fromOwnReview && legacy && !spec.trajectory && outcome === "success";
   if (inheritedSuccess) {
     label[spec.stage_field] = spec.ladder.success_level;
     label[spec.final_state_field] = spec.success_final_state;

@@ -1,3 +1,5 @@
+import { canonicalizeTrajectoryReview, validateTrajectoryReview, type TrajectoryReviewSpec } from "./trajectoryReview";
+
 /**
  * TS interpreter for the stage-label consistency rules.
  *
@@ -25,6 +27,7 @@ export interface StageSpecLevel {
 }
 
 export interface ExportedStageSpec {
+  trajectory?: TrajectoryReviewSpec;
   task: string;
   lifecycle_task: string;
   taxonomy_version: string;
@@ -185,6 +188,7 @@ export function canonicalizeStageLabel(
   spec: ExportedStageSpec,
   label: StageLabelRow
 ): { label: StageLabelRow; unknownKeys: string[] } {
+  if (spec.trajectory) return canonicalizeTrajectoryReview(label);
   const boolSet = new Set(spec.bool_fields);
   const timeSet = new Set(spec.time_fields);
   const allowed = new Set(spec.editable_fields);
@@ -224,6 +228,7 @@ export function validateStageLabel(
   row: StageLabelRow,
   episodeDurationS?: number | null
 ): Violation[] {
+  if (spec.trajectory) return validateTrajectoryReview(spec.trajectory, row, episodeDurationS);
   const out: Violation[] = [];
   const ladder = spec.ladder;
   const timeFieldSet = new Set(spec.time_fields);

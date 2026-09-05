@@ -2,6 +2,8 @@ import { query, mutation } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { canonicalDigest } from "./stagePredictionContract";
+import { blankTrajectoryReview } from "./trajectoryReview";
 import { requireEditorOrService } from "./access";
 import {
   canonicalizeStageLabel,
@@ -124,6 +126,9 @@ export const save = mutation({
         copiedReview.prefill_pushed_at !== args.prefill_pushed_at)) {
       throw new Error("copied human review prediction provenance mismatch");
     }
+    let trajectoryIdentity = spec.trajectory
+      ? blankTrajectoryReview(spec.trajectory, args.dataset_repo, args.episode_index).trajectory_identity
+      : undefined;
     let predictionRunId: Id<"stagePredictionRuns"> | undefined;
     let legacyPrefillId = args.legacy_prefill_id;
     let resolvedDuration = copiedReview?.episode_duration_s ?? args.episode_duration_s;
@@ -139,6 +144,7 @@ export const save = mutation({
           prediction.episode_index !== args.episode_index || run.taxonomy_hash !== specRow.taxonomy_hash) {
         throw new Error("prediction reference does not match this episode and schema, or run is unpublished");
       }
+      if (spec.trajectory) trajectoryIdentity = prediction.label.trajectory_identity;
       predictionRunId = run._id;
       resolvedDuration = prediction.episode_duration_s;
       resolvedPushedAt = run.published_at;
@@ -200,6 +206,10 @@ export const save = mutation({
         );
       }
       label = canonical.label;
+      if (spec.trajectory && (trajectoryIdentity === undefined || label.trajectory_identity === undefined ||
+          await canonicalDigest(label.trajectory_identity) !== await canonicalDigest(trajectoryIdentity))) {
+        throw new Error("trajectory identity must match the exact prediction source or source-free episode identity");
+      }
       if ((COMMITTED as readonly string[]).includes(args.status)) {
         const violations = validateStageLabel(spec, label, resolvedDuration);
         if (violations.length > 0) {

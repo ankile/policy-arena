@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { requireEditorOrService } from "./access";
+import { trajectoryFromReview, trajectoryShapeViolations, validTrajectoryIdentity } from "./trajectoryReview";
 import { canonicalizeStageLabel, validateStageLabel, type ExportedStageSpec } from "./stageConsistency";
 import {
   CONTENT_PROTOCOL, canonicalDigest, canonicalEncoding, hash, manifestDigest, pipelineValidator,
@@ -99,6 +100,16 @@ export const appendBatch = mutation({
       const labelSpec = spec.spec as ExportedStageSpec;
       const normalized = canonicalizeStageLabel(labelSpec, row.label);
       if (normalized.unknownKeys.length) throw new Error(`label contains unknown editable fields: ${normalized.unknownKeys.join(", ")}; put full provider output in canonical_response`);
+      if (labelSpec.trajectory && !validTrajectoryIdentity(labelSpec.trajectory, row.label.trajectory_identity)) {
+        throw new Error("trajectory identity must match the registered source task, taxonomy, and schema with a nonempty sample ID");
+      }
+      if (labelSpec.trajectory && (row.canonical_response === undefined ||
+          await canonicalDigest(trajectoryFromReview(row.label)) !== await canonicalDigest(row.canonical_response))) {
+        throw new Error("trajectory review label must losslessly match canonical_response");
+      }
+      if (labelSpec.trajectory && trajectoryShapeViolations(labelSpec.trajectory, row.canonical_response).length) {
+        throw new Error("trajectory canonical_response contains missing or unmapped structural fields");
+      }
       const validationCodes = [...new Set(
         validateStageLabel(labelSpec, row.label, row.episode_duration_s).map((v) => v.code)
       )].sort();
@@ -238,4 +249,22 @@ export const selectionHistory = query({
   handler: async (ctx, args) => ctx.db.query("stagePredictionSelectionHistory")
     .withIndex("by_repo_taxonomy", (q) => q.eq("dataset_repo", args.dataset_repo).eq("taxonomy_version", args.taxonomy_version))
     .order("desc").paginate(args.paginationOpts),
+});
+
+/** Other schemas remain separate; expose only published per-episode coverage. */
+export const otherSchemasForEpisode = query({
+  args: { dataset_repo: v.string(), task: v.string(), taxonomy_version: v.string(), episode_index: v.int64() },
+  handler: async (ctx, args) => {
+    const catalog = await ctx.db.query("stagePredictionCatalog").withIndex("by_repo_taxonomy", (q) =>
+      q.eq("dataset_repo", args.dataset_repo)).collect();
+    const available = new Map<string, { taxonomy_version: string; run_id: Id<"stagePredictionRuns">; expected_count: number; published_at: number }>();
+    for (const run of catalog.sort((a, b) => b.published_at - a.published_at)) {
+      if (run.task !== args.task || run.taxonomy_version === args.taxonomy_version || available.has(run.taxonomy_version)) continue;
+      const member = await ctx.db.query("stagePredictionMembers").withIndex("by_run_episode", (q) =>
+        q.eq("run_id", run.run_id).eq("episode_index", args.episode_index)).unique();
+      if (member) available.set(run.taxonomy_version, { taxonomy_version: run.taxonomy_version,
+        run_id: run.run_id, expected_count: run.expected_count, published_at: run.published_at });
+    }
+    return [...available.values()];
+  },
 });

@@ -2,12 +2,14 @@ import { useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import StageReview from "../../src/components/StageReview";
 import "../../src/index.css";
-import { createStageReviewFixture } from "./stageReviewFixture";
+import { createStageReviewFixture, configureTrajectoryFixture } from "./stageReviewFixture";
 
 let revision = 0;
 const listeners = new Set<() => void>();
 const refresh = () => { revision++; for (const listener of listeners) listener(); };
-const { state, props } = createStageReviewFixture([], refresh);
+const fixture = createStageReviewFixture([], refresh);
+if (new URLSearchParams(window.location.search).get("fixture") === "trajectory") configureTrajectoryFixture(fixture, "marker_d2_v3", "real_marker_d2_valid");
+const { state, props } = fixture;
 const subscribe = (listener: () => void) => {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
@@ -18,7 +20,7 @@ export default function Fixture() {
   return (
     <main className="p-6 max-w-[1800px] mx-auto">
       <div className="mb-4 rounded-xl border border-gold bg-gold-light p-4 text-ink">
-        <p className="font-bold">Offline visual test. Synthetic predictions and reviews only.</p>
+        <p className="font-bold">Offline visual test. Fixture predictions and reviews only.</p>
         <p className="text-sm">The actual StageReview component runs with an in-memory I/O adapter.
           Camera streams are omitted. No Convex or Hugging Face requests are made.</p>
         <div className="mt-2 flex items-center gap-4 text-sm">

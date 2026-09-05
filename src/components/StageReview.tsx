@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../convex/_generated/api";
+import { blankTrajectoryReview } from "../../convex/trajectoryReview";
 import type { Id } from "../../convex/_generated/dataModel";
 import {
   validateStageLabel,
@@ -24,7 +25,7 @@ import {
 } from "../lib/stagePredictionReview";
 import { useStageReviewDraft } from "../lib/useStageReviewDraft";
 import { stageReviewDataSource, type StageReviewDataSource } from "../lib/stageReviewDataSource";
-import { useSearchParam, useSearchParamNumber, useSearchParamNavigationGuard } from "../lib/useSearchParam";
+import { useSearchParam, useSearchParamNumber, useSearchParamNavigationGuard, setSearchParams } from "../lib/useSearchParam";
 import { EvidencePanel, type StagePrefillView } from "./review/EvidencePanel";
 import { HelpOverlay } from "./review/HelpOverlay";
 import { LabelHistoryPanel } from "./review/LabelHistoryPanel";
@@ -138,7 +139,7 @@ export default function StageReview({
   const outcomeReviews = useQuery(api.reviews.latestForRepo, { dataset_repo: repoId });
 
   // -- Taxonomy (schema) selection: live by default, candidates addressable --
-  const [schemaParam, setSchemaParam] = useSearchParam("schema", "");
+  const [schemaParam] = useSearchParam("schema", "");
   const liveRow = specRows?.find((row) => row.live) ?? null;
   // A stale/typo'd ?schema= must not strand the surface on a loading card
   // with no selector on screen — fall back to the live row, loudly.
@@ -223,6 +224,9 @@ export default function StageReview({
   const [flagFilter, setFlagFilter] = useSearchParam("sflag", "all");
   const [armFilter, setArmFilter] = useSearchParam("sarm", "all");
   const [selectedEpisode, setSelectedEpisode] = useSearchParamNumber("episode");
+  const otherSchemaPredictions = useQuery(api.stagePredictions.otherSchemasForEpisode,
+    task && taxonomyVersion && selectedEpisode !== null && Number.isSafeInteger(selectedEpisode) && selectedEpisode >= 0
+      ? { dataset_repo: repoId, task, taxonomy_version: taxonomyVersion, episode_index: BigInt(selectedEpisode) } : "skip");
 
   // -- HF loads ---------------------------------------------------------------
   const [episodes, setEpisodes] = useState<ReviewEpisode[] | null>(null);
@@ -317,12 +321,14 @@ export default function StageReview({
   // Frame signals, fetched lazily for the SELECTED episode only — needed to
   // resolve the outcome of a keep-as-is (skip) decision, whose recorded
   // outcome is whatever the dataset's own reward/done signals say.
-  const [outcomeSignals, setOutcomeSignals] = useState<Map<number, EpisodeFrameSignals>>(
+  const [outcomeSignals, setOutcomeSignals] = useState<Map<string, EpisodeFrameSignals>>(
     () => new Map()
   );
-  const [outcomeSignalErrors, setOutcomeSignalErrors] = useState<Map<number, string>>(
+  const [outcomeSignalErrors, setOutcomeSignalErrors] = useState<Map<string, string>>(
     () => new Map()
   );
+
+  const signalKey = useCallback((episodeIndex: number) => `${repoId}::${episodeIndex}`, [repoId]);
 
   const outcomeByEpisode = useMemo(() => {
     const map = new Map<number, { status: string; newOutcome: string | null }>();
@@ -355,13 +361,13 @@ export default function StageReview({
       if (web !== undefined || applied?.skipped.has(episodeIndex)) {
         // keep-as-is decision — the outcome is the dataset's detected signals
         return {
-          outcome: outcomeSignals.get(episodeIndex)?.detectedOutcome ?? null,
+          outcome: outcomeSignals.get(signalKey(episodeIndex))?.detectedOutcome ?? null,
           source: "detected",
         };
       }
       return null;
     },
-    [outcomeByEpisode, applied, outcomeSignals]
+    [outcomeByEpisode, applied, outcomeSignals, signalKey]
   );
 
   // -- Convex rows -> typed views ---------------------------------------------
@@ -399,6 +405,7 @@ export default function StageReview({
               episode_duration_s: row.episode_duration_s,
             },
         canonicalResponse: "canonical_response" in row ? row.canonical_response : undefined,
+        sourceRevision: "source_revision" in row ? row.source_revision : undefined,
       });
     }
     return map;
@@ -579,37 +586,40 @@ export default function StageReview({
       ? resolveOutcome(selectedEpisode)
       : undefined;
   const currentOutcomeSignalError =
-    selectedEpisode !== null ? (outcomeSignalErrors.get(selectedEpisode) ?? null) : null;
+    selectedEpisode !== null ? (outcomeSignalErrors.get(signalKey(selectedEpisode)) ?? null) : null;
 
-  // A keep-as-is (skip) decision needs the episode's own frame signals to name
-  // its outcome — fetch them for the selected episode only (per-file cached).
+  const selectedOwn = selectedEpisode !== null ? ownReviewByEpisode.get(selectedEpisode) : undefined;
+  const selectedSourceDuration = selectedOwn?.label != null
+    ? selectedOwn.attribution.episode_duration_s : currentPrefill?.episodeDurationS;
+  const needsPolicyDuration = Boolean(spec?.trajectory && selectedSourceDuration == null);
+  const selectedSignals = selectedEpisode !== null ? outcomeSignals.get(signalKey(selectedEpisode)) : undefined;
+  const policyDurationS = spec && selectedSignals ? selectedSignals.validLength / spec.fps : null;
+
+  // The same lazily fetched frame signals resolve keep-as-is outcomes and
+  // supply the validated policy prefix for a new source-free trajectory.
   useEffect(() => {
-    if (
-      !currentEpisode ||
-      currentResolvedOutcome?.source !== "detected" ||
-      currentResolvedOutcome.outcome !== null ||
-      outcomeSignalErrors.has(currentEpisode.episodeIndex)
-    ) {
-      return;
-    }
+    const needsOutcome = currentResolvedOutcome?.source === "detected" && currentResolvedOutcome.outcome === null;
+    if (!currentEpisode || (!needsOutcome && !needsPolicyDuration) || selectedSignals ||
+        outcomeSignalErrors.has(signalKey(currentEpisode.episodeIndex))) return;
     let cancelled = false;
     fetchEpisodeFrameSignals(repoId, currentEpisode.dataPath, currentEpisode.episodeIndex)
       .then((result) => {
         if (!cancelled) {
-          setOutcomeSignals((prev) => new Map(prev).set(currentEpisode.episodeIndex, result));
+          setOutcomeSignals((prev) => new Map(prev).set(signalKey(currentEpisode.episodeIndex), result));
         }
       })
       .catch((err: Error) => {
         if (!cancelled) {
           setOutcomeSignalErrors((prev) =>
-            new Map(prev).set(currentEpisode.episodeIndex, err.message)
+            new Map(prev).set(signalKey(currentEpisode.episodeIndex), err.message)
           );
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [currentEpisode, currentResolvedOutcome, outcomeSignalErrors, repoId, fetchEpisodeFrameSignals]);
+  }, [currentEpisode, currentResolvedOutcome, outcomeSignalErrors, repoId, fetchEpisodeFrameSignals,
+      needsPolicyDuration, selectedSignals, signalKey]);
 
   useEffect(() => {
     if (selectedEpisode !== null) return;
@@ -664,6 +674,18 @@ export default function StageReview({
   const [draftError, setDraftError] = useState<string | null>(null);
   const saveInFlight = useRef(false);
   const allowSavedNavigation = useRef(false);
+  const pendingInputs = useRef(new Set<string>());
+  const [pendingInputCount, setPendingInputCount] = useState(0);
+  const onPendingInputChange = useCallback((id: string, pending: boolean) => {
+    if (pending) pendingInputs.current.add(id); else pendingInputs.current.delete(id);
+    setPendingInputCount(pendingInputs.current.size);
+  }, []);
+  useEffect(() => {
+    if (!pendingInputCount) return;
+    const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [pendingInputCount]);
 
   // Once arm identity has been revealed, saved reviews cannot claim blindness.
   const everUnblindedRef = useRef(false);
@@ -680,23 +702,29 @@ export default function StageReview({
     : null;
   const seed = useMemo(() => {
     if (selectedEpisode === null || !spec || !currentEpisode || !predictionsReady ||
-        reviews === undefined || viewer === undefined || !outcomeGateReady) return null;
+        reviews === undefined || viewer === undefined || !outcomeGateReady ||
+        (needsPolicyDuration && policyDurationS === null)) return null;
     const resolved = resolveOutcome(selectedEpisode);
     if (resolved === null) return null;
     if (resolved.source === "detected" && resolved.outcome === null &&
-        !outcomeSignalErrors.has(selectedEpisode)) return null;
+        !outcomeSignalErrors.has(signalKey(selectedEpisode))) return null;
     const own = ownReviewByEpisode.get(selectedEpisode);
     const prediction = prefillByEpisode.get(selectedEpisode);
-    return seedStageReview({
+    const seeded = seedStageReview({
       own,
       prediction,
       outcome: resolved.outcome,
       spec,
       legacy: predictionParam === "legacy",
+      emptyLabel: spec.trajectory ? blankTrajectoryReview(spec.trajectory, repoId, selectedEpisode) : {},
     });
+    if (spec.trajectory && seeded.attribution.episode_duration_s === undefined && policyDurationS !== null) {
+      seeded.attribution.episode_duration_s = policyDurationS;
+    }
+    return seeded;
   }, [selectedEpisode, spec, currentEpisode, predictionsReady, reviews, viewer,
       outcomeGateReady, resolveOutcome, outcomeSignalErrors, ownReviewByEpisode,
-      prefillByEpisode, predictionParam]);
+      prefillByEpisode, predictionParam, repoId, needsPolicyDuration, policyDurationS, signalKey]);
   const { draft, edit: editDraft, replaceLabel, markSaved, unsavedCount } =
     useStageReviewDraft(sourceKey, seed);
   const pending = predictionsReady ? draft?.label ?? null : null;
@@ -706,6 +734,10 @@ export default function StageReview({
   const formDisabled = saving || pending === null || !predictionsReady;
 
   useSearchParamNavigationGuard(useCallback((current, next) => {
+    if (pendingInputs.current.size > 0 && ["tab", "dataset", "view", "episode", "prediction", "schema"].some((key) => current.get(key) !== next.get(key))) {
+      setDraftError("A timestamp contains unfinished or invalid text. Correct it or clear its input before saving or leaving.");
+      return false;
+    }
     const leavesReview = ["tab", "dataset", "view"].some((key) => current.get(key) !== next.get(key));
     if (!leavesReview || allowSavedNavigation.current) return true;
     if (saving || saveInFlight.current) {
@@ -729,18 +761,25 @@ export default function StageReview({
   }, [sourceKey]);
 
   // Bounds belong to the original source of the human draft, even if another
-  // model is selected for inspection. Raw length bounds source-free reviews.
+  // model is selected for inspection. New trajectory bounds come from parsed
+  // policy-phase signals; raw metadata length remains a legacy-only fallback.
   const episodeDurationS = shownAttribution?.episode_duration_s ??
-    (spec && currentEpisode ? currentEpisode.rawLength / spec.fps : null);
+    (spec?.trajectory ? policyDurationS : spec && currentEpisode ? currentEpisode.rawLength / spec.fps : null);
   const violations = useMemo(
     () => (spec && pending ? validateStageLabel(spec, pending, episodeDurationS) : []),
     [spec, pending, episodeDurationS]
   );
   const edit = useCallback((patch: StageLabelRow) => {
     if (formDisabled || saveInFlight.current) return;
-    editDraft(patch);
+    const next = { ...patch };
+    if (spec?.trajectory && typeof next[spec.stage_field] === "number") {
+      const selected = spec.trajectory.task_definition.stages.find((stage) => stage.index === next[spec.stage_field]);
+      if (!selected) throw new Error("Stage selection is outside the trajectory definition");
+      next.max_stage_id = selected.id;
+    }
+    editDraft(next);
     setActionError(null);
-  }, [editDraft, formDisabled]);
+  }, [editDraft, formDisabled, spec]);
 
   const jumpToFrame = useCallback((next: number) => {
     controlsRef.current?.pause();
@@ -787,6 +826,10 @@ export default function StageReview({
       { isDraft = false }: { isDraft?: boolean } = {}
     ): Promise<boolean> => {
       if (!spec || !task || !draft || !predictionsReady) return false;
+      if (pendingInputs.current.size > 0) {
+        setDraftError("A timestamp contains unfinished or invalid text. Correct it or clear its input before saving or leaving.");
+        return false;
+      }
       try {
         await saveReview({
           task,
@@ -857,7 +900,7 @@ export default function StageReview({
         );
         return;
       }
-      // ALL verdicts are validator-gated (uncertain included — matching the
+      // Committed verdicts are validator-gated (uncertain included — matching the
       // cv2 UI, which cleared review_status on a violating row). The escape
       // hatch for "I cannot make this consistent" is the draft autosave.
       if (violations.length > 0 && status !== "uncertain") {
@@ -901,6 +944,10 @@ export default function StageReview({
   // form open. Committed reviews can only be changed by an explicit verdict.
   const leaveForm = useCallback(async (next: () => void, exiting = false) => {
     if (saveInFlight.current || saving) return;
+    if (pendingInputs.current.size > 0) {
+      setDraftError("A timestamp contains unfinished or invalid text. Correct it or clear its input before saving or leaving.");
+      return;
+    }
     if (exiting && unsavedCount > (dirty ? 1 : 0)) {
       setDraftError("Save the retained edits in the other episode or prediction version before leaving stage review.");
       return;
@@ -1200,8 +1247,7 @@ export default function StageReview({
               onChange={(e) => {
                 const next = e.target.value;
                 void leaveForm(() => {
-                  setSchemaParam(next === liveRow?.taxonomy_version ? "" : next);
-                  setPredictionParam("");
+                  setSearchParams({ schema: next === liveRow?.taxonomy_version ? null : next, prediction: null });
                 });
                 e.currentTarget.blur();
               }}
@@ -1273,6 +1319,15 @@ export default function StageReview({
           </button>
         </div>
       </div>
+
+      {otherSchemaPredictions && otherSchemaPredictions.length > 0 && <div className="px-6 py-2 border-b border-warm-200 text-xs text-ink-muted">
+        This episode also has predictions under a separate taxonomy:
+        {otherSchemaPredictions.map((available) => <button key={available.taxonomy_version}
+          className="ml-2 text-teal underline disabled:opacity-40" disabled={saving}
+          onClick={() => void leaveForm(() => setSearchParams({ schema: available.taxonomy_version, prediction: available.run_id }))}>
+          Open {available.taxonomy_version} ({available.expected_count} episodes in this run)
+        </button>)}
+      </div>}
 
       {loadError && (
         <div className="mx-6 mt-4 rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-sm text-coral font-mono">
@@ -1350,6 +1405,7 @@ export default function StageReview({
           {" · "}{selectedRun._id}
         </div>
       )}
+      {pendingInputCount > 0 && <p role="alert" className="px-6 py-2 text-xs text-coral">A timestamp contains unfinished or invalid text. Correct it or clear its input before saving or leaving.</p>}
       {unsavedCount > (dirty ? 1 : 0) && (
         <div role="alert" className="m-4 rounded-lg border border-gold/40 bg-gold-light px-4 py-3 text-sm text-ink">
           Unsaved edits are retained in this tab for another episode or prediction version.
@@ -1627,7 +1683,12 @@ export default function StageReview({
                 </div>
               )}
 
-              {currentOutcomeSignalError !== null && (
+              {needsPolicyDuration && policyDurationS === null && <p role="alert" className="mb-3 rounded-lg border border-gold/40 bg-gold-light p-3 text-xs text-ink">
+                {currentOutcomeSignalError ? `Cannot determine policy-phase duration: ${currentOutcomeSignalError}. New annotation is blocked.`
+                  : "Loading the validated policy-phase duration before starting a new annotation…"}
+              </p>}
+
+              {currentOutcomeSignalError !== null && !needsPolicyDuration && (
                 <div className="mb-3 rounded-lg border border-gold/40 bg-gold-light px-3 py-2 text-xs text-ink font-mono">
                   This keep-as-is outcome could not be resolved from frame
                   signals — labeling proceeds without the success prefill:{" "}
@@ -1666,6 +1727,8 @@ export default function StageReview({
 
               {pending !== null && (
                 <StageLabelForm
+                  key={sourceKey}
+                  onPendingInputChange={onPendingInputChange}
                   spec={spec}
                   row={pending}
                   violations={violations}

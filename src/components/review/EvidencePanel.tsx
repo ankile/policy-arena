@@ -22,6 +22,7 @@ export interface StagePrefillView {
   pushedAt: number;
   attribution: PredictionAttribution;
   canonicalResponse?: unknown;
+  sourceRevision?: string;
 }
 
 const CONFIDENCE_CHIP: Record<string, string> = {
@@ -78,6 +79,13 @@ export function EvidencePanel({
             {prefill.confidence} confidence
           </span>
         )}
+      </div>
+
+      <div className="space-y-1 text-[11px] font-mono text-ink-muted">
+        <p>Prediction duration: {prefill.episodeDurationS ?? "unknown"}s</p>
+        {prefill.sourceRevision && <p className="break-all">Prediction source revision: {blind && !/^[a-f0-9]{40,64}$/.test(prefill.sourceRevision)
+          ? "Unblind to inspect source identifier" : prefill.sourceRevision}</p>}
+        <p>Outcome decisions shown in the review queue come from the current outcome records.</p>
       </div>
 
       {reasons.length > 0 && (

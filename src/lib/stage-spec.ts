@@ -1,3 +1,4 @@
+import { normalizeTrajectoryReviewSpec } from "../../convex/trajectoryReview";
 import type { ExportedStageSpec } from "../../convex/stageConsistency";
 
 /**
@@ -120,7 +121,10 @@ export function normalizeStageSpec(raw: unknown): ExportedStageSpec {
     constraints: spec.constraints as ExportedStageSpec["constraints"],
     fps: spec.fps as number,
   };
-  if (!out.failure_modes.includes("none")) fail("failure_modes lacks 'none'");
+  if (spec.trajectory !== undefined) {
+    out.trajectory = normalizeTrajectoryReviewSpec(spec.trajectory, out.task, out.taxonomy_version);
+  }
+  if (!out.trajectory && !out.failure_modes.includes("none")) fail("failure_modes lacks 'none'");
   if (!out.final_states.includes(out.success_final_state)) {
     fail("success_final_state not in final_states");
   }
