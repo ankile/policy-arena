@@ -6,6 +6,9 @@ manifest, producer identity, provenance, and taxonomy hash before accepting rows
 Published versions remain separately queryable. Choosing a default version is a
 separate operation with an audit record.
 
+Deployment and preservation evidence:
+[2026-09-05 rollout record](prediction-history-rollout-2026-09-05.md).
+
 ## Existing data and deployment
 
 The existing `stagePrefills` table remains the frozen legacy version. Deployment
