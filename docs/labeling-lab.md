@@ -101,7 +101,8 @@ same live backend; use in-memory `convex-test` for mutation tests.
 
 ## Validation
 
-The initial full Arena suite passed 408 tests. The new tests cover anonymous
+The final full Arena suite passed 411 tests after incorporating the latest
+round-number and successful-round step-summary changes. The new tests cover anonymous
 and non-editor denial, immutable configuration saves, model/episode limits,
 disabled dispatch, worker identity/fence/expiry checks, cancellation, latest
 review folding, frozen snapshot attribution, score idempotency, and rejected
@@ -110,6 +111,17 @@ media mismatches. TypeScript, the Vite build, and ESLint passed. Desktop and
 guest prompt was read-only, Run was disabled, and no browser exception or
 horizontal overflow was observed. Authenticated UI interaction and cloud
 execution have not been browser-tested.
+
+The UI was deployed and inspected at
+[policy-eval.ankile.com/?tab=labeling](https://policy-eval.ankile.com/?tab=labeling)
+on 2026-09-06 UTC, from Arena commit `189849f`. Vercel deployment ID:
+`dpl_8QH2WV7uaEnBp4ACKrXeMW1g33F7`. The live Routing configuration is
+`nh742wtjjwf7b133p1cvqmr3ss8dx9xg`. Live unauthenticated attempts to save a
+configuration and submit a job both returned `Not signed in`. The live
+availability query reported `enabled: false`. The deployed task inspector
+rendered all 11 Routing stages. The existing Gemini key was absent from the
+built frontend asset bytes. The only successful live data mutation performed
+by this rollout was registering the new labeling preset.
 
 Official API references: [Cloud Run job execution](https://docs.cloud.google.com/run/docs/reference/rest/v2/projects.locations.jobs/run),
 [service-account OAuth](https://developers.google.com/identity/protocols/oauth2/service-account),
