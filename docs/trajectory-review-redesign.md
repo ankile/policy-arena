@@ -44,3 +44,33 @@ has SHA-256 `234f6b04ee86869609c4e98c1b20db4f57aaf3215bc44b6ac3a263ff102ea631`.
 Content checks found the new stage controls, expanded reviewer width and the
 intended `grandiose-rook-292` Convex endpoint. The unrelated Labeling Lab work
 was retained when integrating with origin/main.
+
+## Action editor correction, 2026-09-06 UTC
+
+The first redesign still exposed `occurred`, `first_time_s` and the occurrence
+list as independent inputs. Editing the visible first time could contradict
+its hidden event time, and selecting No could leave occurrences behind. The
+Square episode 58 report demonstrated this design error.
+
+Source commit `b21d192` replaces those inputs with one visible timestamp per
+occurrence. Explicit event edits update both redundant summary fields. No clears
+all events for that action; Undo restores the exact prior action. The fixed task
+action types cannot be reordered, removed or duplicated through form controls.
+Repeated times remain visible; attempt/confidence/evidence details are expandable.
+Out-of-order event times have an explicit sort action, disabled while timestamp
+text is unfinished. A new occurrence has no invented timestamp and cannot pass
+full confirmation until the reviewer provides one.
+
+Existing inconsistent sources/drafts are never normalized on load. Their card
+shows explicit choices to keep listed events, retain a No decision, or apply the
+old summary time to the earliest event. Timestamp comparisons use the validator's
+1e-6 tolerance. The wire schema, immutable prediction payloads, and saved reviews
+are unchanged by deployment; only an explicit human edit/save creates a review.
+
+Verification: 468 tests passed, 0 failed, 12,160 assertions; ESLint and production
+build passed. Independent helper/validator and UI review covered all four
+trajectory schemas. The offline browser reproduced two time corrections followed
+by Action 3 No, with no redundant-field errors and Undo available. Production
+asset `/assets/index-C_Kwgu6s.js` contains the new editor and repair choices,
+SHA-256 `7fdba2c03355229e903a97a6e644bd643aada0cb47c5bd158ff49c9b0581a0c3`.
+Deployment: `https://policy-arena-pum554l2e-ankiles-projects.vercel.app`.
