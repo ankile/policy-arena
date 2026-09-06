@@ -82,6 +82,7 @@ function EnvironmentTag({ env }: { env: string }) {
 type SortKey = "elo" | "success" | "winRate" | "avgSuccessSteps";
 function App() {
   const [activeTab] = useSearchParam("tab", "leaderboard");
+  const [explorerView] = useSearchParam("view", "explorer");
   const [selectedEnv, setSelectedEnv] = useSearchParam("env", "all");
   const [expandedPolicy, setExpandedPolicy] = useSearchParamNullable("policy");
   const [sortBy, setSortBy] = useSearchParam("sort", "elo") as [SortKey, (v: string) => void];
@@ -156,7 +157,7 @@ function App() {
       {/* Subtle top accent line */}
       <div className="h-1 bg-gradient-to-r from-teal via-gold to-coral" />
 
-      <div className="max-w-6xl mx-auto px-6 py-16">
+      <div className={`${activeTab === "explorer" && explorerView === "stage" ? "max-w-[1800px]" : "max-w-6xl"} mx-auto px-6 py-16`}>
         {/* Header */}
         <header
           className="mb-14"
