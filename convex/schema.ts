@@ -3,9 +3,51 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { statusValidator } from "./statusShared";
 import { CONTENT_PROTOCOL, pipelineValidator, predictionFields } from "./stagePredictionContract";
+import { generationValidator, jobStatusValidator } from "./labelingContract";
 
 export default defineSchema({
   ...authTables,
+
+  labelingConfigs: defineTable({
+    name: v.string(), task: v.string(), spec_id: v.id("stageTaskSpecs"),
+    taxonomy_version: v.string(), taxonomy_hash: v.string(),
+    system_prompt: v.string(), response_schema: v.any(), generation: generationValidator,
+    worker_revision: v.string(), digest: v.string(),
+    parent_id: v.optional(v.id("labelingConfigs")),
+    created_by: v.string(), created_at: v.number(),
+  }).index("by_task", ["task"]).index("by_digest", ["digest"]),
+
+  labelingJobs: defineTable({
+    config_id: v.id("labelingConfigs"), config_digest: v.string(),
+    dataset_repo: v.string(), dataset_revision: v.string(), episodes: v.array(v.number()),
+    requested_by: v.string(), requested_user_id: v.id("users"), requested_at: v.number(),
+    request_key: v.string(), request_digest: v.string(), status: jobStatusValidator,
+    completed_episodes: v.number(), provider_calls: v.number(),
+    fence: v.number(), worker_id: v.optional(v.string()), lease_until: v.optional(v.number()),
+    execution: v.optional(v.string()), error: v.optional(v.string()),
+    checkpoint: v.optional(v.string()), checkpoint_sha256: v.optional(v.string()),
+    prediction_run_id: v.optional(v.id("stagePredictionRuns")),
+    updated_at: v.number(),
+  }).index("by_request", ["requested_user_id", "request_key"])
+    .index("by_repo", ["dataset_repo"]).index("by_status", ["status"]),
+
+  labelingJobEvents: defineTable({
+    job_id: v.id("labelingJobs"), event: v.string(), actor: v.string(), fence: v.number(),
+    at: v.number(),
+  }).index("by_job", ["job_id"]),
+
+  labelingBenchmarks: defineTable({
+    name: v.string(), task: v.string(), dataset_repo: v.string(), taxonomy_version: v.string(),
+    taxonomy_hash: v.string(), baseline_run_id: v.id("stagePredictionRuns"), digest: v.string(),
+    rows: v.array(v.object({ episode_index: v.int64(), review_id: v.id("stageReviews"),
+      prediction_id: v.id("stagePredictions"), source_revision: v.string(), label: v.any() })),
+    excluded_episodes: v.array(v.int64()), created_at: v.number(), created_by: v.string(),
+  }).index("by_task", ["task"]),
+  labelingScores: defineTable({
+    benchmark_id: v.id("labelingBenchmarks"), run_id: v.id("stagePredictionRuns"),
+    benchmark_digest: v.string(), run_manifest_sha256: v.string(), metrics: v.any(),
+    created_at: v.number(), created_by: v.string(),
+  }).index("by_benchmark", ["benchmark_id"]).index("by_benchmark_run", ["benchmark_id", "run_id"]),
 
   // Hand-managed task/line lifecycle status (see statusShared.ts). Lives in
   // its own table because taskSpecs/stageTaskSpecs are db.replace()d wholesale

@@ -7,6 +7,7 @@ import AuthControls from "./components/AuthControls";
 import { AppTabNavigation } from "./components/AppTabNavigation";
 import DataExplorer from "./components/DataExplorer";
 import CoverageDashboard from "./components/CoverageDashboard";
+import LabelingLab from "./components/LabelingLab";
 import EvalSessions from "./components/EvalSessions";
 import Pairings from "./components/Pairings";
 import PolicyDetail from "./components/PolicyDetail";
@@ -485,6 +486,7 @@ function App() {
 
         {activeTab === "explorer" && <DataExplorer />}
         {activeTab === "coverage" && <CoverageDashboard />}
+        {activeTab === "labeling" && <LabelingLab />}
 
         {/* Footer */}
         <footer

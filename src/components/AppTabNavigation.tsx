@@ -6,11 +6,12 @@ const TABS = [
   { id: "pairings", label: "Pairings" },
   { id: "explorer", label: "Data Explorer" },
   { id: "coverage", label: "Coverage" },
+  { id: "labeling", label: "Labeling Lab" },
 ];
 
 export function AppTabNavigation({ activeTab }: { activeTab: string }) {
   return (
-    <div className="flex gap-1 bg-warm-100 rounded-xl p-1 w-fit">
+    <div className="flex flex-wrap gap-1 bg-warm-100 rounded-xl p-1 w-fit">
       {TABS.map((tab) => (
         <button
           key={tab.id}
