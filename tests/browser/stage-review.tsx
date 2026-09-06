@@ -8,7 +8,12 @@ let revision = 0;
 const listeners = new Set<() => void>();
 const refresh = () => { revision++; for (const listener of listeners) listener(); };
 const fixture = createStageReviewFixture([], refresh);
-if (new URLSearchParams(window.location.search).get("fixture") === "trajectory") configureTrajectoryFixture(fixture, "marker_d2_v3", "real_marker_d2_valid");
+const params = new URLSearchParams(window.location.search);
+if (params.get("fixture") === "trajectory") {
+  const task = params.get("task") ?? "marker_d2";
+  if (!["marker_d2", "square_d2", "routing_d1"].includes(task)) throw new Error("Unknown fixture task");
+  configureTrajectoryFixture(fixture, `${task}_${task === "routing_d1" ? "v1" : "v3"}`, `real_${task}_valid`);
+}
 const { state, props } = fixture;
 const subscribe = (listener: () => void) => {
   listeners.add(listener);

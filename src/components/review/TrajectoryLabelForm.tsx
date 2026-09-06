@@ -1,4 +1,5 @@
 import type { StageLabelRow } from "../../../convex/stageConsistency";
+import { TrajectoryActionEditor } from "./TrajectoryActionEditor";
 import { TimeControls } from "./ReviewTimeControls";
 import type { StageLabelFormProps } from "./StageLabelForm";
 import { trajectoryReviewMessage } from "../../lib/trajectoryReviewMessages";
@@ -17,7 +18,7 @@ function number(value: unknown): number | null {
 }
 
 /** The trajectory contract has repeated occurrences and independent summary
- * decisions. Editing one field never erases or infers another event. */
+ * decisions. Explicit action edits synchronize redundant occurrence summaries. */
 export function TrajectoryLabelForm(props: StageLabelFormProps) {
   const { spec, row, onEdit, disabled, blind = false, violations } = props;
   const structureDisabled = disabled || props.hasPendingInput;
@@ -136,36 +137,11 @@ export function TrajectoryLabelForm(props: StageLabelFormProps) {
     </details>
     <section className="space-y-3" aria-label="Key actions">
       <h4 className="text-sm font-medium">Key actions</h4>
-      <p className="text-xs text-ink-muted">Check whether each action happened and its first time. Open occurrences to review repeated attempts and their times.</p>
-      {records(actions) ? <>{actions.map((action, index) => {
-        const definition = task.keyActions.find((item) => item.id === action.action_id);
-        const name = `Action ${index + 1}`;
-        const edit = (patch: StageLabelRow) => onEdit({ key_action_observations: actions.map((item, i) => i === index ? { ...item, ...patch } : item) });
-        const occurrences = action.occurrences;
-        return <div key={index} className="rounded-lg border border-warm-200 p-3 space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <strong className="text-sm"><span className="text-ink-muted font-normal mr-1">{index + 1}.</span> {definition?.name ?? (blind ? "Invalid action" : String(action.action_id))}</strong>
-            <label className="text-xs flex gap-2 items-center">Occurred{boolean(`${name} occurred`, action.occurred, (occurred) => edit({ occurred }))}</label>
-          </div>
-          {time(`${name} first time`, action.first_time_s, (first_time_s) => edit({ first_time_s }))}
-          <details className="text-xs">
-            <summary className="cursor-pointer text-teal py-1">Occurrences ({Array.isArray(occurrences) ? occurrences.length : "invalid"}) and definition</summary>
-            {definition && <p className="my-2 text-ink-muted">{definition.description}</p>}
-          {records(occurrences) ? <>{occurrences.map((event, eventIndex) => {
-            const eventName = `${name} occurrence ${eventIndex + 1}`;
-            const change = (items: StageLabelRow[]) => edit({ occurrences: items });
-            return <div key={eventIndex} className="ml-3 border-l border-warm-200 pl-3 space-y-2">
-              <p className="text-xs">Occurrence {eventIndex + 1}</p>
-              {occurrence(event, eventName, (patch) => change(occurrences.map((item, i) => i === eventIndex ? { ...item, ...patch } : item)))}
-              {controls(eventName, occurrences, eventIndex, change)}
-            </div>;
-          })}<button className={buttonClass} disabled={structureDisabled} onClick={() => edit({ occurrences: [...occurrences, newOccurrence()] })}>Add {name.toLowerCase()} occurrence</button></> : invalidArray(`${name} occurrences`, () => edit({ occurrences: [] }))}
-          {controls(name, actions, index, (items) => onEdit({ key_action_observations: items }))}
-          <label className="flex flex-col gap-1 mt-2">Action type{select(`${name} ID`, action.action_id, options(task.keyActions), (action_id) => edit({ action_id }))}</label>
-          </details>
-        </div>;
-      })}<button className={buttonClass} disabled={structureDisabled} onClick={() => onEdit({ key_action_observations: [...actions,
-        { action_id: task.keyActions[0]?.id ?? "", occurred: false, first_time_s: null, occurrences: [] }] })}>Add key action</button></> : invalidArray("Key actions", () => onEdit({ key_action_observations: [] }))}
+      <p className="text-xs text-ink-muted">Each action has one time per occurrence. Choosing No removes its events; the first time is calculated automatically.</p>
+      {records(actions) ? actions.map((action, index) => <TrajectoryActionEditor key={index} {...props} action={action} index={index}
+        definition={task.keyActions.find((item) => item.id === action.action_id)}
+        onChange={(next) => onEdit({ key_action_observations: actions.map((item, i) => i === index ? next : item) })} />)
+        : <p role="alert" className="text-xs text-coral">Key actions have an invalid structure. Inspect the original source before replacing them.</p>}
     </section>
     <details className="rounded-lg border border-warm-200 p-3 space-y-3">
       <summary className="cursor-pointer text-sm font-medium">Failure events ({Array.isArray(failures) ? failures.length : "invalid"})</summary>

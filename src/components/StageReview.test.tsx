@@ -698,3 +698,127 @@ test("Space retains native activation on focused stage buttons and event summari
   expect(pageSpace.defaultPrevented).toBe(true);
   expect(fixture.state.saves).toHaveLength(0);
 });
+
+test("action times have one editor and editing them synchronizes the saved pipeline summaries", async () => {
+  window.history.replaceState(null, "", "/?episode=0&prediction=A");
+  const fixture = createStageReviewFixture();
+  const { selected } = configureTrajectoryFixture(fixture, "square_d2_v3", "real_square_d2_valid");
+  const original = structuredClone(selected.review_label!);
+  const view = render(<StageReview {...fixture.props} />);
+  await settle();
+  expect(view.queryByRole("group", { name: "Action 1 first time" })).toBeNull();
+  expect(view.queryByRole("combobox", { name: "Action 1 ID" })).toBeNull();
+  expect(view.queryByRole("button", { name: "Remove Action 1" })).toBeNull();
+  for (const [index, time] of [[1, "2.125"], [2, "3.125"]]) {
+    const input = view.getByRole("group", { name: `Action ${index} occurrence 1 time` }).querySelector("input")!;
+    fireEvent.change(input, { target: { value: time } });
+  }
+  fireEvent.change(view.getByRole("combobox", { name: "Action 3 occurred" }), { target: { value: "false" } });
+  expect(view.queryByRole("group", { name: "Action 3 occurrence 1 time" })).toBeNull();
+  expect(view.container.textContent).not.toContain("first time must match its earliest occurrence");
+  expect(view.container.textContent).not.toContain("is marked No but still has");
+  await act(async () => chooseVersion(view, "B"));
+  expect(fixture.state.saves).toHaveLength(1);
+  const saved = fixture.state.saves[0];
+  expect(saved.prediction_id).toBe("A-prediction-0");
+  const actions = saved.label!.key_action_observations;
+  expect(actions[0].first_time_s).toBe(2.125);
+  expect(actions[0].occurrences[0].time_s).toBe(2.125);
+  expect(actions[1].first_time_s).toBe(3.125);
+  expect(actions[1].occurrences[0].time_s).toBe(3.125);
+  expect(actions[2]).toEqual({ ...original.key_action_observations[2], occurred: false, first_time_s: null, occurrences: [] });
+  expect(actions.slice(3)).toEqual(original.key_action_observations.slice(3));
+  expect(saved.label!.stage_transitions).toEqual(original.stage_transitions);
+  expect(saved.label!.failure_events).toEqual(original.failure_events);
+  expect(selected.review_label).toEqual(original);
+});
+
+test("No clears every repeated occurrence and Undo restores exact events and metadata", async () => {
+  window.history.replaceState(null, "", "/?episode=0&prediction=A");
+  const fixture = createStageReviewFixture();
+  const { selected } = configureTrajectoryFixture(fixture);
+  const label = structuredClone(selected.review_label!);
+  label.key_action_observations[0].occurrences.push({ ...label.key_action_observations[0].occurrences[0], time_s: 9.876543, attempt_index: 2 });
+  fixture.state.predictionOverrides.label = label;
+  const view = render(<StageReview {...fixture.props} />);
+  await settle();
+  fireEvent.change(view.getByRole("combobox", { name: "Action 1 occurred" }), { target: { value: "false" } });
+  expect(view.queryByRole("group", { name: "Action 1 occurrence 1 time" })).toBeNull();
+  expect(view.queryByRole("group", { name: "Action 1 occurrence 2 time" })).toBeNull();
+  fireEvent.click(view.getByRole("button", { name: "Undo action 1 removal" }));
+  await act(async () => chooseVersion(view, "B"));
+  expect(fixture.state.saves[0].label).toEqual(label);
+});
+
+test("conflicting old drafts remain untouched until the reviewer chooses which time to keep", async () => {
+  window.history.replaceState(null, "", "/?episode=0&prediction=A");
+  const fixture = createStageReviewFixture();
+  const { selected } = configureTrajectoryFixture(fixture);
+  const label = structuredClone(selected.review_label!);
+  label.key_action_observations[0].first_time_s = 2.123456;
+  fixture.state.predictionOverrides.label = label;
+  const view = render(<StageReview {...fixture.props} />);
+  await settle();
+  expect(view.container.textContent).toContain("This saved draft has conflicting action fields");
+  expect(fixture.state.saves).toHaveLength(0);
+  fireEvent.click(view.getByRole("button", { name: "Use summary time 2.123456s" }));
+  await act(async () => chooseVersion(view, "B"));
+  const action = fixture.state.saves[0].label!.key_action_observations[0];
+  expect(action.first_time_s).toBe(2.123456);
+  expect(action.occurrences[0].time_s).toBe(2.123456);
+  expect(action.occurrences[0].evidence).toBe(label.key_action_observations[0].occurrences[0].evidence);
+});
+
+test("unfinished action time blocks removal, No, sorting, and navigation without discarding input", async () => {
+  window.history.replaceState(null, "", "/?episode=0&prediction=A");
+  const fixture = createStageReviewFixture();
+  configureTrajectoryFixture(fixture);
+  const view = render(<StageReview {...fixture.props} />);
+  await settle();
+  const input = view.getByRole("group", { name: "Action 1 occurrence 1 time" }).querySelector("input")!;
+  fireEvent.change(input, { target: { value: "unfinished" } });
+  expect(view.getByRole("combobox", { name: "Action 1 occurred" }).hasAttribute("disabled")).toBe(true);
+  expect(view.getByRole("button", { name: "Remove Action 1 occurrence 1" }).hasAttribute("disabled")).toBe(true);
+  await act(async () => chooseVersion(view, "B"));
+  expect(fixture.state.saves).toHaveLength(0);
+  expect(input.value).toBe("unfinished");
+  fireEvent.change(input, { target: { value: "2.5" } });
+  await act(async () => chooseVersion(view, "B"));
+  expect(fixture.state.saves[0].label!.key_action_observations[0].first_time_s).toBe(2.5);
+});
+
+test("valid timestamp tolerance does not create a false conflict or normalize an untouched source", async () => {
+  window.history.replaceState(null, "", "/?episode=0&prediction=A");
+  const fixture = createStageReviewFixture();
+  const { selected } = configureTrajectoryFixture(fixture);
+  const label = structuredClone(selected.review_label!);
+  label.key_action_observations[0].first_time_s += 0.0000005;
+  fixture.state.predictionOverrides.label = label;
+  const view = render(<StageReview {...fixture.props} />);
+  await settle();
+  expect(view.container.textContent).not.toContain("This saved draft has conflicting action fields");
+  await act(async () => chooseVersion(view, "B"));
+  expect(fixture.state.saves).toHaveLength(0);
+});
+
+test("a previously saved Yes without occurrences can directly add an unfinished time", async () => {
+  window.history.replaceState(null, "", "/?episode=0&prediction=A");
+  const fixture = createStageReviewFixture();
+  const { selected } = configureTrajectoryFixture(fixture);
+  const label = structuredClone(selected.review_label!);
+  label.key_action_observations[0].occurrences = [];
+  label.key_action_observations[0].first_time_s = null;
+  fixture.state.predictionOverrides.label = label;
+  const view = render(<StageReview {...fixture.props} />);
+  await settle();
+  fireEvent.click(view.getByRole("button", { name: "Add action 1 time" }));
+  const input = view.getByRole("group", { name: "Action 1 occurrence 1 time" }).querySelector("input")!;
+  expect(input.value).toBe("");
+  expect(view.container.textContent).toContain("Mark or enter this event's time before confirming");
+  fireEvent.change(input, { target: { value: "1.25" } });
+  await act(async () => chooseVersion(view, "B"));
+  const action = fixture.state.saves[0].label!.key_action_observations[0];
+  expect(action.occurred).toBe(true);
+  expect(action.first_time_s).toBe(1.25);
+  expect(action.occurrences[0].time_s).toBe(1.25);
+});
