@@ -1,3 +1,4 @@
+import type { TrajectoryEventLink } from "../../convex/trajectoryEventLinks";
 import type { Id } from "../../convex/_generated/dataModel";
 import type { ExportedStageSpec, StageLabelRow } from "../../convex/stageConsistency";
 
@@ -15,6 +16,7 @@ export interface ReviewSeed {
   label: StageLabelRow;
   /** Human-authored review notes; never seeded from prediction label.notes. */
   humanNotes?: string;
+  eventLinks?: TrajectoryEventLink[];
   attribution: PredictionAttribution;
   inheritedSuccess: boolean;
   fromOwnReview: boolean;
@@ -28,7 +30,7 @@ export function seedStageReview({
   legacy,
   emptyLabel = {},
 }: {
-  own?: { label: StageLabelRow | null; attribution: PredictionAttribution; humanNotes?: string };
+  own?: { label: StageLabelRow | null; attribution: PredictionAttribution; humanNotes?: string; eventLinks?: TrajectoryEventLink[] };
   prediction?: { label: StageLabelRow; attribution: PredictionAttribution };
   outcome: string | null;
   spec: ExportedStageSpec;
@@ -48,6 +50,7 @@ export function seedStageReview({
   return {
     label,
     ...(fromOwnReview && own.humanNotes !== undefined ? { humanNotes: own.humanNotes } : {}),
+    ...(fromOwnReview && own.eventLinks !== undefined ? { eventLinks: own.eventLinks.map((link) => ({ ...link })) } : {}),
     attribution: { ...(fromOwnReview ? own.attribution : prediction?.attribution ?? {}) },
     inheritedSuccess,
     fromOwnReview,

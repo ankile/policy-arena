@@ -2,6 +2,10 @@
 
 Implementation date: 2026-09-06 UTC.
 
+The subsequent [unified event editor](unified-trajectory-event-editor.md) replaces
+the separate event editors and repair panel described below. The consistency,
+provenance, human-notes, and review-coverage contracts remain in effect.
+
 The first three annotation audit found correctly saved human action corrections
 alongside stale stage times and source explanations. New trajectory reviews now
 separate structured human judgments from retained source metadata. The original

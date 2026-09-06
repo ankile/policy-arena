@@ -7,6 +7,7 @@ import { blankTrajectoryReview } from "./trajectoryReview";
 import { requireEditorOrService } from "./access";
 import { reviewProtocolValidator, stageReviewCoverage } from "./stageReviewCoverage";
 import { analyzeTrajectoryTimeline } from "./trajectoryTimeline";
+import { eventLinksValidator, validateTrajectoryEventLinks } from "./trajectoryEventLinks";
 import {
   canonicalizeStageLabel,
   validateStageLabel,
@@ -74,6 +75,7 @@ export const save = mutation({
     label: v.optional(v.record(v.string(), v.any())),
     notes: v.optional(v.string()),
     review_protocol: v.optional(reviewProtocolValidator),
+    event_links: v.optional(eventLinksValidator),
     prefill_pushed_at: v.optional(v.float64()),
     prediction_id: v.optional(v.id("stagePredictions")),
     prediction_sha256: v.optional(v.string()),
@@ -109,6 +111,9 @@ export const save = mutation({
       );
     }
     const spec = specRow.spec as ExportedStageSpec;
+    if (args.event_links !== undefined && (!spec.trajectory || args.status === "cleared")) {
+      throw new Error("event_links require a non-cleared trajectory review");
+    }
     const reviewCoverage = stageReviewCoverage(args.review_protocol, args.status, !!spec.trajectory);
 
     // Pin exactly the prediction the reviewer saw. An active-run change must
@@ -217,6 +222,8 @@ export const save = mutation({
         throw new Error("trajectory identity must match the exact prediction source or source-free episode identity");
       }
       if ((COMMITTED as readonly string[]).includes(args.status)) {
+        const linkErrors = validateTrajectoryEventLinks(label, args.event_links ?? []);
+        if (linkErrors.length > 0) throw new Error(linkErrors.join("; "));
         const violations = validateStageLabel(spec, label, resolvedDuration);
         if (violations.length > 0) {
           throw new Error(
@@ -266,6 +273,7 @@ export const save = mutation({
       label,
       notes: args.notes,
       review_coverage: reviewCoverage,
+      event_links: args.event_links,
       prefill_pushed_at: resolvedPushedAt,
       prediction_id: args.prediction_id,
       prediction_sha256: args.prediction_sha256,

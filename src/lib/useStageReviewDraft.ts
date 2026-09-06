@@ -1,3 +1,4 @@
+import type { TrajectoryEventLink } from "../../convex/trajectoryEventLinks";
 import { useCallback, useEffect, useState } from "react";
 import type { StageLabelRow } from "../../convex/stageConsistency";
 import type { PredictionAttribution, ReviewSeed } from "./stagePredictionReview";
@@ -46,13 +47,13 @@ export function useStageReviewDraft(key: string | null, seed: ReviewSeed | null)
     });
   }, [key]);
 
-  const replaceLabel = useCallback((label: StageLabelRow, attribution: PredictionAttribution) => {
+  const replaceLabel = useCallback((label: StageLabelRow, attribution: PredictionAttribution, eventLinks?: TrajectoryEventLink[]) => {
     if (key === null) return;
     setDrafts((previous) => {
       const current = previous.get(key);
       if (!current) return previous;
       return new Map(previous).set(key, { ...current, label: { ...label }, attribution: { ...attribution },
-        inheritedSuccess: false, fromOwnReview: false, dirty: true });
+        eventLinks: eventLinks?.map((link) => ({ ...link })), inheritedSuccess: false, fromOwnReview: false, dirty: true });
     });
   }, [key]);
 
@@ -62,6 +63,15 @@ export function useStageReviewDraft(key: string | null, seed: ReviewSeed | null)
       const current = previous.get(key);
       if (!current) return previous;
       return new Map(previous).set(key, { ...current, humanNotes, dirty: true });
+    });
+  }, [key]);
+
+  const editEventLinks = useCallback((eventLinks: TrajectoryEventLink[]) => {
+    if (key === null) return;
+    setDrafts((previous) => {
+      const current = previous.get(key);
+      if (!current) return previous;
+      return new Map(previous).set(key, { ...current, eventLinks: eventLinks.map((link) => ({ ...link })), dirty: true });
     });
   }, [key]);
 
@@ -84,5 +94,5 @@ export function useStageReviewDraft(key: string | null, seed: ReviewSeed | null)
     return () => window.removeEventListener("beforeunload", warn);
   }, [unsavedCount]);
 
-  return { draft, edit, editHumanNotes, replaceLabel, markSaved, unsavedCount };
+  return { draft, edit, editHumanNotes, editEventLinks, replaceLabel, markSaved, unsavedCount };
 }

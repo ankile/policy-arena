@@ -5,6 +5,7 @@ import { statusValidator } from "./statusShared";
 import { CONTENT_PROTOCOL, pipelineValidator, predictionFields } from "./stagePredictionContract";
 import { generationValidator, jobStatusValidator } from "./labelingContract";
 import { reviewCoverageValidator } from "./stageReviewCoverage";
+import { eventLinksValidator } from "./trajectoryEventLinks";
 
 export default defineSchema({
   ...authTables,
@@ -334,6 +335,7 @@ export default defineSchema({
     label: v.optional(v.record(v.string(), v.any())),
     notes: v.optional(v.string()),
     review_coverage: v.optional(reviewCoverageValidator),
+    event_links: v.optional(eventLinksValidator),
     prefill_pushed_at: v.optional(v.float64()), // which prefill generation was shown
     prediction_id: v.optional(v.id("stagePredictions")),
     prediction_sha256: v.optional(v.string()),

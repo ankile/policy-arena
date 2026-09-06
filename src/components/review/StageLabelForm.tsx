@@ -1,3 +1,4 @@
+import type { TrajectoryEventLink } from "../../../convex/trajectoryEventLinks";
 import { useMemo, useState } from "react";
 import { TimeControls } from "./ReviewTimeControls";
 import { TrajectoryLabelForm } from "./TrajectoryLabelForm";
@@ -20,6 +21,8 @@ export interface StageLabelFormProps {
   blind?: boolean;
   row: StageLabelRow;
   humanNotes?: string;
+  eventLinks?: TrajectoryEventLink[];
+  onEventLinksChange?: (links: TrajectoryEventLink[]) => void;
   onHumanNotesChange?: (notes: string) => void;
   violations: Violation[];
   /** Current playhead frame (display only). */

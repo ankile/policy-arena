@@ -1,3 +1,4 @@
+import { validateTrajectoryEventLinks, type TrajectoryEventLink } from "../../convex/trajectoryEventLinks";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../convex/_generated/api";
 import { blankTrajectoryReview } from "../../convex/trajectoryReview";
@@ -63,6 +64,7 @@ interface StageReviewRecord {
   status: string;
   label: StageLabelRow | null;
   humanNotes?: string;
+  eventLinks?: TrajectoryEventLink[];
   reviewer: string;
   savedAt: number;
   blind: boolean;
@@ -427,6 +429,7 @@ export default function StageReview({
         status: row.status,
         label: (row.label as StageLabelRow | undefined) ?? null,
         humanNotes: row.notes,
+        eventLinks: row.event_links,
         reviewer: row.reviewer,
         savedAt: row.saved_at,
         blind: row.blind ?? false,
@@ -460,6 +463,7 @@ export default function StageReview({
           status: row.status,
           label: (row.label as StageLabelRow | undefined) ?? null,
           humanNotes: row.notes,
+          eventLinks: row.event_links,
           reviewer: row.reviewer,
           savedAt: row.saved_at,
           blind: row.blind ?? false,
@@ -729,7 +733,7 @@ export default function StageReview({
   }, [selectedEpisode, spec, currentEpisode, predictionsReady, reviews, viewer,
       outcomeGateReady, resolveOutcome, outcomeSignalErrors, ownReviewByEpisode,
       prefillByEpisode, predictionParam, repoId, needsPolicyDuration, policyDurationS, signalKey]);
-  const { draft, edit: editDraft, editHumanNotes, replaceLabel, markSaved, unsavedCount } =
+  const { draft, edit: editDraft, editHumanNotes, editEventLinks, replaceLabel, markSaved, unsavedCount } =
     useStageReviewDraft(sourceKey, seed);
   const pending = predictionsReady ? draft?.label ?? null : null;
   const dirty = draft?.dirty ?? false;
@@ -772,11 +776,14 @@ export default function StageReview({
   const violations = useMemo(
     () => (spec && pending ? [
       ...validateStageLabel(spec, pending, episodeDurationS),
+      ...validateTrajectoryEventLinks(pending, draft?.eventLinks ?? []).map((message) => ({
+        code: "trajectory_event_links", message, fields: ["stage_transitions", "key_action_observations"],
+      })),
       ...(spec.trajectory ? analyzeTrajectoryTimeline(spec.trajectory, pending).map((issue) => ({
         code: "trajectory_timeline", message: issue.message, fields: ["stage_transitions", "key_action_observations", "failure_events"],
       })) : []),
     ] : []),
-    [spec, pending, episodeDurationS]
+    [spec, pending, episodeDurationS, draft?.eventLinks]
   );
   const edit = useCallback((patch: StageLabelRow) => {
     if (formDisabled || saveInFlight.current) return;
@@ -850,6 +857,7 @@ export default function StageReview({
           ...(spec.trajectory && status !== "cleared" ? {
             review_protocol: "structured-v1" as const,
             notes: draft.humanNotes ?? "",
+            event_links: draft.eventLinks ?? [],
           } : {}),
           ...draft.attribution,
           blind: blind && !everUnblindedRef.current,
@@ -1755,6 +1763,10 @@ export default function StageReview({
                   hasPendingInput={pendingInputCount > 0}
                   spec={spec}
                   row={pending}
+                  eventLinks={draft?.eventLinks ?? []}
+                  onEventLinksChange={(links) => {
+                    if (!formDisabled && !saveInFlight.current) editEventLinks(links);
+                  }}
                   humanNotes={draft?.humanNotes ?? ""}
                   onHumanNotesChange={(notes) => {
                     if (!formDisabled && !saveInFlight.current) editHumanNotes(notes);
@@ -1805,7 +1817,7 @@ export default function StageReview({
                           onClick={() => {
                             if (!formDisabled && !saveInFlight.current) replaceLabel(other.label!, {
                               ...other.attribution, copied_from_review_id: other.id,
-                            });
+                            }, other.eventLinks);
                           }}
                           className="px-2 py-0.5 rounded text-[10px] font-mono bg-white border border-gold text-gold hover:bg-gold/10 cursor-pointer"
                           disabled={formDisabled}
