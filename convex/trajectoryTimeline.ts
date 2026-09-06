@@ -121,10 +121,10 @@ function equivalentPairs(tag: TrajectoryReviewSpec): [string, string][] {
 function assertEditableObjects(row: StageLabelRow): void {
   for (const key of ["stage_transitions", "failure_events", "key_action_observations"]) {
     const value = row[key];
-    if (!Array.isArray(value) || Array.from({ length: value.length }, (_, index) => index).some((index) => !Object.hasOwn(value, index) || !object(value[index]))) throw new Error(`Cannot edit malformed ${key}.`);
+    if (!Array.isArray(value) || Array.from({ length: value.length }, (_, index) => index).some((index) => !Object.prototype.hasOwnProperty.call(value, index) || !object(value[index]))) throw new Error(`Cannot edit malformed ${key}.`);
   }
   for (const action of row.key_action_observations as Item[]) {
-    if (!Array.isArray(action.occurrences) || Array.from({ length: action.occurrences.length }, (_, index) => index).some((index) => !Object.hasOwn(action.occurrences as unknown[], index) || !object((action.occurrences as unknown[])[index]))) throw new Error("Cannot edit malformed action occurrences.");
+    if (!Array.isArray(action.occurrences) || Array.from({ length: action.occurrences.length }, (_, index) => index).some((index) => !Object.prototype.hasOwnProperty.call(action.occurrences, index) || !object((action.occurrences as unknown[])[index]))) throw new Error("Cannot edit malformed action occurrences.");
   }
 }
 function remainingClipContact(tag: TrajectoryReviewSpec, row: StageLabelRow): string | null {
