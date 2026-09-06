@@ -32,8 +32,9 @@ and cross-schema scoring limitations. This UI change does not migrate gold.
 - Offline browser inspection at 1280/1600 desktop widths and 390px phone width:
   compact controls, expanded event editors, no horizontal page overflow,
   visible verdict controls and zero fixture review writes while browsing.
-- Live read-only inspection of Marker M01, Square S01 and Routing R01: both
-  camera streams loaded; stage controls and the new form rendered. M01's
+- Live read-only inspection of Marker M01, Square S01 and Routing R01: all
+  camera streams loaded, two each for Marker/Square and three for Routing;
+  stage controls and the new form rendered. M01's
   original confirmed review `md7ffz7dspwbvdaat0r159j1qx8dxy6v` remains present
   under its original v3 schema and prediction attribution.
 
