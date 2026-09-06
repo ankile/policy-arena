@@ -58,7 +58,11 @@ export const freeze = mutation({
       if (!review.episode_duration_s || review.episode_duration_s !== prediction.episode_duration_s) throw new Error("Review video duration does not match its prediction");
       if (validateStageLabel(spec.spec as ExportedStageSpec, review.label!, review.episode_duration_s).length) throw new Error("Gold review fails semantic validation");
       rows.push({ episode_index: review.episode_index, review_id: review._id, prediction_id: prediction._id,
-        source_revision: prediction.source_revision, label: trajectoryFromReview(review.label!) });
+        source_revision: prediction.source_revision, label: trajectoryFromReview(review.label!),
+        // Keep the canonical payload lossless while distinguishing model text
+        // from human judgments. Absence on older reviews stays unknown.
+        ...(review.review_coverage === undefined ? {} : { review_coverage: review.review_coverage }),
+        ...(review.notes === undefined ? {} : { human_notes: review.notes }) });
     }
     if (!rows.length || rows.length > 100) throw new Error("Freeze requires 1..100 complete, unambiguous reviews attributed to this baseline");
     const content = { task: run.task, dataset_repo: run.dataset_repo, taxonomy_version: run.taxonomy_version,

@@ -13,6 +13,8 @@ export interface PredictionAttribution {
 
 export interface ReviewSeed {
   label: StageLabelRow;
+  /** Human-authored review notes; never seeded from prediction label.notes. */
+  humanNotes?: string;
   attribution: PredictionAttribution;
   inheritedSuccess: boolean;
   fromOwnReview: boolean;
@@ -26,7 +28,7 @@ export function seedStageReview({
   legacy,
   emptyLabel = {},
 }: {
-  own?: { label: StageLabelRow | null; attribution: PredictionAttribution };
+  own?: { label: StageLabelRow | null; attribution: PredictionAttribution; humanNotes?: string };
   prediction?: { label: StageLabelRow; attribution: PredictionAttribution };
   outcome: string | null;
   spec: ExportedStageSpec;
@@ -45,6 +47,7 @@ export function seedStageReview({
   }
   return {
     label,
+    ...(fromOwnReview && own.humanNotes !== undefined ? { humanNotes: own.humanNotes } : {}),
     attribution: { ...(fromOwnReview ? own.attribution : prediction?.attribution ?? {}) },
     inheritedSuccess,
     fromOwnReview,

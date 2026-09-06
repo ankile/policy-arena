@@ -7,6 +7,7 @@ import { parseEpisodes, validateEpisodes, validateGeneration } from "../convex/l
 import { eligibleGold, scoreSummaries } from "../convex/labelingScores";
 import type { Doc, Id } from "../convex/_generated/dataModel";
 import { manifestDigest, predictionDigest } from "../convex/stagePredictionContract";
+import { stageReviewCoverage } from "../convex/stageReviewCoverage";
 
 const modules = {
   "../convex/_generated/server.ts": () => import("../convex/_generated/server"),
@@ -136,7 +137,7 @@ describe("Frozen gold scoring", () => {
     await t.mutation(api.stagePredictions.appendBatch, { ...service, run_id, rows: [row] });
     await t.mutation(api.stagePredictions.publish, { ...service, run_id });
     const prediction = (await t.query(api.stagePredictions.forRun, { run_id, paginationOpts: { cursor: null, numItems: 1 } })).page[0];
-    await t.run((ctx) => ctx.db.insert("stageReviews", { task: source.spec.task, dataset_repo: repo,
+    const reviewId = await t.run((ctx) => ctx.db.insert("stageReviews", { task: source.spec.task, dataset_repo: repo,
       taxonomy_version: source.spec.taxonomy_version, taxonomy_hash: source.spec.taxonomy_hash, episode_index: 0n,
       status: "confirmed", label: row.label, reviewer: "gold-reviewer", saved_at: 1,
       prediction_id: prediction._id, prediction_sha256: prediction.content_sha256, prediction_run_id: run_id,
@@ -148,6 +149,22 @@ describe("Frozen gold scoring", () => {
     expect((await t.run((ctx) => ctx.db.get(id)))!.metrics.stage_exact).toBe(1);
     const frozen = await t.run((ctx) => ctx.db.get(benchmark_id));
     expect(frozen!.rows[0].prediction_id).toBe(prediction._id);
+    expect(frozen!.rows[0].review_coverage).toBeUndefined();
+    expect(frozen!.rows[0].human_notes).toBeUndefined();
+    const originalReview = (await t.run((ctx) => ctx.db.get(reviewId)))!;
+    const { _id: _reviewId, _creationTime: _createdAt, ...originalFields } = originalReview;
+    void _reviewId; void _createdAt;
+    const coverage = stageReviewCoverage("structured-v1", "confirmed", true)!;
+    await t.run((ctx) => ctx.db.insert("stageReviews", { ...originalFields, saved_at: 2,
+      review_coverage: coverage, notes: "Human notes distinct from retained model prose." }));
+    const withCoverageId = await editor.mutation(api.labelingScores.freeze, { run_id, name: "structured gold" });
+    const withCoverage = (await t.run((ctx) => ctx.db.get(withCoverageId)))!;
+    expect(withCoverage.rows[0].review_coverage).toEqual(coverage);
+    expect(withCoverage.rows[0].human_notes).toBe("Human notes distinct from retained model prose.");
+    expect(withCoverage.rows[0].label).toEqual(frozen!.rows[0].label);
+    expect(withCoverage.digest).not.toBe(frozen!.digest);
+    expect(await t.run((ctx) => ctx.db.get(benchmark_id))).toEqual(frozen);
+    expect(await t.run((ctx) => ctx.db.get(reviewId))).toEqual(originalReview);
     await t.run((ctx) => ctx.db.patch(prediction._id, { source_revision: "c".repeat(40) }));
     // A distinct snapshot exercises scoring admission, without mutating a prior score.
     const second = await t.run((ctx) => ctx.db.insert("labelingBenchmarks", { ...Object.fromEntries(Object.entries(frozen!).filter(([k]) => !k.startsWith("_"))) } as Omit<Doc<"labelingBenchmarks">, "_id" | "_creationTime">));

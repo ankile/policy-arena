@@ -14,6 +14,11 @@ if (params.get("fixture") === "trajectory") {
   if (!["marker_d2", "square_d2", "routing_d1"].includes(task)) throw new Error("Unknown fixture task");
   configureTrajectoryFixture(fixture, `${task}_${task === "routing_d1" ? "v1" : "v3"}`, `real_${task}_valid`);
 }
+if (params.get("conflict") === "1") {
+  const label = fixture.state.predictionOverrides.label as { key_action_observations: Array<{ first_time_s: number; occurrences: Array<{ time_s: number }> }> };
+  label.key_action_observations[1].first_time_s = 7.266667;
+  label.key_action_observations[1].occurrences[0].time_s = 7.266667;
+}
 const { state, props } = fixture;
 const subscribe = (listener: () => void) => {
   listeners.add(listener);

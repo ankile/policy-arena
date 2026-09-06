@@ -459,10 +459,13 @@ describe("generic trajectory review", () => {
     expect(view.container.innerHTML).not.toContain(sentinel);
     await act(async () => fireEvent.click(view.getAllByRole("button", { name: "Show provenance and unblind" })[0]));
     expect((view.getByRole("textbox", { name: "Transition 1 evidence" }) as HTMLTextAreaElement).value).toBe(sentinel);
-    fireEvent.change(view.getByRole("textbox", { name: "Review notes" }), { target: { value: "reviewed evidence" } });
+    fireEvent.change(view.getByRole("textbox", { name: "Your review notes" }), { target: { value: "reviewed evidence" } });
     await act(async () => key("u"));
     expect(fixture.state.saves[0].blind).toBe(false);
-    expect(fixture.state.saves[0].label!.notes).toBe("reviewed evidence");
+    expect(fixture.state.saves[0].label!.notes).toBe(sentinel);
+    expect(fixture.state.saves[0].notes).toBe("reviewed evidence");
+    expect(fixture.state.saves[0].review_protocol).toBe("structured-v1");
+    expect((view.queryByRole("textbox", { name: "Transition 1 evidence" }) as HTMLTextAreaElement | null)?.readOnly ?? true).toBe(true);
   });
   test("other-schema availability waits for saving and never translates the old label", async () => {
     const { state, props, view } = genericFixture();
@@ -821,4 +824,130 @@ test("a previously saved Yes without occurrences can directly add an unfinished 
   expect(action.occurred).toBe(true);
   expect(action.first_time_s).toBe(1.25);
   expect(action.occurrences[0].time_s).toBe(1.25);
+});
+
+test("human notes remain separate, editable while blind, and survive draft navigation", async () => {
+  window.history.replaceState(null, "", "/?episode=0&prediction=A");
+  const fixture = createStageReviewFixture();
+  const { selected } = configureTrajectoryFixture(fixture);
+  const view = render(<StageReview {...fixture.props} />);
+  await settle();
+  const note = view.getByRole("textbox", { name: "Your review notes" }) as HTMLTextAreaElement;
+  expect(note.value).toBe("");
+  fireEvent.change(note, { target: { value: "No jaw closure; the source explanation is wrong." } });
+  await act(async () => chooseVersion(view, "B"));
+  expect(fixture.state.saves).toHaveLength(1);
+  expect(fixture.state.saves[0].blind).toBe(true);
+  expect(fixture.state.armFetches).toBe(0);
+  expect(fixture.state.saves[0].review_protocol).toBe("structured-v1");
+  expect(fixture.state.saves[0].notes).toBe("No jaw closure; the source explanation is wrong.");
+  expect(fixture.state.saves[0].label).toEqual(selected.review_label);
+  expect((view.getByRole("textbox", { name: "Your review notes" }) as HTMLTextAreaElement).value).toBe("No jaw closure; the source explanation is wrong.");
+});
+
+test("timeline conflict offers explicit repair and Undo without changing source or saving on load", async () => {
+  window.history.replaceState(null, "", "/?episode=0&prediction=A");
+  const fixture = createStageReviewFixture();
+  const { selected } = configureTrajectoryFixture(fixture, "routing_d1_v1", "real_routing_d1_valid");
+  const label = structuredClone(selected.review_label!);
+  label.key_action_observations[1].first_time_s = 7.266667;
+  label.key_action_observations[1].occurrences[0].time_s = 7.266667;
+  fixture.state.predictionOverrides.label = label;
+  const view = render(<StageReview {...fixture.props} />);
+  await settle();
+  expect(view.getByRole("region", { name: "Linked event times" }).textContent).toContain("precedes");
+  expect(fixture.state.saves).toHaveLength(0);
+  fireEvent.click(view.getByRole("button", { name: "Set transition to 7.27 s" }));
+  const transitionTime = () => (view.getByRole("group", { name: "Transition 2 time" }).querySelector("input") as HTMLInputElement).value;
+  expect(transitionTime()).toBe("7.266667");
+  expect(label.stage_transitions[1].time_s).toBe(6.5);
+  fireEvent.click(view.getByRole("button", { name: "Undo last timeline repair" }));
+  expect(transitionTime()).toBe("6.5");
+  fireEvent.click(view.getByRole("button", { name: "Set transition to 7.27 s" }));
+  await act(async () => chooseVersion(view, "B"));
+  expect(fixture.state.saves[0].label!.stage_transitions[1].time_s).toBe(7.266667);
+  expect(fixture.state.saves[0].label!.stage_transitions[1].evidence).toBe(label.stage_transitions[1].evidence);
+});
+
+test("equivalent matching grasp and stage timestamps follow an explicit edit with Undo", async () => {
+  window.history.replaceState(null, "", "/?episode=0&prediction=A");
+  const fixture = createStageReviewFixture();
+  configureTrajectoryFixture(fixture, "routing_d1_v1", "real_routing_d1_valid");
+  const view = render(<StageReview {...fixture.props} />);
+  await settle();
+  const actionTime = view.getByRole("group", { name: "Action 1 occurrence 1 time" }).querySelector("input")!;
+  fireEvent.change(actionTime, { target: { value: "4.6" } });
+  fireEvent.blur(actionTime);
+  const transitionTime = () => (view.getByRole("group", { name: "Transition 1 time" }).querySelector("input") as HTMLInputElement).value;
+  expect(transitionTime()).toBe("4.6");
+  fireEvent.click(view.getByRole("button", { name: "Undo linked time edit" }));
+  expect(transitionTime()).toBe("3.75");
+  expect(actionTime.value).toBe("3.75");
+  expect(fixture.state.saves).toHaveLength(0);
+});
+
+test("unfinished timestamp text disables timeline repairs and human notes guard navigation", async () => {
+  window.history.replaceState(null, "", "/?episode=0&prediction=A");
+  const fixture = createStageReviewFixture();
+  const { selected } = configureTrajectoryFixture(fixture, "routing_d1_v1", "real_routing_d1_valid");
+  const label = structuredClone(selected.review_label!);
+  label.key_action_observations[1].first_time_s = 7.266667;
+  label.key_action_observations[1].occurrences[0].time_s = 7.266667;
+  fixture.state.predictionOverrides.label = label;
+  const view = render(<StageReview {...fixture.props} />);
+  await settle();
+  const input = view.getByRole("group", { name: "Action 2 occurrence 1 time" }).querySelector("input")!;
+  fireEvent.change(input, { target: { value: "unfinished" } });
+  expect(view.getByRole("button", { name: "Set transition to 7.27 s" }).hasAttribute("disabled")).toBe(true);
+  await act(async () => chooseVersion(view, "B"));
+  expect(fixture.state.saves).toHaveLength(0);
+  expect(input.value).toBe("unfinished");
+});
+
+test("Undo of an equivalent-event repair restores the exact original disagreement", async () => {
+  window.history.replaceState(null, "", "/?episode=0&prediction=A");
+  const fixture = createStageReviewFixture();
+  const { selected } = configureTrajectoryFixture(fixture, "routing_d1_v1", "real_routing_d1_valid");
+  const label = structuredClone(selected.review_label!);
+  label.key_action_observations[0].first_time_s = 4.6;
+  label.key_action_observations[0].occurrences[0].time_s = 4.6;
+  fixture.state.predictionOverrides.label = label;
+  const view = render(<StageReview {...fixture.props} />);
+  await settle();
+  fireEvent.click(view.getByRole("button", { name: "Set transition to 4.60 s" }));
+  fireEvent.click(view.getByRole("button", { name: "Undo last timeline repair" }));
+  expect((view.getByRole("group", { name: "Action 1 occurrence 1 time" }).querySelector("input") as HTMLInputElement).value).toBe("4.6");
+  expect((view.getByRole("group", { name: "Transition 1 time" }).querySelector("input") as HTMLInputElement).value).toBe("3.75");
+  await act(async () => chooseVersion(view, "B"));
+  expect(fixture.state.saves[0].label).toEqual(label);
+});
+
+test("automatic linking cannot overwrite unfinished text in another timestamp editor", async () => {
+  window.history.replaceState(null, "", "/?episode=0&prediction=A");
+  const fixture = createStageReviewFixture();
+  configureTrajectoryFixture(fixture, "routing_d1_v1", "real_routing_d1_valid");
+  const view = render(<StageReview {...fixture.props} />);
+  await settle();
+  const transition = view.getByRole("group", { name: "Transition 1 time" }).querySelector("input")!;
+  const action = view.getByRole("group", { name: "Action 1 occurrence 1 time" }).querySelector("input")!;
+  fireEvent.change(transition, { target: { value: "unfinished" } });
+  fireEvent.change(action, { target: { value: "4.6" } });
+  fireEvent.blur(action);
+  expect(transition.value).toBe("unfinished");
+  await act(async () => chooseVersion(view, "B"));
+  expect(fixture.state.saves).toHaveLength(0);
+  expect(transition.value).toBe("unfinished");
+});
+
+test("adjudication distinguishes reviewer notes from retained source notes", async () => {
+  const { state, view } = fixture("?episode=0&prediction=A&sstatus=adjudicate&blind=0", [{
+    _id: "donor-review", episode_index: 0n, reviewer: "other", reviewer_user_id: "user-2",
+    status: "uncertain", saved_at: 1_700_000_100_000,
+    label: { max_stage: 8, notes: "Source claims a grasp." }, notes: "Reviewer saw no grasp.",
+    prediction_id: "B-prediction-0", prediction_sha256: "B".repeat(64), episode_duration_s: 20,
+  }]);
+  await settle();
+  expect(view.getByText("Reviewer notes: Reviewer saw no grasp.")).toBeTruthy();
+  expect(view.getByText("Retained source notes · not reviewer notes")).toBeTruthy();
+  expect(state.saves).toHaveLength(0);
 });

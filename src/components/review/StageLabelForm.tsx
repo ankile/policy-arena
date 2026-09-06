@@ -19,6 +19,8 @@ export interface StageLabelFormProps {
   spec: ExportedStageSpec;
   blind?: boolean;
   row: StageLabelRow;
+  humanNotes?: string;
+  onHumanNotesChange?: (notes: string) => void;
   violations: Violation[];
   /** Current playhead frame (display only). */
   frame: number;

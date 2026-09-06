@@ -56,6 +56,15 @@ export function useStageReviewDraft(key: string | null, seed: ReviewSeed | null)
     });
   }, [key]);
 
+  const editHumanNotes = useCallback((humanNotes: string) => {
+    if (key === null) return;
+    setDrafts((previous) => {
+      const current = previous.get(key);
+      if (!current) return previous;
+      return new Map(previous).set(key, { ...current, humanNotes, dirty: true });
+    });
+  }, [key]);
+
   const markSaved = useCallback((savedKey: string) => {
     setDrafts((previous) => {
       const current = previous.get(savedKey);
@@ -75,5 +84,5 @@ export function useStageReviewDraft(key: string | null, seed: ReviewSeed | null)
     return () => window.removeEventListener("beforeunload", warn);
   }, [unsavedCount]);
 
-  return { draft, edit, replaceLabel, markSaved, unsavedCount };
+  return { draft, edit, editHumanNotes, replaceLabel, markSaved, unsavedCount };
 }

@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { statusValidator } from "./statusShared";
 import { CONTENT_PROTOCOL, pipelineValidator, predictionFields } from "./stagePredictionContract";
 import { generationValidator, jobStatusValidator } from "./labelingContract";
+import { reviewCoverageValidator } from "./stageReviewCoverage";
 
 export default defineSchema({
   ...authTables,
@@ -40,7 +41,9 @@ export default defineSchema({
     name: v.string(), task: v.string(), dataset_repo: v.string(), taxonomy_version: v.string(),
     taxonomy_hash: v.string(), baseline_run_id: v.id("stagePredictionRuns"), digest: v.string(),
     rows: v.array(v.object({ episode_index: v.int64(), review_id: v.id("stageReviews"),
-      prediction_id: v.id("stagePredictions"), source_revision: v.string(), label: v.any() })),
+      prediction_id: v.id("stagePredictions"), source_revision: v.string(), label: v.any(),
+      // Coverage paths refer to the original review label, identified by review_id.
+      review_coverage: v.optional(reviewCoverageValidator), human_notes: v.optional(v.string()) })),
     excluded_episodes: v.array(v.int64()), created_at: v.number(), created_by: v.string(),
   }).index("by_task", ["task"]),
   labelingScores: defineTable({
@@ -330,6 +333,7 @@ export default defineSchema({
     status: v.string(), // confirmed | corrected | uncertain | draft | cleared
     label: v.optional(v.record(v.string(), v.any())),
     notes: v.optional(v.string()),
+    review_coverage: v.optional(reviewCoverageValidator),
     prefill_pushed_at: v.optional(v.float64()), // which prefill generation was shown
     prediction_id: v.optional(v.id("stagePredictions")),
     prediction_sha256: v.optional(v.string()),

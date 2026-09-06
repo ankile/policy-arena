@@ -5,6 +5,8 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { canonicalDigest } from "./stagePredictionContract";
 import { blankTrajectoryReview } from "./trajectoryReview";
 import { requireEditorOrService } from "./access";
+import { reviewProtocolValidator, stageReviewCoverage } from "./stageReviewCoverage";
+import { analyzeTrajectoryTimeline } from "./trajectoryTimeline";
 import {
   canonicalizeStageLabel,
   validateStageLabel,
@@ -21,7 +23,9 @@ import {
  *
  * Status vocabulary matches the cv2 CorrectionUIServer (the incumbent this
  * supersedes), plus draft/cleared:
- *  - confirmed:  the episode is FULLY ANNOTATED (gold-eligible). Whether the
+ *  - confirmed:  the episode's review is complete (gold-eligible within its
+ *    recorded review_coverage; missing historical coverage means unknown).
+ *    For structured-v1, source prose/confidence are not human gold. Whether the
  *    reviewer edited the prediction is not encoded here — it is derivable
  *    from the row's label vs the prefill generation it was shown
  *    (prefill_pushed_at) and from the HF ledger's vlm/human event chain.
@@ -69,6 +73,7 @@ export const save = mutation({
     status: v.string(),
     label: v.optional(v.record(v.string(), v.any())),
     notes: v.optional(v.string()),
+    review_protocol: v.optional(reviewProtocolValidator),
     prefill_pushed_at: v.optional(v.float64()),
     prediction_id: v.optional(v.id("stagePredictions")),
     prediction_sha256: v.optional(v.string()),
@@ -104,6 +109,7 @@ export const save = mutation({
       );
     }
     const spec = specRow.spec as ExportedStageSpec;
+    const reviewCoverage = stageReviewCoverage(args.review_protocol, args.status, !!spec.trajectory);
 
     // Pin exactly the prediction the reviewer saw. An active-run change must
     // never alter the validation duration or attribution of an in-flight form.
@@ -218,6 +224,14 @@ export const save = mutation({
               violations.map((viol) => `[${viol.code}] ${viol.message}`).join("; ")
           );
         }
+        // A review-only gate: immutable imported predictions and historical
+        // saved labels remain untouched, including their original conflicts.
+        if (spec.trajectory) {
+          const timelineIssues = analyzeTrajectoryTimeline(spec.trajectory, label);
+          if (timelineIssues.length > 0) {
+            throw new Error("label timeline is inconsistent: " + timelineIssues.map((issue) => issue.message).join("; "));
+          }
+        }
       }
     }
 
@@ -251,6 +265,7 @@ export const save = mutation({
       status: args.status,
       label,
       notes: args.notes,
+      review_coverage: reviewCoverage,
       prefill_pushed_at: resolvedPushedAt,
       prediction_id: args.prediction_id,
       prediction_sha256: args.prediction_sha256,

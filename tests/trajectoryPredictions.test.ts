@@ -69,13 +69,18 @@ describe("generic immutable prediction and review storage", () => {
     expect(stored.label).toEqual(row.label);
     expect(stored.canonical_response).toEqual(row.canonical_response);
     expect(stored.validation_codes).toEqual([]);
-    const id = await t.mutation(api.stageReviews.save, review(stored));
+    // The immutable fixture predates the review timeline gate: its synthetic
+    // action times come after stage entry. Supply an explicitly corrected
+    // human timeline while preserving the historical maximum/final failure.
+    const human = review(stored);
+    human.label.stage_transitions.forEach((event, i) => { event.time_s = 13 + i; });
+    const id = await t.mutation(api.stageReviews.save, human);
     const saved = await t.run((ctx) => ctx.db.get(id));
-    expect(saved!.label).toEqual(row.label);
+    expect(saved!.label).toEqual(human.label);
     expect(saved!.episode_duration_s).toBe(row.episode_duration_s);
-    const corrected = review(stored); corrected.label.notes = "Human correction with full history retained";
+    const corrected = structuredClone(human); corrected.label.notes = "Human correction with full history retained";
     await t.mutation(api.stageReviews.save, { ...corrected, status: "corrected" });
-    expect((await t.run((ctx) => ctx.db.get(id)))!.label).toEqual(row.label);
+    expect((await t.run((ctx) => ctx.db.get(id)))!.label).toEqual(human.label);
     expect((await t.run((ctx) => ctx.db.get(stored._id)))!.label).toEqual(row.label);
   });
   test("every review status pins identity and confirmed reviews enforce full event semantics", async () => {

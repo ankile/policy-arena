@@ -24,6 +24,7 @@ import {
   type PredictionAttribution,
 } from "../lib/stagePredictionReview";
 import { useStageReviewDraft } from "../lib/useStageReviewDraft";
+import { analyzeTrajectoryTimeline } from "../../convex/trajectoryTimeline";
 import { stageReviewDataSource, type StageReviewDataSource } from "../lib/stageReviewDataSource";
 import { useSearchParam, useSearchParamNumber, useSearchParamNavigationGuard, setSearchParams } from "../lib/useSearchParam";
 import { EvidencePanel, type StagePrefillView } from "./review/EvidencePanel";
@@ -61,6 +62,7 @@ interface StageReviewRecord {
   episodeIndex: number;
   status: string;
   label: StageLabelRow | null;
+  humanNotes?: string;
   reviewer: string;
   savedAt: number;
   blind: boolean;
@@ -104,7 +106,7 @@ const HELP_KEYS: [string, string][] = [
   ["space", "play / pause"],
   ["0–9", "set the stage rung"],
   ["- / =", "decrement / increment the stage (covers S10)"],
-  ["c", "confirm: episode fully annotated (gold-eligible) + advance"],
+  ["c", "confirm: reviewed labels and event times (gold-eligible) + advance"],
   ["u", "uncertain: reviewed but not gold-eligible + advance"],
   ["e", "toggle the model-evidence rail"],
   ["n", "next episode (drafts unsaved edits)"],
@@ -424,6 +426,7 @@ export default function StageReview({
         episodeIndex: Number(row.episode_index),
         status: row.status,
         label: (row.label as StageLabelRow | undefined) ?? null,
+        humanNotes: row.notes,
         reviewer: row.reviewer,
         savedAt: row.saved_at,
         blind: row.blind ?? false,
@@ -456,6 +459,7 @@ export default function StageReview({
           episodeIndex: ep,
           status: row.status,
           label: (row.label as StageLabelRow | undefined) ?? null,
+          humanNotes: row.notes,
           reviewer: row.reviewer,
           savedAt: row.saved_at,
           blind: row.blind ?? false,
@@ -725,7 +729,7 @@ export default function StageReview({
   }, [selectedEpisode, spec, currentEpisode, predictionsReady, reviews, viewer,
       outcomeGateReady, resolveOutcome, outcomeSignalErrors, ownReviewByEpisode,
       prefillByEpisode, predictionParam, repoId, needsPolicyDuration, policyDurationS, signalKey]);
-  const { draft, edit: editDraft, replaceLabel, markSaved, unsavedCount } =
+  const { draft, edit: editDraft, editHumanNotes, replaceLabel, markSaved, unsavedCount } =
     useStageReviewDraft(sourceKey, seed);
   const pending = predictionsReady ? draft?.label ?? null : null;
   const dirty = draft?.dirty ?? false;
@@ -766,7 +770,12 @@ export default function StageReview({
   const episodeDurationS = shownAttribution?.episode_duration_s ??
     (spec?.trajectory ? policyDurationS : spec && currentEpisode ? currentEpisode.rawLength / spec.fps : null);
   const violations = useMemo(
-    () => (spec && pending ? validateStageLabel(spec, pending, episodeDurationS) : []),
+    () => (spec && pending ? [
+      ...validateStageLabel(spec, pending, episodeDurationS),
+      ...(spec.trajectory ? analyzeTrajectoryTimeline(spec.trajectory, pending).map((issue) => ({
+        code: "trajectory_timeline", message: issue.message, fields: ["stage_transitions", "key_action_observations", "failure_events"],
+      })) : []),
+    ] : []),
     [spec, pending, episodeDurationS]
   );
   const edit = useCallback((patch: StageLabelRow) => {
@@ -838,6 +847,10 @@ export default function StageReview({
           taxonomy_version: spec.taxonomy_version,
           status,
           label: label ?? undefined,
+          ...(spec.trajectory && status !== "cleared" ? {
+            review_protocol: "structured-v1" as const,
+            notes: draft.humanNotes ?? "",
+          } : {}),
           ...draft.attribution,
           blind: blind && !everUnblindedRef.current,
           episode_duration_s: episodeDurationS ?? undefined,
@@ -1742,6 +1755,10 @@ export default function StageReview({
                   hasPendingInput={pendingInputCount > 0}
                   spec={spec}
                   row={pending}
+                  humanNotes={draft?.humanNotes ?? ""}
+                  onHumanNotesChange={(notes) => {
+                    if (!formDisabled && !saveInFlight.current) editHumanNotes(notes);
+                  }}
                   violations={violations}
                   frame={frame}
                   markFrame={markFrame}
@@ -1798,11 +1815,11 @@ export default function StageReview({
                         </button>
                       )}
                     </div>
-                    {!blind && typeof other.label?.notes === "string" && other.label.notes && (
-                      <p className="mt-1 text-[11px] font-body text-ink whitespace-pre-wrap">
-                        {other.label.notes}
-                      </p>
-                    )}
+                    {!blind && other.humanNotes && <p className="mt-1 text-xs text-ink whitespace-pre-wrap">Reviewer notes: {other.humanNotes}</p>}
+                    {!blind && typeof other.label?.notes === "string" && other.label.notes && <details className="mt-1 text-xs text-ink-muted">
+                      <summary className="cursor-pointer">Retained source notes · not reviewer notes</summary>
+                      <p className="whitespace-pre-wrap">{other.label.notes}</p>
+                    </details>}
                   </div>
                 ))}
 
@@ -1833,7 +1850,7 @@ export default function StageReview({
                       : "bg-teal text-white hover:bg-teal/90 cursor-pointer"
                   }`}
                 >
-                  confirm — fully annotated
+                  {spec.trajectory ? "confirm — labels reviewed" : "confirm — fully annotated"}
                   <span className="ml-1.5 font-mono text-[10px] opacity-70">c</span>
                 </button>
               </div>

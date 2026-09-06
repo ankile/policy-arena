@@ -92,12 +92,12 @@ export function TrajectoryActionEditor({ action, index, definition, onChange, ..
             <div className="flex flex-wrap items-center gap-2 mt-2">
               <label className="flex items-center gap-2">Attempt<input aria-label={`${eventName} attempt`} className={`${inputClass} w-16`} type="number" min="1" step="1" disabled={props.disabled}
                 value={typeof event.attempt_index === "number" && Number.isFinite(event.attempt_index) ? event.attempt_index : ""} onChange={(e) => edit({ attempt_index: e.target.value === "" ? null : Number(e.target.value) })} /></label>
-              <label className="flex items-center gap-2">Confidence<select aria-label={`${eventName} confidence`} className={inputClass} disabled={props.disabled} value={validConfidence ? String(event.confidence) : "unset"} onChange={(e) => edit({ confidence: e.target.value })}>
+              <label className="flex items-center gap-2">Source confidence (not reviewed)<select aria-label={`${eventName} confidence`} className={inputClass} disabled={props.disabled} value={validConfidence ? String(event.confidence) : "unset"} onChange={(e) => edit({ confidence: e.target.value })}>
                 {!validConfidence && <option value="unset" disabled>Unset or invalid</option>}
                 {["low", "medium", "high"].map((value) => <option key={value}>{value}</option>)}
               </select></label>
             </div>
-            {!props.blind && <label className="block mt-2 text-ink-muted">Evidence<textarea aria-label={`${eventName} evidence`} className={`${inputClass} block w-full mt-1`} rows={2} disabled={props.disabled} value={typeof event.evidence === "string" ? event.evidence : ""} onChange={(e) => edit({ evidence: e.target.value })} /></label>}
+            {!props.blind && <label className="block mt-2 text-ink-muted">Retained source evidence (not human notes)<textarea aria-label={`${eventName} evidence`} className={`${inputClass} block w-full mt-1`} rows={2} readOnly value={typeof event.evidence === "string" ? event.evidence : ""} /></label>}
           </details>
         </div>;
       })}
