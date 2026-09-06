@@ -67,6 +67,30 @@ the new snapshot's digest. Existing benchmarks and their digests are unchanged.
 
 ## Release verification
 
-Release evidence is recorded after the complete test suite, independent review,
-visual inspection, and live integrity comparison finish. No review save is needed
-for deployment verification; write-path tests use the in-memory Convex test backend.
+Source commits `287ac07` and `40ac4b3`; deployed 2026-09-06 UTC.
+
+- Complete suite: 496 tests passed, zero failed. Lint and production build passed.
+- Backend `tsc --noEmit -p convex/tsconfig.json` passed after replacing
+  `Object.hasOwn` with the compatible `hasOwnProperty.call` guard; the 14 timeline
+  tests passed again. Run this backend check explicitly before future deploys.
+- Independent review exercised repair order, lost-seat ambiguity, exact Undo,
+  unfinished-input preservation, and benchmark provenance; no blockers remained.
+- Desktop and 390px phone fixture screenshots inspected, with no horizontal
+  overflow. The live R01 review loaded all three camera streams (readyState 4),
+  five existing timing conflicts, human notes, and the updated confirmation button.
+  No edit or save was made during live inspection.
+- Before/after Convex snapshot rows are exactly equal for stageReviews (621),
+  stagePredictions (5,770), stagePredictionRuns (68), stageTaskSpecs (9),
+  stagePrefills (4,325), labelingBenchmarks (0), and labelingScores (0).
+  A separate post-browser check at 2026-09-06 20:12:38 UTC confirmed exact full
+  history and frozen prediction equality for M01, S01, and R01.
+
+Backend deployed with `CONVEX_DEPLOYMENT=dev:grandiose-rook-292 bunx convex dev
+--once --typecheck enable --tail-logs disable`. Frontend deployed with explicit
+team scope: `bunx vercel --prod --yes --scope ankiles-projects`.
+Production deployment `dpl_FKXLjLPxZnm6rMvjEMZMSfo2z76v` is ready at
+<https://policy-eval.ankile.com/> and
+<https://policy-arena-8pyt0ppub-ankiles-projects.vercel.app>.
+Served JavaScript `/assets/index-DIP0EddK.js` is byte-for-byte identical to the
+verified local bundle (its filename differs), SHA-256
+`03fe596b9c67df4f36f0f338f434678654f86e67cca9c326137657779b885d41`.
