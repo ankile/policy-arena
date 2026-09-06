@@ -15,6 +15,7 @@ import {
 } from "../lib/useSearchParam";
 import { RoundVideos } from "./RoundVideos";
 import { roundVideoSpecs } from "../lib/roundVideoSpecs";
+import { roundNumber } from "../lib/roundNumber";
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString("en-US", {
@@ -249,7 +250,7 @@ export default function Pairings() {
                 >
                   {/* Round index */}
                   <span className="text-xs font-mono text-ink-muted w-16 shrink-0">
-                    Round {round.roundIndex}
+                    Round {roundNumber(round.roundIndex)}
                   </span>
 
                   {/* Pass/fail pills */}

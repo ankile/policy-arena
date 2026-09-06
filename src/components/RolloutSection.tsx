@@ -8,6 +8,7 @@ import {
   type EpisodeMetadata,
 } from "../lib/hf-api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { roundNumber } from "../lib/roundNumber";
 
 export interface RolloutResult {
   session_id: Id<"evalSessions">;
@@ -142,7 +143,7 @@ function RolloutVideoCard({
             </span>
           )}
           <span className="px-1.5 py-0.5 rounded bg-black/50 text-white/80 text-[10px] font-mono">
-            R{result.round_index}
+            R{roundNumber(result.round_index)}
           </span>
           {result.num_frames != null && (
             <span className="px-1.5 py-0.5 rounded bg-black/40 text-white/80 text-[10px] font-mono">

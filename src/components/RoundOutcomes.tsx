@@ -6,6 +6,7 @@
 
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { armStats, type Arm, type ArmRound } from "../lib/armStats";
+import { roundNumber } from "../lib/roundNumber";
 export type { Arm, ArmResult, ArmRound } from "../lib/armStats";
 import { TONE_PILL, meanScore, outcomeLabel, outcomeTone } from "../lib/outcomeScore";
 import { formatPValue, pairedRows, type PairedRow } from "../lib/pairedStats";
@@ -498,7 +499,7 @@ export function RoundsGrid({
               className="w-full grid items-center gap-x-2 px-3 py-2 hover:bg-warm-50 transition-colors cursor-pointer text-left"
               style={gridStyle}
             >
-              <span className="text-xs font-mono text-ink-muted">Round {round.index}</span>
+              <span className="text-xs font-mono text-ink-muted">Round {roundNumber(round.index)}</span>
               {arms.map((arm) => {
                 const result = byArm.get(arm.key);
                 if (!result) {
