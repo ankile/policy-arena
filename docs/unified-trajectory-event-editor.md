@@ -94,3 +94,22 @@ unseen.
   shared/distinct persistence, exact Undo, primary event edits/removal, incomplete
   time/attempt guards, source attribution, chronology repair, malformed inputs,
   blind-field redaction, and conservative Marker/Square conditional relations.
+
+## Live rollout
+
+Deployed 2026-09-06 UTC from implementation `69dc159` and generated API types
+`2cf7984` to the existing `grandiose-rook-292` backend and production frontend.
+Vercel deployment `dpl_HU1pVqHGHwFWkGdHahBYokAe67sP` is ready at
+<https://policy-eval.ankile.com/>.
+
+The served JavaScript `/assets/index-CN-t2sGv.js` matches the tested local build
+byte-for-byte, SHA-256
+`d1ca7d0e4e5275157310d81e7cf9818eaf255cfa0980571c9e6e5b95e6d8e109`.
+The release browser had no editor session; the live episode URL correctly
+required editor sign-in. Form interactions were exercised in the isolated
+browser fixture and DOM tests, not by creating test annotations in production.
+
+Before/after Convex snapshots compared by document ID are exactly equal for
+stageReviews (621), stagePredictions (5,770), stagePredictionRuns (68),
+stageTaskSpecs (9), stagePrefills (4,325), labelingBenchmarks (0), and
+labelingScores (0). The deployment performs no data migration or label rewrite.
