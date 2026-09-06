@@ -181,7 +181,10 @@ export default function JoinedSessions({
         `${d._id}:${d.rounds
           .map((r) =>
             r.results
-              .map((x) => `${x.policy_id}${x.success ? 1 : 0}${x.num_subtask_marks ?? "n"}`)
+              .map(
+                (x) =>
+                  `${x.policy_id}${x.success ? 1 : 0}${x.num_subtask_marks ?? "n"}:${x.num_frames ?? "n"}`,
+              )
               .join(""),
           )
           .join("/")}`,
@@ -207,6 +210,7 @@ export default function JoinedSessions({
           success: r.success,
           episode_index: r.episode_index,
           num_subtask_marks: r.num_subtask_marks ?? null,
+          num_frames: r.num_frames ?? null,
         })),
       ),
     }));

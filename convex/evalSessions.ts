@@ -231,6 +231,7 @@ export const getDetail = query({
         success: boolean;
         episode_index: number;
         num_subtask_marks: number | null;
+        num_frames: number | null;
       }>
     >();
 
@@ -245,6 +246,7 @@ export const getDetail = query({
         episode_index: Number(r.episode_index),
         num_subtask_marks:
           r.num_subtask_marks === undefined ? null : Number(r.num_subtask_marks),
+        num_frames: r.num_frames === undefined ? null : Number(r.num_frames),
       });
     }
 

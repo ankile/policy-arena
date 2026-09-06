@@ -5,7 +5,7 @@
 // aligned by index), so both inherit the same layout and statistics.
 
 import { Fragment, useMemo, useState, type ReactNode } from "react";
-import { armStats, type Arm, type ArmRound } from "../lib/armStats";
+import { armStats, successStepsSummary, type Arm, type ArmRound } from "../lib/armStats";
 import { roundNumber } from "../lib/roundNumber";
 export type { Arm, ArmResult, ArmRound } from "../lib/armStats";
 import { TONE_PILL, meanScore, outcomeLabel, outcomeTone } from "../lib/outcomeScore";
@@ -88,6 +88,11 @@ export function PolicyStatCards({
     rounds,
     maxMarks,
   );
+  // Sessions submitted before frame counts were recorded have no step data
+  // for any arm; hide the row rather than show a column of dashes.
+  const hasStepCounts = rounds.some((round) =>
+    round.results.some((result) => result.num_frames !== null),
+  );
   return (
     <div className="grid gap-3 mb-4 grid-cols-[repeat(auto-fill,minmax(15rem,1fr))]">
       {arms.map((arm) => {
@@ -95,6 +100,8 @@ export function PolicyStatCards({
         const successRate = s.n > 0 ? (s.successes / s.n) * 100 : 0;
         const score = meanScore(s.graded, maxMarks);
         const unscored = s.graded.filter((g) => g.marks === null).length;
+        const steps = successStepsSummary(s.successSteps);
+        const unmeasured = s.successes - s.successSteps.length;
         return (
           <div key={arm.key} className="rounded-xl border border-warm-200 bg-warm-50/50 px-4 py-3">
             <div className="flex items-start gap-1.5 font-body font-semibold text-ink text-sm mb-1.5 min-w-0">
@@ -143,6 +150,38 @@ export function PolicyStatCards({
                     losses={s.scoreLosses}
                     title={`Pairwise record on the graded 0..${maxMarks + 1} score`}
                   />
+                </>
+              )}
+              {hasStepCounts && (
+                <>
+                  <span
+                    className="text-[11px] text-ink-muted font-body"
+                    title={
+                      `Mean steps to completion over this arm's successful rounds ` +
+                      `(± sample SD). Failures run to the step budget and are excluded.` +
+                      (unmeasured > 0
+                        ? ` (${unmeasured} success(es) submitted without a step count)`
+                        : "")
+                    }
+                  >
+                    steps{unmeasured > 0 ? "*" : ""}
+                  </span>
+                  {steps === null ? (
+                    <span className="font-mono text-ink-muted whitespace-nowrap">—</span>
+                  ) : (
+                    <span className="font-mono text-ink whitespace-nowrap">
+                      {steps.mean.toFixed(0)}
+                      {steps.sd !== null && (
+                        <span className="text-ink-muted"> ± {steps.sd.toFixed(0)}</span>
+                      )}
+                    </span>
+                  )}
+                  <span
+                    className="font-mono text-ink-muted whitespace-nowrap"
+                    title="Successful rounds with a step count"
+                  >
+                    n={steps?.n ?? 0}
+                  </span>
                 </>
               )}
             </div>

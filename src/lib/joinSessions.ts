@@ -12,6 +12,8 @@ export interface JoinRoundResult {
   episode_index: number;
   /** Sub-goal marks reached; null/absent on rounds submitted without them. */
   num_subtask_marks?: number | null;
+  /** Episode length in control steps; null/absent on rounds submitted without it. */
+  num_frames?: number | null;
 }
 
 export interface JoinSide {

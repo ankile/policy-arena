@@ -31,6 +31,8 @@ export interface ArmResult {
   success: boolean;
   episode_index: number;
   num_subtask_marks: number | null;
+  /** Episode length in control steps; null on rounds submitted without it. */
+  num_frames: number | null;
 }
 
 export interface ArmRound {
@@ -42,6 +44,7 @@ export interface ArmRoundResult {
   policy_id: string;
   success: boolean;
   num_subtask_marks: number | null;
+  num_frames: number | null;
 }
 
 export interface ArmStats {
@@ -57,6 +60,23 @@ export interface ArmStats {
   scoreWins: number;
   scoreDraws: number;
   scoreLosses: number;
+  /**
+   * Steps to completion of each successful round that carries a frame count
+   * (failures run to the step budget, so their length says nothing).
+   */
+  successSteps: number[];
+}
+
+/** Mean and sample SD of steps-to-completion over successful rounds. */
+export function successStepsSummary(
+  steps: number[],
+): { mean: number; sd: number | null; n: number } | null {
+  if (steps.length === 0) return null;
+  const n = steps.length;
+  const mean = steps.reduce((a, b) => a + b, 0) / n;
+  if (n < 2) return { mean, sd: null, n };
+  const variance = steps.reduce((acc, x) => acc + (x - mean) ** 2, 0) / (n - 1);
+  return { mean, sd: Math.sqrt(variance), n };
 }
 
 export function armStats(
@@ -76,6 +96,7 @@ export function armStats(
       scoreWins: 0,
       scoreDraws: 0,
       scoreLosses: 0,
+      successSteps: [],
     });
   }
   for (const round of rounds) {
@@ -83,7 +104,10 @@ export function armStats(
     for (const result of results) {
       const s = stats.get(result.policy_id)!;
       s.n += 1;
-      if (result.success) s.successes += 1;
+      if (result.success) {
+        s.successes += 1;
+        if (result.num_frames !== null) s.successSteps.push(result.num_frames);
+      }
       s.graded.push({ success: result.success, marks: result.num_subtask_marks });
     }
     for (let i = 0; i < results.length; i++) {

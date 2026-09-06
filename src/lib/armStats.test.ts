@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
-import { armLabels, armStats, armsFromPolicies } from "./armStats";
+import { armLabels, armStats, armsFromPolicies, successStepsSummary } from "./armStats";
 
-function r(policy_id: string, success: boolean, marks: number | null = null) {
-  return { policy_id, success, num_subtask_marks: marks };
+function r(
+  policy_id: string,
+  success: boolean,
+  marks: number | null = null,
+  num_frames: number | null = null,
+) {
+  return { policy_id, success, num_subtask_marks: marks, num_frames };
 }
 
 describe("armStats", () => {
@@ -37,6 +42,34 @@ describe("armStats", () => {
     const s = armStats(["a", "b"], rounds, 0);
     expect(s.get("a")).toMatchObject({ scoreWins: 0, scoreDraws: 0, scoreLosses: 0 });
   });
+
+  test("successSteps keeps only successful rounds with a frame count", () => {
+    const s = armStats(
+      ["a", "b"],
+      [
+        { results: [r("a", true, null, 120), r("b", false, null, 400)] },
+        { results: [r("a", true, null, null), r("b", true, null, 210)] },
+        { results: [r("a", false, null, 400), r("b", true, null, 190)] },
+      ],
+      0,
+    );
+    expect(s.get("a")!.successSteps).toEqual([120]);
+    expect(s.get("b")!.successSteps).toEqual([210, 190]);
+  });
+});
+
+describe("successStepsSummary", () => {
+  test("null with no successes, no SD for a single success", () => {
+    expect(successStepsSummary([])).toBeNull();
+    expect(successStepsSummary([120])).toEqual({ mean: 120, sd: null, n: 1 });
+  });
+
+  test("mean and sample SD", () => {
+    const s = successStepsSummary([100, 200, 300])!;
+    expect(s.n).toBe(3);
+    expect(s.mean).toBe(200);
+    expect(s.sd).toBeCloseTo(100);
+  });
 });
 
 describe("armsFromPolicies", () => {
@@ -46,7 +79,7 @@ describe("armsFromPolicies", () => {
         { _id: "a", name: "policy-a" },
         { _id: "b", name: "policy-b" },
       ],
-      [{ index: 0, results: [{ policy_id: "c", policyName: "policy-c", success: true, episode_index: 0, num_subtask_marks: null }] }],
+      [{ index: 0, results: [{ policy_id: "c", policyName: "policy-c", success: true, episode_index: 0, num_subtask_marks: null, num_frames: null }] }],
     );
     expect(arms.map((a) => [a.key, a.label, a.policyNumber, a.name])).toEqual([
       ["a", "1", 1, "policy-a"],
