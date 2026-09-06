@@ -1042,6 +1042,8 @@ export default function StageReview({
         jumpToFrame(currentEpisode.rawLength - 1);
         return;
       case " ":
+        // Preserve native keyboard activation of focused form controls.
+        if (event.target instanceof Element && event.target.closest("button, summary, a[href]")) return;
         event.preventDefault();
         controlsRef.current?.togglePlay();
         return;
@@ -1217,7 +1219,7 @@ export default function StageReview({
   );
 
   return (
-    <div className="bg-white rounded-2xl border border-warm-200 shadow-sm overflow-hidden">
+    <div className="bg-white rounded-2xl border border-warm-200 shadow-sm overflow-clip">
       {showHelp && (
         <HelpOverlay
           title="Stage review shortcuts"
@@ -1227,7 +1229,7 @@ export default function StageReview({
       )}
 
       {/* Header */}
-      <div className="px-6 py-4 border-b border-warm-100 bg-warm-50 flex items-center justify-between gap-4">
+      <div className="px-6 py-4 border-b border-warm-100 bg-warm-50 flex flex-wrap items-center justify-between gap-4">
         <div>
           <button
             onClick={exitReview}
@@ -1240,7 +1242,7 @@ export default function StageReview({
             {repoId} · {task} · S0–S{spec.ladder.max_stage}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 min-w-0">
           {specRows && specRows.length > 1 && (
             <select
               value={spec.taxonomy_version}
@@ -1251,7 +1253,7 @@ export default function StageReview({
                 });
                 e.currentTarget.blur();
               }}
-              className="rounded-lg border border-warm-200 bg-white px-2 py-1 text-xs font-mono text-ink cursor-pointer"
+              className="max-w-full rounded-lg border border-warm-200 bg-white px-2 py-1 text-xs font-mono text-ink cursor-pointer"
               disabled={saving}
               aria-label="Taxonomy version"
               title="Taxonomy (schema) version — candidates coexist with the live one"
@@ -1398,12 +1400,13 @@ export default function StageReview({
         </div>
       )}
       {selectedRun && (
-        <div className="px-6 py-2 border-b border-warm-100 text-[11px] font-mono text-ink-muted break-all">
+        <details className="px-6 py-2 border-b border-warm-100 text-[11px] font-mono text-ink-muted break-all">
+          <summary className="cursor-pointer">Prediction version details</summary>
           {selectedRun._id === predictionVersions?.active_run_id ? "Active" : "Historical"} prediction version: {blind ? selectedRun._id : selectedRun.run_key}
           {!blind && <>{" · "}{selectedRun.pipeline.name}@{selectedRun.pipeline.version}</>}
           {" · published "}{new Date(selectedRun.published_at).toISOString()}
           {" · "}{selectedRun._id}
-        </div>
+        </details>
       )}
       {pendingInputCount > 0 && <p role="alert" className="px-6 py-2 text-xs text-coral">A timestamp contains unfinished or invalid text. Correct it or clear its input before saving or leaving.</p>}
       {unsavedCount > (dirty ? 1 : 0) && (
@@ -1415,11 +1418,11 @@ export default function StageReview({
 
       <div
         className={`grid gap-0 ${
-          showEvidence ? "grid-cols-[240px_minmax(0,1fr)_300px]" : "grid-cols-[240px_minmax(0,1fr)]"
+          showEvidence ? "lg:grid-cols-[190px_minmax(0,1fr)] 2xl:grid-cols-[190px_minmax(0,1fr)_280px]" : "lg:grid-cols-[190px_minmax(0,1fr)]"
         }`}
       >
         {/* Queue */}
-        <div className="border-r border-warm-100 p-4 flex flex-col gap-2 max-h-[85vh]">
+        <div className="border-r border-warm-100 p-4 flex flex-col gap-2 max-h-[32vh] lg:max-h-[85vh] lg:sticky lg:top-4">
           <select
             value={statusFilter}
             onChange={(e) => {
@@ -1587,7 +1590,7 @@ export default function StageReview({
         </div>
 
         {/* Viewer + form */}
-        <div className="p-5">
+        <div className="p-4 min-w-0">
           {currentEpisode === null ? (
             <div className="py-16 text-center text-ink-muted font-body">
               Select an episode from the queue to review it.
@@ -1678,7 +1681,10 @@ export default function StageReview({
                       : currentPrefill
                       ? "The form started from the selected prediction; edits are your review."
                       : "No model prediction seeded this form."}</p>
-                  <p className="mt-1 font-mono break-all">Review source: {attributionDescription(draft.attribution)}</p>
+                  <details className="mt-1"><summary className="cursor-pointer text-teal">Saved label provenance</summary>
+                    <p className="font-mono break-all">Review source: {attributionDescription(draft.attribution)}</p>
+                    <p className="mt-1">Human labels can be scored against other predictions using compatible labeling definitions. The prediction shown during annotation is recorded for the audit.</p>
+                  </details>
                   {inheritedSuccess && <p className="mt-1">Legacy form fields inherit the human success outcome. The original prediction remains in model evidence.</p>}
                 </div>
               )}
@@ -1701,6 +1707,8 @@ export default function StageReview({
                 </div>
               )}
 
+              <div className={spec.trajectory ? "grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)] items-start" : ""}>
+              <div className={spec.trajectory ? "min-w-0 xl:sticky xl:top-4" : ""}>
               {cameraKeys.length === 0 ? (
                 <div className="rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-sm text-coral font-mono">
                   Episode {currentEpisode.episodeIndex} exposes no reviewable camera
@@ -1724,11 +1732,14 @@ export default function StageReview({
                   renderTimelineOverlays={renderTimelineOverlays}
                 />
               )}
+              </div>
 
+              <div className={spec.trajectory ? "min-w-0" : ""}>
               {pending !== null && (
                 <StageLabelForm
                   key={sourceKey}
                   onPendingInputChange={onPendingInputChange}
+                  hasPendingInput={pendingInputCount > 0}
                   spec={spec}
                   row={pending}
                   violations={violations}
@@ -1741,6 +1752,8 @@ export default function StageReview({
                   blind={blind}
                 />
               )}
+              </div>
+              </div>
 
               {blind && (
                 <button onClick={unblind} className="mt-3 text-xs text-teal hover:underline cursor-pointer">
@@ -1800,7 +1813,8 @@ export default function StageReview({
               />
 
               {/* Verdict bar */}
-              <div className="mt-4 flex flex-wrap items-center gap-2">
+              <div className="sticky bottom-0 z-20 mt-4 flex flex-wrap items-center gap-2 border-t border-warm-200 bg-white px-2 py-3">
+                <span className="text-xs text-ink-muted">{dirty ? "Unsaved changes" : currentOwn ? "Your saved label" : "Reviewing prediction"}</span>
                 <button
                   disabled={formDisabled}
                   onClick={() => void verdict("uncertain")}
@@ -1829,7 +1843,7 @@ export default function StageReview({
 
         {/* Evidence rail */}
         {showEvidence && (
-          <div className="border-l border-warm-100 p-4 max-h-[85vh] overflow-y-auto">
+          <div className="border-l border-warm-100 p-4 max-h-[85vh] overflow-y-auto lg:col-start-2 2xl:col-start-auto">
             <div className="text-[10px] font-mono uppercase tracking-wide text-ink-muted mb-2">
               Model evidence
             </div>

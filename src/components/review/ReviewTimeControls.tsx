@@ -9,6 +9,7 @@ function TimeInput({
   onCommit,
   preservePrecision = false,
   onPendingInputChange,
+  comfortable = false,
 }: {
   value: number | null;
   flagged: boolean;
@@ -16,6 +17,7 @@ function TimeInput({
   onCommit: (t: number | null) => void;
   preservePrecision?: boolean;
   onPendingInputChange?: (id: string, pending: boolean) => void;
+  comfortable?: boolean;
 }) {
   const inputId = useId();
   const edited = useRef(false);
@@ -59,7 +61,7 @@ function TimeInput({
         e.stopPropagation();
       }}
       placeholder="—"
-      className={`w-16 rounded border px-1 py-0.5 text-[11px] font-mono text-right ${
+      className={`${comfortable ? "w-20 px-2 py-1.5 text-sm" : "w-16 px-1 py-0.5 text-[11px]"} rounded border font-mono text-right ${
         flagged ? "border-coral ring-1 ring-coral/40" : "border-warm-200"
       }`}
     />
@@ -84,6 +86,7 @@ export function TimeControls({
   clearTitle,
   preservePrecision = false,
   onPendingInputChange,
+  comfortable = false,
 }: {
   t: number | null;
   fps: number;
@@ -100,6 +103,7 @@ export function TimeControls({
   clearTitle: string;
   preservePrecision?: boolean;
   onPendingInputChange?: (id: string, pending: boolean) => void;
+  comfortable?: boolean;
 }) {
   const [resetGeneration, setResetGeneration] = useState(0);
   const [inputPending, setInputPending] = useState(false);
@@ -109,14 +113,14 @@ export function TimeControls({
   }, [onPendingInputChange]);
   return (
     <>
-      <TimeInput key={resetGeneration} value={t} flagged={flagged} disabled={disabled} onCommit={onCommit} preservePrecision={preservePrecision} onPendingInputChange={pendingChange} />
+      <TimeInput key={resetGeneration} value={t} flagged={flagged} disabled={disabled} onCommit={onCommit} preservePrecision={preservePrecision} onPendingInputChange={pendingChange} comfortable={comfortable} />
       <span className="text-[10px] font-mono text-ink-muted w-10">
         {t !== null ? `f${Math.round(t * fps)}` : ""}
       </span>
       <button
         disabled={disabled || markDisabled}
         onClick={() => { if (onMark() !== false) setResetGeneration((value) => value + 1); }}
-        className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
+        className={`${comfortable ? "px-2 py-2 text-xs" : "px-1.5 py-0.5 text-[10px]"} rounded font-mono ${
           markDisabled
             ? "bg-warm-100 text-ink-muted/40 cursor-not-allowed"
             : "bg-teal/10 text-teal hover:bg-teal/20 cursor-pointer"
@@ -132,7 +136,7 @@ export function TimeControls({
       <button
         disabled={t === null}
         onClick={() => t !== null && onSeek(t)}
-        className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
+        className={`${comfortable ? "px-2 py-2 text-xs" : "px-1.5 py-0.5 text-[10px]"} rounded font-mono ${
           t !== null
             ? "bg-warm-100 text-ink-muted hover:bg-warm-200 cursor-pointer"
             : "text-ink-muted/30"
@@ -144,7 +148,7 @@ export function TimeControls({
       <button
         disabled={disabled || (!canClear && !inputPending)}
         onClick={() => { onClear(); setResetGeneration((value) => value + 1); }}
-        className="px-1.5 py-0.5 rounded text-[10px] font-mono text-ink-muted hover:text-coral cursor-pointer"
+        className={`${comfortable ? "px-2 py-2 text-xs" : "px-1.5 py-0.5 text-[10px]"} rounded font-mono text-ink-muted hover:text-coral cursor-pointer`}
         title={clearTitle}
       >
         ×
@@ -152,4 +156,3 @@ export function TimeControls({
     </>
   );
 }
-

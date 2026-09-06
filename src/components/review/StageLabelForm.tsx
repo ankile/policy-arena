@@ -31,6 +31,8 @@ export interface StageLabelFormProps {
   onSeekTime: (timeS: number) => void;
   disabled: boolean;
   onPendingInputChange?: (id: string, pending: boolean) => void;
+  /** Do not reorder index-keyed event editors while local timestamp text is unfinished. */
+  hasPendingInput?: boolean;
 }
 
 export function StageLabelForm(props: StageLabelFormProps) {

@@ -417,7 +417,7 @@ describe("generic trajectory review", () => {
     await settle();
     expect(view.getByTestId("trajectory-form")).toBeTruthy();
     expect((view.getByRole("combobox", { name: "Task success" }) as HTMLSelectElement).value).toBe("false");
-    expect((view.getByRole("combobox", { name: "Maximum stage" }) as HTMLSelectElement).value).toBe(selected.review_label!.max_stage_id);
+    expect(view.getByRole("group", { name: "Maximum stage" }).querySelector('[aria-pressed="true"]')?.textContent).toBe(`S${selected.review_label!.max_stage}`);
     expect(state.saves).toHaveLength(0);
     fireEvent.click(view.getByRole("button", { name: /model evidence/ }));
     expect(view.container.textContent).toContain(`Prediction source revision: ${"f".repeat(40)}`);
@@ -586,7 +586,7 @@ test("source-free generic annotation waits for policy signals and pins the valid
   expect((view.getByRole("combobox", { name: "Task success" }) as HTMLSelectElement).value).toBe("__invalid__");
   const input = view.getByRole("group", { name: "Primary failure time" }).querySelector("input")!;
   fireEvent.change(input, { target: { value: "9" } });
-  expect(view.container.textContent).toContain("trajectory_time_bounds");
+  expect(view.container.textContent).toContain("Primary failure time must be within the episode duration (8.000000 seconds)");
   await act(async () => key("u"));
   expect(fixture.state.saves[0].episode_duration_s).toBe(8);
   expect(fixture.state.saves[0].prediction_id).toBeUndefined();
@@ -603,4 +603,98 @@ test("source-free policy-signal errors fail closed without silently using raw le
   expect(view.container.textContent).toContain("Cannot determine policy-phase duration: invalid policy prefix");
   expect(view.queryByTestId("trajectory-form")).toBeNull();
   await act(async () => key("u")); expect(fixture.state.saves).toHaveLength(0);
+});
+
+for (const task of ["marker_d2", "square_d2", "routing_d1"]) {
+  test(`${task}: stage buttons edit only the human stage judgment and preserve full event history`, async () => {
+    window.history.replaceState(null, "", "/?episode=0&prediction=A");
+    const fixture = createStageReviewFixture();
+    const { selected } = configureTrajectoryFixture(fixture, `${task}_${task === "routing_d1" ? "v1" : "v3"}`, `real_${task}_valid`);
+    const original = structuredClone(selected.review_label!);
+    const view = render(<StageReview {...fixture.props} />);
+    await settle();
+    const form = view.getByTestId("trajectory-form");
+    expect(form.className).not.toContain("overflow-y-auto");
+    const transitions = Array.from(form.querySelectorAll("details")).find((details) => details.querySelector("summary")?.textContent?.startsWith("Stage transitions"))!;
+    expect(transitions.open).toBe(false);
+    expect(transitions.querySelectorAll('[aria-label$="from stage"]').length).toBe(original.stage_transitions.length);
+    expect(fixture.state.saves).toHaveLength(0);
+    const stage = view.getByRole("button", { name: /^S1:/ });
+    fireEvent.click(stage);
+    expect(stage.getAttribute("aria-pressed")).toBe("true");
+    await act(async () => key("u"));
+    expect(fixture.state.saves).toHaveLength(1);
+    const saved = fixture.state.saves[0];
+    expect(saved.prediction_id).toBe("A-prediction-0");
+    expect(saved.label!.max_stage).toBe(1);
+    for (const field of ["stage_transitions", "failure_events", "key_action_observations", "task_success", "final_state", "trajectory_identity"]) {
+      expect(saved.label![field]).toEqual(original[field]);
+    }
+  });
+}
+
+test("collapsing event details preserves unfinished input and blocks event remapping until repaired", async () => {
+  window.history.replaceState(null, "", "/?episode=0&prediction=A");
+  const fixture = createStageReviewFixture();
+  configureTrajectoryFixture(fixture);
+  const view = render(<StageReview {...fixture.props} />);
+  await settle();
+  const input = view.getByRole("group", { name: "Transition 1 time" }).querySelector("input")!;
+  const section = input.closest("details")!;
+  section.open = true;
+  fireEvent.change(input, { target: { value: "unfinished" } });
+  section.open = false;
+  await settle();
+  expect(view.getByRole("button", { name: "Move Transition 1 later" }).hasAttribute("disabled")).toBe(true);
+  expect(view.getByRole("button", { name: "Remove Transition 1" }).hasAttribute("disabled")).toBe(true);
+  expect(view.getByRole("button", { name: "Add transition" }).hasAttribute("disabled")).toBe(true);
+  await act(async () => key("u"));
+  await act(async () => chooseVersion(view, "B"));
+  expect(fixture.state.saves).toHaveLength(0);
+  expect(new URLSearchParams(window.location.search).get("prediction")).toBe("A");
+  section.open = true;
+  expect(view.getByRole("group", { name: "Transition 1 time" }).querySelector("input")).toBe(input);
+  expect(input.value).toBe("unfinished");
+  fireEvent.change(input, { target: { value: "1.234567" } });
+  await settle();
+  expect(view.getByRole("button", { name: "Remove Transition 1" }).hasAttribute("disabled")).toBe(false);
+  await act(async () => chooseVersion(view, "B"));
+  expect(fixture.state.saves).toHaveLength(1);
+  expect(fixture.state.saves[0].prediction_id).toBe("A-prediction-0");
+  expect(fixture.state.saves[0].label!.stage_transitions[0].time_s).toBe(1.234567);
+});
+
+test("blind form explains correctable event conflicts without exposing arbitrary shape keys", async () => {
+  window.history.replaceState(null, "", "/?episode=0&prediction=A");
+  const fixture = createStageReviewFixture();
+  const { selected } = configureTrajectoryFixture(fixture);
+  const label = structuredClone(selected.review_label!);
+  label.stage_transitions[0].POLICY_IDENTITY_SENTINEL = "hidden";
+  label.key_action_observations[0].first_time_s = 999;
+  fixture.state.predictionOverrides.label = label;
+  const view = render(<StageReview {...fixture.props} />);
+  await settle();
+  expect(view.container.textContent).toContain("Action 1 first time must match its earliest occurrence");
+  expect(view.container.textContent).toContain("Transition 1 has an invalid structure");
+  expect(view.container.innerHTML).not.toContain("POLICY_IDENTITY_SENTINEL");
+  expect(fixture.state.armFetches).toBe(0);
+  expect(fixture.state.saves).toHaveLength(0);
+});
+
+test("Space retains native activation on focused stage buttons and event summaries", async () => {
+  window.history.replaceState(null, "", "/?episode=0&prediction=A");
+  const fixture = createStageReviewFixture();
+  configureTrajectoryFixture(fixture);
+  const view = render(<StageReview {...fixture.props} />);
+  await settle();
+  for (const control of [view.getByRole("button", { name: /^S1:/ }), view.getByTestId("trajectory-form").querySelector("summary")!]) {
+    control.focus();
+    const event = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+    control.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+  }
+  const pageSpace = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+  window.dispatchEvent(pageSpace);
+  expect(pageSpace.defaultPrevented).toBe(true);
+  expect(fixture.state.saves).toHaveLength(0);
 });
