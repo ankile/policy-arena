@@ -407,14 +407,15 @@ export const addRounds = mutation({
     const existingRoundIndexes = new Set(
       existingResults.map((r) => Number(r.round_index)),
     );
-    const duplicateRoundIndexes = [...incomingRoundIndexes].filter((index) =>
-      existingRoundIndexes.has(index),
+    // Dedup at (round_index, policy) granularity, not per round: a PHASED eval
+    // retires some arms with --drop-fixed-policy, submits its rounds, and later
+    // un-drops the arms and appends their rollouts to the SAME rounds
+    // (sir/real/manifest_eval.py per-rollout ledger, 2026-09-07). A result that
+    // already exists for its (round, policy) is still rejected, so a genuine
+    // double submission fails loud exactly as the old per-round check did.
+    const existingPairs = new Set(
+      existingResults.map((r) => `${Number(r.round_index)}:${String(r.policy_id)}`),
     );
-    if (duplicateRoundIndexes.length > 0) {
-      throw new Error(
-        `Round index already exists in session ${args.id}: ${duplicateRoundIndexes.join(", ")}`,
-      );
-    }
 
     // 1. Register/upsert all policies
     const modelIdToPolicy = new Map<string, Id<"policies">>();
@@ -453,10 +454,18 @@ export const addRounds = mutation({
       }
     }
 
-    // 3. Insert round results
+    // 3. Insert round results (fail loud on an existing (round, policy) pair)
     for (const round of args.rounds) {
+      const roundIndex = Number(round.round_index);
       for (const result of round.results) {
         const policyId = modelIdToPolicy.get(result.model_id)!;
+        const pairKey = `${roundIndex}:${String(policyId)}`;
+        if (existingPairs.has(pairKey)) {
+          throw new Error(
+            `Result already exists in session ${args.id} for round ${roundIndex}, policy ${result.model_id}`,
+          );
+        }
+        existingPairs.add(pairKey);
         await ctx.db.insert("roundResults", {
           session_id: args.id,
           round_index: BigInt(Number(round.round_index)),
@@ -475,7 +484,7 @@ export const addRounds = mutation({
 
     // 4. Update session metadata
     const newNumRounds = BigInt(
-      existingRoundIndexes.size + incomingRoundIndexes.size,
+      new Set([...existingRoundIndexes, ...incomingRoundIndexes]).size,
     );
     await ctx.db.patch(args.id, {
       num_rounds: newNumRounds,
