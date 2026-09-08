@@ -278,15 +278,14 @@ export async function headlessApply(args: {
 
   const subtaskMarks = resolveSubtaskMarks([...datasetTasks], args.taskSpecs);
 
-  // --- Load data files: raw bytes + projected edit columns only (see readFrameColumns).
-  const dataBytes = new Map<string, Uint8Array>();
+  // Keep only projected edit columns. Retaining every compressed input adds
+  // dataset-sized memory to the action; dirty files are fetched again below.
   const dataFiles: FileFrameColumns[] = [];
   for (const path of [...dataFileKeys].sort()) {
     if (!store.paths.includes(path)) {
       throw new Error(`Current dataset metadata references missing parquet file: ${path}`);
     }
     const buf = await store.fetch(path);
-    dataBytes.set(path, buf);
     dataFiles.push(await readFrameColumns(path, buf));
   }
   const episodes = buildEpisodeMap(dataFiles);
@@ -335,7 +334,7 @@ export async function headlessApply(args: {
     // Streamed rewrite, one dirty file at a time; no full data table is ever held.
     for (const file of dataFiles) {
       if (!file.dirty) continue;
-      changedFiles.set(file.path, await rewriteEditColumnsStreaming(file.path, dataBytes.get(file.path)!, file));
+      changedFiles.set(file.path, await rewriteEditColumnsStreaming(file.path, await store.fetch(file.path), file));
     }
     log.push("Parquet files updated.");
 
