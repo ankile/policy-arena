@@ -18,6 +18,7 @@ import {
 } from "../lib/hf-api";
 import { placeSubtaskMark } from "../lib/subtaskMarks";
 import { CommitPanel } from "./review/CommitPanel";
+import { EpisodeNotes } from "./review/EpisodeNotes";
 import { HelpOverlay } from "./review/HelpOverlay";
 import { LabelHistoryPanel } from "./review/LabelHistoryPanel";
 import { describeLabelPayload, sourceLabel } from "./review/labelHistory";
@@ -1433,6 +1434,8 @@ export default function OutcomeReview({
                   renderTimelineOverlays={renderTimelineOverlays}
                 />
               )}
+
+              <EpisodeNotes repoId={repoId} episodeIndex={currentEpisode.episodeIndex} />
 
               <LabelHistoryPanel
                 chain={historyByEpisode.get(currentEpisode.episodeIndex) ?? []}

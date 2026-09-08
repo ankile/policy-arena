@@ -152,6 +152,15 @@ export default defineSchema({
     .index("by_repo", ["dataset_repo"])
     .index("by_repo_episode", ["dataset_repo", "episode_index"]),
 
+  // Episode annotations are independent of outcome decisions and HF apply jobs.
+  episodeNotes: defineTable({
+    dataset_repo: v.string(),
+    episode_index: v.int64(),
+    notes: v.string(),
+    updated_by: v.string(),
+    updated_at: v.float64(),
+  }).index("by_repo_episode", ["dataset_repo", "episode_index"]),
+
   // Jobs bridging web reviews to HF via the Python apply worker.
   applyJobs: defineTable({
     dataset_repo: v.string(),

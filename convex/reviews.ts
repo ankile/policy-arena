@@ -1,7 +1,34 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { requireEditorOrService } from "./access";
+import { requireEditor, requireEditorOrService } from "./access";
+
+export const episodeNotes = query({
+  args: { dataset_repo: v.string(), episode_index: v.int64() },
+  handler: async (ctx, args) => await ctx.db
+    .query("episodeNotes")
+    .withIndex("by_repo_episode", (q) =>
+      q.eq("dataset_repo", args.dataset_repo).eq("episode_index", args.episode_index)
+    )
+    .unique(),
+});
+
+export const saveNotes = mutation({
+  args: { dataset_repo: v.string(), episode_index: v.int64(), notes: v.string() },
+  handler: async (ctx, args) => {
+    const editor = await requireEditor(ctx);
+    if (args.episode_index < BigInt(0)) throw new Error("Episode index must be non-negative");
+    const previous = await ctx.db
+      .query("episodeNotes")
+      .withIndex("by_repo_episode", (q) =>
+        q.eq("dataset_repo", args.dataset_repo).eq("episode_index", args.episode_index)
+      )
+      .unique();
+    const fields = { ...args, updated_by: editor, updated_at: Date.now() };
+    if (previous) await ctx.db.patch(previous._id, fields);
+    else await ctx.db.insert("episodeNotes", fields);
+  },
+});
 
 const OUTCOMES = ["success", "failure", "timeout"] as const;
 const STATUSES = ["confirmed", "skipped", "cleared"] as const;
