@@ -13,6 +13,39 @@ export const episodeNotes = query({
     .unique(),
 });
 
+/** Reusable notes from other episodes across datasets for the same task. */
+export const noteSuggestions = query({
+  args: { dataset_repo: v.string(), episode_index: v.int64() },
+  handler: async (ctx, args) => {
+    const dataset = await ctx.db.query("datasets")
+      .withIndex("by_repo", (q) => q.eq("repo_id", args.dataset_repo)).unique();
+    if (!dataset || !dataset.task.trim()) return { recent: [], mostUsed: [] };
+    const datasets = await ctx.db.query("datasets")
+      .withIndex("by_task", (q) => q.eq("task", dataset.task)).collect();
+    const groups = await Promise.all(datasets.map((row) => ctx.db.query("episodeNotes")
+      .withIndex("by_repo_episode", (q) => q.eq("dataset_repo", row.repo_id)).collect()));
+    const counts = new Map<string, { notes: string; count: number; lastUsed: number }>();
+    for (const row of groups.flat()) {
+      if (row.dataset_repo === args.dataset_repo && row.episode_index === args.episode_index) continue;
+      const notes = row.notes.trim();
+      if (!notes) continue;
+      const previous = counts.get(notes);
+      counts.set(notes, {
+        notes,
+        count: (previous?.count ?? 0) + 1,
+        lastUsed: Math.max(previous?.lastUsed ?? 0, row.updated_at),
+      });
+    }
+    const suggestions = [...counts.values()];
+    const byRecent = (a: typeof suggestions[number], b: typeof suggestions[number]) =>
+      b.lastUsed - a.lastUsed || a.notes.localeCompare(b.notes);
+    return {
+      recent: [...suggestions].sort(byRecent).slice(0, 6),
+      mostUsed: suggestions.sort((a, b) => b.count - a.count || byRecent(a, b)).slice(0, 6),
+    };
+  },
+});
+
 export const saveNotes = mutation({
   args: { dataset_repo: v.string(), episode_index: v.int64(), notes: v.string() },
   handler: async (ctx, args) => {

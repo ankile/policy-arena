@@ -55,3 +55,43 @@ test("anonymous and non-editor users cannot write notes", async () => {
   });
   await expect(t.withIdentity({ subject: user }).mutation(api.reviews.saveNotes, args)).rejects.toThrow("not an allowlisted editor");
 });
+
+test("suggestions rank distinct same-task notes by recency and episode usage", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    for (const [repo_id, task] of [["test/current", "routing"], ["test/prior", "routing"], ["test/other", "square"]]) {
+      await ctx.db.insert("datasets", { repo_id, task, name: repo_id, source_type: "eval", environment: "real" });
+    }
+    for (const [dataset_repo, episode_index, notes, updated_at] of [
+      ["test/current", 0n, "Current episode only", 100],
+      ["test/current", 1n, "Common", 10],
+      ["test/prior", 0n, " Common ", 20],
+      ["test/prior", 1n, "Recent", 30],
+      ["test/prior", 2n, "   ", 40],
+      ["test/other", 0n, "Wrong task", 200],
+    ] as const) {
+      await ctx.db.insert("episodeNotes", { dataset_repo, episode_index, notes, updated_at, updated_by: "editor" });
+    }
+  });
+  const result = await t.query(api.reviews.noteSuggestions, { dataset_repo: "test/current", episode_index: 0n });
+  expect(result.recent).toEqual([
+    { notes: "Recent", count: 1, lastUsed: 30 },
+    { notes: "Common", count: 2, lastUsed: 20 },
+  ]);
+  expect(result.mostUsed.map((row) => row.notes)).toEqual(["Common", "Recent"]);
+  expect(await t.query(api.reviews.noteSuggestions, { dataset_repo: "test/unregistered", episode_index: 0n }))
+    .toEqual({ recent: [], mostUsed: [] });
+});
+
+test("suggestions cap each ordering at six notes", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    await ctx.db.insert("datasets", { repo_id: "test/many", task: "routing", name: "Many", source_type: "eval", environment: "real" });
+    for (let index = 1; index <= 8; index++) {
+      await ctx.db.insert("episodeNotes", { dataset_repo: "test/many", episode_index: BigInt(index), notes: `Note ${index}`, updated_at: index, updated_by: "editor" });
+    }
+  });
+  const result = await t.query(api.reviews.noteSuggestions, { dataset_repo: "test/many", episode_index: 0n });
+  expect(result.recent.map((row) => row.notes)).toEqual(["Note 8", "Note 7", "Note 6", "Note 5", "Note 4", "Note 3"]);
+  expect(result.mostUsed).toEqual(result.recent);
+});
