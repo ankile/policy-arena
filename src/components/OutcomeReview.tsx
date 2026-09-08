@@ -236,7 +236,7 @@ function QueueRow({
 
 const HELP_KEYS: [string, string][] = [
   ["← / →", "step 1 frame (shift: 10)"],
-  ["[ / ]", "step 30 frames"],
+  ["[ / ]", "step 10 frames"],
   ["Home / End", "first / last frame"],
   ["space", "play / pause"],
   ["s / f / t", "set outcome success / failure / timeout + mark here"],
@@ -910,11 +910,11 @@ export default function OutcomeReview({
         return;
       case "[":
         event.preventDefault();
-        stepFrame(-30);
+        stepFrame(-10);
         return;
       case "]":
         event.preventDefault();
-        stepFrame(30);
+        stepFrame(10);
         return;
       case "Home":
         event.preventDefault();
