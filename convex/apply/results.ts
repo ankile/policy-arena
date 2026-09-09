@@ -26,6 +26,8 @@ const RESUMABLE_DYNAMIC_KEYS = new Set([
   "summary",
   "rollouts",
   "arena_submitted_round_indices",
+  "arena_submitted_rollouts",
+  "phase_stops",
 ]);
 
 function uniqueIds(rows: Rollout[], key: string, what: string): Set<number> {
@@ -285,9 +287,10 @@ export function isResumedEvalPrefix(previous: Payload, current: Payload): boolea
   ) {
     return false;
   }
-  const prevSubmitted = previous.arena_submitted_round_indices;
-  const currSubmitted = current.arena_submitted_round_indices;
-  if (prevSubmitted !== undefined || currSubmitted !== undefined) {
+  for (const key of ["arena_submitted_round_indices", "arena_submitted_rollouts", "phase_stops"]) {
+    const prevSubmitted = previous[key];
+    const currSubmitted = current[key];
+    if (prevSubmitted === undefined && currSubmitted === undefined) continue;
     if (!Array.isArray(prevSubmitted) || !Array.isArray(currSubmitted)) return false;
     if (
       dumpsSorted(currSubmitted.slice(0, prevSubmitted.length) as Json) !==

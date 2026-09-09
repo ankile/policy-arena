@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  canonicalizeResultsTexts,
   isResumedEvalPrefix,
   liveSubtaskFramesByEpisode,
   subtaskFramesForValidation,
@@ -66,6 +67,8 @@ describe("resumed eval prefix", () => {
     summary: [{ policy_id: 0, num_rounds: 2 }],
     rollouts: [rollout(0), rollout(1)],
     arena_submitted_round_indices: [0, 1],
+    arena_submitted_rollouts: [[0, 0], [1, 0]],
+    phase_stops: [{ visit_id: "first" }, { visit_id: "second" }],
     args: { environment: "routing_d1", arena_session_status: "testing" },
   });
   const previous = () => ({
@@ -74,6 +77,8 @@ describe("resumed eval prefix", () => {
     summary: [{ policy_id: 0, num_rounds: 1 }],
     rollouts: [rollout(0)],
     arena_submitted_round_indices: [0],
+    arena_submitted_rollouts: [[0, 0]],
+    phase_stops: [{ visit_id: "first" }],
     args: { environment: "routing_d1" },
   });
 
@@ -85,6 +90,43 @@ describe("resumed eval prefix", () => {
     const prev = previous();
     prev.args = { environment: "marker_d2" };
     expect(isResumedEvalPrefix(prev, current())).toBe(false);
+  });
+
+  test("rejects modified or removed submission and phase-stop history", () => {
+    for (const key of ["arena_submitted_rollouts", "phase_stops"] as const) {
+      const modified = current();
+      modified[key].reverse();
+      expect(isResumedEvalPrefix(previous(), modified)).toBe(false);
+      const removed = current();
+      removed[key] = [];
+      expect(isResumedEvalPrefix(previous(), removed)).toBe(false);
+    }
+  });
+
+  test("advances the raw backup on resume and preserves it on repeat apply", () => {
+    const args = {
+      resultsText: JSON.stringify(current()),
+      existingBackupText: JSON.stringify(previous()),
+      progressRecord: {
+        changed_episodes: {
+          "0": { new_outcome: "success" as const, outcome_frame: 3, soft_truncate: true },
+        },
+        skipped_episodes: [],
+      },
+      overridesFilename: ".outcome_edit_progress.json",
+      frameOutcomes: new Map([
+        [0, { outcome: "success" as const, expectedNumSteps: 4 }],
+        [1, { outcome: "failure" as const, expectedNumSteps: 5 }],
+      ]),
+    };
+    const first = canonicalizeResultsTexts(args);
+    expect(JSON.parse(first.backupText!)).toEqual(current());
+    expect(JSON.parse(first.resultsText!).rollouts[0].outcome).toBe("success");
+    const second = canonicalizeResultsTexts({
+      ...args, resultsText: first.resultsText!, existingBackupText: first.backupText,
+    });
+    expect(second.resultsText).toBeNull();
+    expect(second.backupText).toBeNull();
   });
 
   test("a diverging rollout prefix is not a resume", () => {
