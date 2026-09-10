@@ -32,8 +32,8 @@ import type { HfClient } from "./apply/hf";
 const LOG_TAIL_CHARS = 2000;
 
 export const run = internalAction({
-  args: { jobId: v.id("applyJobs") },
-  handler: async (ctx, { jobId }) => {
+  args: { jobId: v.id("applyJobs"), dryRunRevision: v.optional(v.string()) },
+  handler: async (ctx, { jobId, dryRunRevision }) => {
     const job = await ctx.runMutation(internal.applyJobs.claimById, { id: jobId });
     if (job === null) return; // claimed by another worker or cancelled first
     const repoId = job.dataset_repo;
@@ -41,6 +41,9 @@ export const run = internalAction({
     let preSha: string | undefined;
     let hfMutated = false;
     try {
+      if (dryRunRevision !== undefined && !job.dry_run) {
+        throw new Error("A pinned validation revision is allowed only for a dry-run job");
+      }
       const token = process.env.HF_TOKEN;
       if (!token) throw new Error("HF_TOKEN deployment env var is not set");
       const client: HfClient = { repoId, token };
@@ -67,7 +70,7 @@ export const run = internalAction({
         num_subtask_marks: number | bigint;
       }>;
 
-      preSha = await revisionSha(client);
+      preSha = await revisionSha(client, dryRunRevision ?? "main");
       const paths = await listRepoFiles(client, preSha);
       const result = await headlessApply({
         store: { paths, fetch: (p) => downloadRepoFile(client, p, preSha!) },
@@ -75,6 +78,7 @@ export const run = internalAction({
         provenance: { sourceByEpisode, evidence: { apply_job: String(jobId) } },
         preApplySha: preSha,
         taskSpecs,
+        onProgress: (message) => console.info(`[apply ${jobId}] ${message}`, process.memoryUsage()),
       });
       log.push(...result.summary.log);
 
@@ -91,6 +95,7 @@ export const run = internalAction({
         return;
       }
 
+      console.info(`[apply ${jobId}] Uploading ${result.changedFiles.size} files`, process.memoryUsage());
       const postSha = await commitFiles({
         client,
         files: result.changedFiles,

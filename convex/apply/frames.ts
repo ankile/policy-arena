@@ -154,32 +154,27 @@ export function applyOutcomeEdits(
       );
     }
 
-    for (const r of ep.rows) {
-      const frame = file.frameIndex[r];
-      // success is an episode-level constant on ALL frames.
-      file.success[r] = outcomeVals.success;
-      if (frame < outcomeFrame) {
-        file.reward[r] = 0.0;
-        file.done[r] = 0;
-      } else {
-        file.reward[r] = outcomeVals.reward;
-        file.done[r] = outcomeVals.done;
-      }
-      if (file.isValid !== null) {
-        file.isValid[r] = frame < lastFrame ? 1 : 0;
-        if (softTruncate && frame > outcomeFrame) file.isValid[r] = 0;
-      }
-    }
-
-    // Subtask reward spikes AFTER the before-mask zeroing (spikes sit before
-    // the outcome frame, except that a timeout may carry one on its boundary).
     for (const frame of subtaskFrames) {
       validateSubtaskFrame(ep, frame, outcomeFrame, newOutcome);
-      for (const r of ep.rows) {
-        if (file.frameIndex[r] === frame) file.reward[r] = 1.0;
-      }
     }
-    file.dirty = true;
+    const subtaskSet = new Set(subtaskFrames);
+    for (const r of ep.rows) {
+      const frame = file.frameIndex[r];
+      const reward = subtaskSet.has(frame) ? 1.0 : frame < outcomeFrame ? 0.0 : outcomeVals.reward;
+      const done = frame < outcomeFrame ? 0 : outcomeVals.done;
+      const valid = frame < lastFrame && (!softTruncate || frame <= outcomeFrame) ? 1 : 0;
+      // Re-applying an existing review must not re-encode and retain another
+      // output parquet when its stored columns already match the decision.
+      if (file.success[r] !== outcomeVals.success || file.reward[r] !== reward ||
+          file.done[r] !== done || (file.isValid !== null && file.isValid[r] !== valid)) {
+        file.dirty = true;
+      }
+      // success is an episode-level constant on ALL frames.
+      file.success[r] = outcomeVals.success;
+      file.reward[r] = reward;
+      file.done[r] = done;
+      if (file.isValid !== null) file.isValid[r] = valid;
+    }
   }
   return true;
 }

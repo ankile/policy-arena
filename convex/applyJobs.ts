@@ -219,8 +219,8 @@ export const failStaleNativeInternal = internalMutation({
       status: "failed",
       finished_at: Date.now(),
       error:
-        "native Convex apply action exceeded its execution window; " +
-        "no completion record was written (HF may be partially mutated; " +
+        "native Convex apply action stopped without a completion record; " +
+        "check worker logs for a memory failure or timeout (HF may be partially mutated; " +
         "re-apply idempotently with the rollback worker)",
     });
     return args.id;

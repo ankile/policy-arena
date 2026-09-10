@@ -242,6 +242,7 @@ export async function headlessApply(args: {
   preApplySha: string;
   taskSpecs: Array<{ task_name: string; num_subtask_marks: number | bigint }>;
   now?: Date;
+  onProgress?: (message: string) => void;
 }): Promise<ApplyResult> {
   const log: string[] = [];
   const { store, overlay } = args;
@@ -257,6 +258,7 @@ export async function headlessApply(args: {
     metaFiles.push({ path, table, episodeOrder: numberColumn(table, "episode_index") });
   }
   const allMetaEpisodes = metaFiles.flatMap((m) => m.episodeOrder);
+  args.onProgress?.(`Loaded metadata for ${allMetaEpisodes.length} episodes`);
   if (new Set(allMetaEpisodes).size !== allMetaEpisodes.length) {
     throw new Error("meta/episodes has duplicate episode_index values");
   }
@@ -287,6 +289,7 @@ export async function headlessApply(args: {
     }
     const buf = await store.fetch(path);
     dataFiles.push(await readFrameColumns(path, buf));
+    if (dataFiles.length % 100 === 0) args.onProgress?.(`Read ${dataFiles.length}/${dataFileKeys.size} data files`);
   }
   const episodes = buildEpisodeMap(dataFiles);
 
@@ -331,12 +334,15 @@ export async function headlessApply(args: {
   const updatedLedgers: string[] = [];
   if (changedEpisodes.size > 0) {
     applyOutcomeEdits(episodes, progress, subtaskMarks);
+    args.onProgress?.(`Rewriting ${dataFiles.filter((file) => file.dirty).length} changed data files`);
     // Streamed rewrite, one dirty file at a time; no full data table is ever held.
     for (const file of dataFiles) {
       if (!file.dirty) continue;
       changedFiles.set(file.path, await rewriteEditColumnsStreaming(file.path, await store.fetch(file.path), file));
+      if (changedFiles.size % 50 === 0) args.onProgress?.(`Prepared ${changedFiles.size} output files`);
     }
     log.push("Parquet files updated.");
+    args.onProgress?.("Data rewrites complete; refreshing statistics");
 
     const statsRefresh = refreshEpisodeStats({
       metaFiles,
@@ -352,6 +358,7 @@ export async function headlessApply(args: {
     if (statsRefresh.statsJsonText !== null) {
       changedFiles.set("meta/stats.json", statsRefresh.statsJsonText);
     }
+    args.onProgress?.("Statistics refresh complete");
 
     const outcomes = episodeOutcomesByIndex(episodes, subtaskByEp);
     for (const ledgerPath of DEFAULT_LEDGER_NAMES) {

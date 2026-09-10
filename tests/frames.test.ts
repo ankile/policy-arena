@@ -23,6 +23,29 @@ function episodeWithTerminalPadding(): FileFrameColumns {
 }
 
 describe("outcome frame and subtask frame boundaries", () => {
+  test("repeat applies do not dirty unchanged columns, but repair differing stored labels", () => {
+    const file = episodeWithTerminalPadding();
+    const episodes = buildEpisodeMap([file]);
+    const progress = {
+      changed_episodes: {
+        "0": { new_outcome: "success" as const, outcome_frame: 3, soft_truncate: true, subtask_frames: [1] },
+      },
+      skipped_episodes: [],
+    };
+    applyOutcomeEdits(episodes, progress, 1);
+    expect(file.dirty).toBe(true);
+    const expected = structuredClone(file);
+    file.dirty = false;
+    applyOutcomeEdits(episodes, progress, 1);
+    expect(file.dirty).toBe(false);
+    for (const column of ["success", "reward", "done", "isValid"] as const) {
+      file[column]![1] = 99;
+      applyOutcomeEdits(episodes, progress, 1);
+      expect(file.dirty).toBe(true);
+      expect(file[column]).toEqual(expected[column]);
+      file.dirty = false;
+    }
+  });
   test("allows a timeout subtask on the final valid frame after padding normalization", () => {
     const file = episodeWithTerminalPadding();
     const episodes = buildEpisodeMap([file]);
