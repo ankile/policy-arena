@@ -10,6 +10,10 @@ method, and custom-tag filters. Filters are stored in the URL. They select rows
 without refitting ratings or changing the Mainline/All evaluation lens. The
 comparison count continues to describe that lens and task selection.
 
+Choose **Sort by → Round, then method** to order rounds numerically from Round 0
+up, then methods alphabetically within each round. Unassigned values sort last;
+policy names break ties. The sort choice is saved in the URL as `sort=roundMethod`.
+
 Sign in as an editor, expand a policy, and choose **Edit tags**. The public read
 API includes tags in `policies:get` and `policies:leaderboard`.
 `policies:tagOptions` returns existing rounds, methods, and custom tags.

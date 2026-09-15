@@ -81,7 +81,7 @@ function EnvironmentTag({ env }: { env: string }) {
   );
 }
 
-type SortKey = "elo" | "success" | "winRate" | "avgSuccessSteps";
+type SortKey = "elo" | "success" | "winRate" | "avgSuccessSteps" | "roundMethod";
 function App() {
   const [activeTab] = useSearchParam("tab", "leaderboard");
   const [explorerView] = useSearchParam("view", "explorer");
@@ -140,6 +140,17 @@ function App() {
     });
 
   const sortedPolicies = [...visiblePolicies].sort((a, b) => {
+    if (sortBy === "roundMethod") {
+      if (a.round !== b.round) {
+        return (a.round ?? Infinity) - (b.round ?? Infinity);
+      }
+      if (a.method !== b.method) {
+        if (!a.method) return 1;
+        if (!b.method) return -1;
+        return a.method.localeCompare(b.method);
+      }
+      return a.name.localeCompare(b.name, undefined, { numeric: true });
+    }
     if (sortBy === "success") {
       return (b.successRate ?? -1) - (a.successRate ?? -1);
     }
@@ -284,6 +295,16 @@ function App() {
                   {filter.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </label>)}
+              <label className="text-xs text-ink-muted">
+                Sort by
+                <select aria-label="Sort by" value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="block mt-1 rounded-lg border border-warm-200 bg-white px-3 py-2 text-sm text-ink">
+                  <option value="elo">Rating</option>
+                  <option value="roundMethod">Round, then method</option>
+                  <option value="success">Success rate</option>
+                  <option value="winRate">Win rate</option>
+                  <option value="avgSuccessSteps">Average steps</option>
+                </select>
+              </label>
               {(roundFilter || methodFilter || tagFilter) && <button onClick={() => clearSearchParams("round", "method", "tag")} className="text-xs text-teal py-2 cursor-pointer">Clear tag filters</button>}
               <p className="w-full text-xs text-ink-muted">Tag filters select policies. Ratings use all comparisons in the current Mainline or All view.</p>
             </div>
