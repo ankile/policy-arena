@@ -11,6 +11,9 @@
  * reports status + shas back to the job row.
  *
  * Requires the HF_TOKEN deployment env var (write access to the datasets).
+ * A dry-run may also upload to a pre-created apply-validation/ branch at
+ * dryRunRevision, to exercise the real transport without moving main/v3.0
+ * or changing Arena results.
  */
 
 import { v } from "convex/values";
@@ -31,19 +34,40 @@ import type { HfClient } from "./apply/hf";
 
 const LOG_TAIL_CHARS = 2000;
 
+export function resolveUploadBranch(dryRun: boolean, revision?: string, branch?: string): string | null {
+  if (!dryRun && (revision !== undefined || branch !== undefined)) {
+    throw new Error("Validation revision/branch require a dry-run job");
+  }
+  if (branch !== undefined && (!revision || !branch.startsWith("apply-validation/"))) {
+    throw new Error("Validation uploads require a pinned revision and an apply-validation/ branch");
+  }
+  return dryRun ? (branch ?? null) : "main";
+}
+
 export const run = internalAction({
-  args: { jobId: v.id("applyJobs"), dryRunRevision: v.optional(v.string()) },
-  handler: async (ctx, { jobId, dryRunRevision }) => {
+  args: {
+    jobId: v.id("applyJobs"),
+    dryRunRevision: v.optional(v.string()),
+    dryRunUploadBranch: v.optional(v.string()),
+  },
+  handler: async (ctx, { jobId, dryRunRevision, dryRunUploadBranch }) => {
     const job = await ctx.runMutation(internal.applyJobs.claimById, { id: jobId });
     if (job === null) return; // claimed by another worker or cancelled first
     const repoId = job.dataset_repo;
     const log: string[] = [];
     let preSha: string | undefined;
-    let hfMutated = false;
+    let postSha: string | undefined;
+    const reportProgress = async (message: string) => {
+      const memory = process.memoryUsage();
+      const line = `${new Date().toISOString()} ${message} (RSS ${Math.round(memory.rss / 1048576)} MiB, external ${Math.round(memory.external / 1048576)} MiB)`;
+      console.info(`[apply ${jobId}] ${message}`, memory);
+      log.push(line);
+      await ctx.runMutation(internal.applyJobs.recordProgressInternal, {
+        id: jobId, message: line, pre_apply_sha: preSha, hf_commit_sha: postSha,
+      });
+    };
     try {
-      if (dryRunRevision !== undefined && !job.dry_run) {
-        throw new Error("A pinned validation revision is allowed only for a dry-run job");
-      }
+      const uploadBranch = resolveUploadBranch(Boolean(job.dry_run), dryRunRevision, dryRunUploadBranch);
       const token = process.env.HF_TOKEN;
       if (!token) throw new Error("HF_TOKEN deployment env var is not set");
       const client: HfClient = { repoId, token };
@@ -71,6 +95,7 @@ export const run = internalAction({
       }>;
 
       preSha = await revisionSha(client, dryRunRevision ?? "main");
+      await reportProgress(`Reading snapshot ${preSha}`);
       const paths = await listRepoFiles(client, preSha);
       const result = await headlessApply({
         store: { paths, fetch: (p) => downloadRepoFile(client, p, preSha!) },
@@ -78,16 +103,28 @@ export const run = internalAction({
         provenance: { sourceByEpisode, evidence: { apply_job: String(jobId) } },
         preApplySha: preSha,
         taskSpecs,
-        onProgress: (message) => console.info(`[apply ${jobId}] ${message}`, process.memoryUsage()),
+        parquetCreatedBy: dryRunUploadBranch === undefined ? undefined : `policy-arena validation ${jobId}`,
+        onProgress: reportProgress,
       });
       log.push(...result.summary.log);
 
       if (job.dry_run) {
-        // Honest state: nothing landed on HF, so the job must not read as applied.
+        if (uploadBranch !== null) {
+          await reportProgress(`Validating upload of ${result.changedFiles.size} files to ${uploadBranch}`);
+          const validationSha = await commitFiles({
+            client, files: result.changedFiles, message: `Validate outcome apply ${jobId}`,
+            parentCommit: preSha, branch: uploadBranch, onProgress: reportProgress,
+          });
+          await reportProgress(`Validation branch committed @ ${validationSha}`);
+        }
+        // Main was not changed, so the validation job must not read as applied.
         await ctx.runMutation(internal.applyJobs.finishInternal, {
           id: jobId,
           ok: false,
-          error: "dry-run: apply computed in-memory, nothing pushed",
+          error: uploadBranch === null
+            ? "dry-run: apply computed in-memory, nothing pushed"
+            : `dry-run: upload verified on ${uploadBranch}; main and v3.0 unchanged`,
+          pre_apply_sha: preSha,
           log_tail: log.join("\n").slice(-LOG_TAIL_CHARS),
           num_confirmed: BigInt(numConfirmed),
           num_skipped: BigInt(numSkipped),
@@ -95,17 +132,17 @@ export const run = internalAction({
         return;
       }
 
-      console.info(`[apply ${jobId}] Uploading ${result.changedFiles.size} files`, process.memoryUsage());
-      const postSha = await commitFiles({
+      await reportProgress(`Uploading ${result.changedFiles.size} files`);
+      postSha = await commitFiles({
         client,
         files: result.changedFiles,
         message:
           `Apply ${numConfirmed} outcome review(s) from policy-eval.ankile.com ` +
           `(job ${String(jobId)})`,
         parentCommit: preSha,
+        onProgress: reportProgress,
       });
-      hfMutated = true;
-      log.push(`Committed ${result.changedFiles.size} file(s) @ ${postSha.slice(0, 8)}`);
+      await reportProgress(`Committed ${result.changedFiles.size} file(s) @ ${postSha}`);
       await advanceLerobotVersionTag(client, postSha);
       log.push(`Moved v3.0 -> ${postSha.slice(0, 8)}`);
 
@@ -152,7 +189,8 @@ export const run = internalAction({
         log_tail: log.join("\n").slice(-LOG_TAIL_CHARS),
         // If HF was already mutated the pre-state sha is the rollback anchor;
         // record it on the failed job too.
-        pre_apply_sha: hfMutated ? preSha : undefined,
+        pre_apply_sha: preSha,
+        hf_commit_sha: postSha,
       });
     }
   },

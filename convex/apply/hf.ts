@@ -9,7 +9,7 @@
  * training and metadata reads resolve v3.0, never raw main.
  */
 
-import { listFiles, downloadFile, commit } from "@huggingface/hub";
+import { listFiles, downloadFile, commitIter } from "@huggingface/hub";
 import type { CommitOperation } from "@huggingface/hub";
 
 /** lerobot.datasets.lerobot_dataset.CODEBASE_VERSION — bump with LeRobot. */
@@ -97,6 +97,9 @@ export async function commitFiles(args: {
   files: Map<string, Uint8Array | string>;
   message: string;
   parentCommit: string;
+  branch?: string;
+  fetch?: typeof fetch;
+  onProgress?: (message: string) => Promise<void>;
 }): Promise<string> {
   if (args.files.size === 0) throw new Error("commitFiles called with no files");
   const operations: CommitOperation[] = [...args.files.entries()].map(([path, content]) => {
@@ -108,15 +111,37 @@ export async function commitFiles(args: {
       content: new Blob([bytes as unknown as BlobPart]),
     };
   });
-  const result = await commit({
+  const iterator = commitIter({
     repo: { type: "dataset", name: args.client.repoId },
     accessToken: args.client.token,
-    branch: "main",
+    branch: args.branch ?? "main",
     parentCommit: args.parentCommit,
     title: args.message,
     operations,
+    fetch: async (input, init) => {
+      const response = await (args.fetch ?? fetch)(input, init);
+      if (response.ok && String(input).endsWith("/info/lfs/objects/batch")) {
+        const batch = await response.clone().json() as {
+          transfer?: string;
+          objects: Array<{ actions?: { upload?: unknown } }>;
+        };
+        const fresh = batch.objects.filter((object) => object.actions?.upload !== undefined).length;
+        await args.onProgress?.(`Upload: ${fresh} new LFS objects via ${batch.transfer ?? "basic"}`);
+      }
+      return response;
+    },
+    // hub 2.16.1 starts five Xet shard builders, each allocating ~64 MiB
+    // before chunking. Use basic/multipart LFS within the 512 MiB action.
+    useXet: false,
   });
-  const oid = result?.commit?.oid;
+  let next = await iterator.next();
+  while (!next.done) {
+    if (next.value.event === "phase") {
+      await args.onProgress?.(`Upload: ${next.value.phase}`);
+    }
+    next = await iterator.next();
+  }
+  const oid = next.value?.commit?.oid;
   if (!oid) throw new Error("commit returned no oid");
   return oid;
 }

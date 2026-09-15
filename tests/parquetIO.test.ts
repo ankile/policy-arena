@@ -7,6 +7,7 @@ import {
   Int64,
   FixedSizeList,
   tableFromIPC,
+  tableToIPC,
   vectorFromArray,
   makeTable,
 } from "apache-arrow";
@@ -96,5 +97,23 @@ describe("parquetIO data-file rewrite", () => {
     const cols = await readFrameColumns("f.parquet", buf);
     cols.numRows = N + 1;
     await expect(rewriteEditColumnsStreaming("f.parquet", buf, cols)).rejects.toThrow(/streamed 10000 rows, expected 10001/);
+  });
+
+  test("validation footer forces fresh uploads without changing schemas or values", async () => {
+    const buf = makeDataFile();
+    const cols = await readFrameColumns("f.parquet", buf);
+    const normal = await rewriteEditColumnsStreaming("f.parquet", buf, cols);
+    const validation = await rewriteEditColumnsStreaming("f.parquet", buf, cols, "validation-job-1");
+    const second = await rewriteEditColumnsStreaming("f.parquet", buf, cols, "validation-job-2");
+    expect(Buffer.compare(Buffer.from(normal), Buffer.from(validation))).not.toBe(0);
+    expect(Buffer.compare(Buffer.from(validation), Buffer.from(second))).not.toBe(0);
+    const a = readArrowTable(normal);
+    const b = readArrowTable(validation);
+    expect([...b.schema.metadata.entries()]).toEqual([...a.schema.metadata.entries()]);
+    expect(tableToIPC(b, "stream")).toEqual(tableToIPC(a, "stream"));
+    const metaNormal = writeArrowTable(a);
+    const metaValidation = writeArrowTable(a, "validation-job-1");
+    expect(Buffer.compare(Buffer.from(metaNormal), Buffer.from(metaValidation))).not.toBe(0);
+    expect(tableToIPC(readArrowTable(metaValidation), "stream")).toEqual(tableToIPC(readArrowTable(metaNormal), "stream"));
   });
 });

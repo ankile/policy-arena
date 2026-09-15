@@ -50,8 +50,10 @@ export function readArrowTable(buf: Uint8Array): Table {
  * peaks at ~180 MB of wasm linear memory (never returned to the OS), which
  * OOM-killed the 512 MiB Convex node action on the routing_d1 R8 parent
  * (2026-08-29). */
-export function writeArrowTable(table: Table): Uint8Array {
-  const props = new WriterPropertiesBuilder().setCompression(Compression.SNAPPY).build();
+export function writeArrowTable(table: Table, createdBy?: string): Uint8Array {
+  let builder = new WriterPropertiesBuilder().setCompression(Compression.SNAPPY);
+  if (createdBy !== undefined) builder = builder.setCreatedBy(createdBy);
+  const props = builder.build();
   return writeParquet(WasmTable.fromIPCStream(tableToIPC(table, "stream")), props);
 }
 
@@ -66,7 +68,8 @@ export function writeArrowTable(table: Table): Uint8Array {
 export async function rewriteEditColumnsStreaming(
   path: string,
   buf: Uint8Array,
-  cols: FileFrameColumns
+  cols: FileFrameColumns,
+  createdBy?: string
 ): Promise<Uint8Array> {
   const fileSchema = fileArrowSchema(buf);
   const file = await ParquetFile.fromFile(new Blob([buf as unknown as BlobPart]));
@@ -98,10 +101,11 @@ export async function rewriteEditColumnsStreaming(
       }
     },
   });
-  const props = new WriterPropertiesBuilder()
+  let builder = new WriterPropertiesBuilder()
     .setCompression(Compression.SNAPPY)
-    .setMaxRowGroupSize(STREAM_ROW_GROUP_ROWS)
-    .build();
+    .setMaxRowGroupSize(STREAM_ROW_GROUP_ROWS);
+  if (createdBy !== undefined) builder = builder.setCreatedBy(createdBy);
+  const props = builder.build();
   const output: ReadableStream<Uint8Array> = await transformParquetStream(rebuilt, props);
   const chunks: Uint8Array[] = [];
   let total = 0;

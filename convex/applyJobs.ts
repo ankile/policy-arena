@@ -103,14 +103,36 @@ export const finishInternal = internalMutation({
     await ctx.db.patch(args.id, {
       status: args.ok ? "applied" : "failed",
       finished_at: Date.now(),
-      hf_commit_sha: args.hf_commit_sha,
-      pre_apply_sha: args.pre_apply_sha,
+      hf_commit_sha: args.hf_commit_sha ?? job.hf_commit_sha,
+      pre_apply_sha: args.pre_apply_sha ?? job.pre_apply_sha,
       error: args.error,
-      log_tail: args.log_tail,
+      log_tail: args.log_tail ?? job.log_tail,
       num_confirmed: args.num_confirmed,
       num_skipped: args.num_skipped,
     });
     return args.id;
+  },
+});
+
+/** Persist phase and rollback anchors before external work. These survive a
+ * platform OOM/timeout, which never reaches the action's catch block. */
+export const recordProgressInternal = internalMutation({
+  args: {
+    id: v.id("applyJobs"),
+    message: v.string(),
+    pre_apply_sha: v.optional(v.string()),
+    hf_commit_sha: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.id);
+    if (!job || job.status !== "applying" || job.worker_id !== "convex-action") {
+      throw new Error("Only an active native apply may report progress");
+    }
+    await ctx.db.patch(args.id, {
+      log_tail: `${job.log_tail ?? ""}\n${args.message}`.trim().slice(-2000),
+      ...(args.pre_apply_sha !== undefined ? { pre_apply_sha: args.pre_apply_sha } : {}),
+      ...(args.hf_commit_sha !== undefined ? { hf_commit_sha: args.hf_commit_sha } : {}),
+    });
   },
 });
 
