@@ -3,6 +3,32 @@ import { v } from "convex/values";
 import { requireEditorOrService } from "./access";
 import { loadTaskStatusMap } from "./statuses";
 import { effectiveStatus, statusOrInheritValidator } from "./statusShared";
+import { normalizePolicyTags, policyTagOptions } from "./policyTags";
+
+export const tagOptions = query({
+  args: {},
+  handler: async (ctx) => policyTagOptions(await ctx.db.query("policies").collect()),
+});
+
+/** Replace classification only; registration and evaluation ingestion preserve it. */
+export const setTags = mutation({
+  args: {
+    model_id: v.string(),
+    round: v.union(v.number(), v.null()),
+    method: v.union(v.string(), v.null()),
+    tags: v.array(v.string()),
+    serviceToken: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireEditorOrService(ctx, args.serviceToken);
+    const classification = normalizePolicyTags(args);
+    const policy = await ctx.db.query("policies")
+      .withIndex("by_model_id", (q) => q.eq("model_id", args.model_id)).unique();
+    if (!policy) throw new Error(`Policy not found: ${args.model_id}`);
+    await ctx.db.patch(policy._id, classification);
+    return policy._id;
+  },
+});
 
 export const environmentsDetailed = query({
   args: {},

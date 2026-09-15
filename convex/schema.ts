@@ -89,6 +89,9 @@ export default defineSchema({
     model_url: v.optional(v.string()),
     training_url: v.optional(v.string()),
     environment: v.string(),
+    round: v.optional(v.number()),
+    method: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
     status: v.optional(statusValidator), // override; absent = inherit from task
     status_reason: v.optional(v.string()),
   })

@@ -508,6 +508,16 @@ class PolicyArenaClient:
     def list_task_statuses(self) -> list[dict]:
         return self.client.query("statuses:listTaskStatuses", {})
 
+    def set_policy_tags(
+        self, model_id: str, *, round: int | None = None,
+        method: str | None = None, tags: list[str] | None = None,
+    ) -> str:
+        """Replace policy classification. Omitted fields are cleared."""
+        return self._mutation("policies:setTags", {
+            "model_id": model_id, "round": round, "method": method,
+            "tags": [] if tags is None else tags,
+        })
+
     def set_policy_status(
         self, model_id: str, status: str, status_reason: str | None = None
     ) -> str:

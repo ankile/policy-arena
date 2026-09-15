@@ -1,0 +1,814 @@
+{
+  "date": "2026-09-15",
+  "source": "policies:leaderboard on grandiose-rook-292",
+  "convention": "Round is the training round. R0 method labels denote campaign lineage; R0 uses demonstrations before DAgger. No-CF and pooled-correction variants have separate method labels. Existing lifecycle statuses are preserved.",
+  "method_evidence": [
+    "self-improving-robots/sir/plotting/paper.py POLICY_ARM_LABELS and CF_ARM_LABELS",
+    "self-improving-robots/experiments/tracking/01b_real_world/marker_d2_r0_training.md",
+    "self-improving-robots/experiments/tracking/scripts/01b_real_world/marker_d2/2026-06-25_25_train_marker_d2_r1_allcorrections_dp.sh"
+  ],
+  "entries": [
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-marker-d2-allcorr-r0b100-r1nocf-base50-ours50-dp-r1-3c9fdbcb-5k-save25k-eval8192-init0-seed-1-n864sjpy-checkpoint_100000:v0",
+      "name": "allcorr_r0base_r1_checkpoint_100000",
+      "environment": "marker_d2",
+      "round": 1,
+      "method": "HG-DAgger pooled corrections",
+      "tags": [
+        "Uniform R0"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-marker-d2-allcorr-r0o100-r1nocf-base50-ours50-dp-r1-611cf3cf-5k-save25k-eval8192-init0-seed-1-0okaypnh-checkpoint_100000:v0",
+      "name": "allcorr_r0ours_r1_checkpoint_100000",
+      "environment": "marker_d2",
+      "round": 1,
+      "method": "HG-DAgger pooled corrections",
+      "tags": [
+        "Sobol R0"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-marker-d2-ours-sobol-freecf-r1-ef25cov25-r0o100-r1f-16bb964a-propdrop30-r34-unet512-1024-2048-a5hipedn-checkpoint_100000:v0",
+      "name": "aug_extreme_pd30_r34deep_r1_checkpoint_100000",
+      "environment": "marker_d2",
+      "round": 1,
+      "method": "HG-DAgger mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-marker-d2-baseline-uniform-r1-ef25cov25-r0b100-r1no-7ccfb095-5k-save25k-eval8192-init0-seed-1-10pgsaf3-checkpoint_100000:v0",
+      "name": "baseline_nocf_r1_checkpoint_100000",
+      "environment": "marker_d2",
+      "round": 1,
+      "method": "HG-DAgger baseline",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-baseline-uniform-r1-ef25cov25-r0b100-r1no-c7cae6b9-5k-save25k-eval8192-init0-seed-1-u8sgd90j-checkpoint_100000:v0",
+      "name": "baseline_nocf_r1_checkpoint_100000",
+      "environment": "square_d2",
+      "round": 1,
+      "method": "HG-DAgger baseline",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-marker-d2-baseline-uniform-r2-ef25cov25-r0b100-r1no-1fc842d9-p2-100k-eval5k-save25k-eval8192-init0-seed-1-06ragzrd-final:v0",
+      "name": "baseline_nocf_r2_checkpoint_100000",
+      "environment": "marker_d2",
+      "round": 2,
+      "method": "HG-DAgger baseline",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-baseline-uniform-r2-ef25cov25-r0b100-r1no-a0998a31-p2-100k-eval5k-save25k-eval8192-init0-seed-1-tx3etku7-final:v0",
+      "name": "baseline_nocf_r2_checkpoint_100000",
+      "environment": "square_d2",
+      "round": 2,
+      "method": "HG-DAgger baseline",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-baseline-uniform-r3-ef25cov25-r0b100-r1no-9340a0d0-p2-100k-eval5k-save25k-eval8192-init0-seed-1-fwcc97lq-final:v0",
+      "name": "baseline_nocf_r3_c100k",
+      "environment": "square_d2",
+      "round": 3,
+      "method": "HG-DAgger baseline",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-marker-d2-baseline-uniform-r3-ef25cov25-r0b100-r1no-f967e4cd-p2-100k-eval5k-save25k-eval8192-init0-seed-1-m53y0mp1-final:v0",
+      "name": "baseline_nocf_r3_c100k",
+      "environment": "marker_d2",
+      "round": 3,
+      "method": "HG-DAgger baseline",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-marker-d2-baseline-uniform-r4-ef25cov25-r0b100-r1no-7b0aa472-p2-100k-eval5k-save25k-eval8192-init0-seed-1-umt2psdr-final:v0",
+      "name": "baseline_nocf_r4",
+      "environment": "marker_d2",
+      "round": 4,
+      "method": "HG-DAgger baseline",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-baseline-uniform-r4-ef25cov25-r0b100-r1no-9e005962-p2-100k-eval5k-save25k-eval8192-init0-seed-1-2436iwd9-final:v0",
+      "name": "baseline_nocf_r4_c100k",
+      "environment": "square_d2",
+      "round": 4,
+      "method": "HG-DAgger baseline",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-marker-d2-baseline-uniform-r5-ef25cov25-r0b100-r1no-e533dbdd-p2-100k-eval5k-save25k-eval8192-init0-seed-1-pq96m7et-final:v0",
+      "name": "baseline_nocf_r5",
+      "environment": "marker_d2",
+      "round": 5,
+      "method": "HG-DAgger baseline",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-baseline-uniform-r5-ef25cov25-r0b100-r1no-4a0e65fc-p2-100k-eval5k-save25k-eval8192-init0-seed-1-qrlav1ef-final:v0",
+      "name": "baseline_nocf_r5_c100k",
+      "environment": "square_d2",
+      "round": 5,
+      "method": "HG-DAgger baseline",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r2-ef25cov25-r0b100-r1n-f8bb1069-92-init0-seed-1-umirel-schemep-proprioanchor-qart0kc4-final:v0",
+      "name": "baseline_umirel_r2_final",
+      "environment": "routing_d1",
+      "round": 2,
+      "method": "HG-DAgger baseline",
+      "tags": [
+        "UMI relative"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r4-ef25cov25-r0b100-r1n-e8c2da82-92-init0-seed-1-umirel-schemep-proprioanchor-sfsz2jwf-final:v0",
+      "name": "baseline_umirel_r4_final",
+      "environment": "routing_d1",
+      "round": 4,
+      "method": "HG-DAgger baseline",
+      "tags": [
+        "UMI relative"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r6-ef25cov25-r0b100-r1n-07a6d377-92-init0-seed-1-umirel-schemep-proprioanchor-7w2wlmpo-final:v0",
+      "name": "baseline_umirel_r6_final",
+      "environment": "routing_d1",
+      "round": 6,
+      "method": "HG-DAgger baseline",
+      "tags": [
+        "UMI relative"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r8-ef25cov25-r0b100-r1n-30ce35e6-92-init0-seed-1-umirel-schemep-proprioanchor-rq3j6t4c-final:v0",
+      "name": "baseline_umirel_r8_final",
+      "environment": "routing_d1",
+      "round": 8,
+      "method": "HG-DAgger baseline",
+      "tags": [
+        "UMI relative"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r9-umirel-ef50cov50-r0b-f9851337-92-init0-seed-1-umirel-schemep-proprioanchor-was58pev-final:v0",
+      "name": "baseline_umirel_r9_final",
+      "environment": "routing_d1",
+      "round": 9,
+      "method": "HG-DAgger baseline",
+      "tags": [
+        "UMI relative"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r0-dp-r18-sepenc-imagen-a66369e7-p2-100k-eval5k-save25k-eval8192-init0-seed-1-h6n8lj82-final:v0",
+      "name": "baseline_uniform_r0_checkpoint_100000",
+      "environment": "routing_d1",
+      "round": 0,
+      "method": "HG-DAgger baseline",
+      "tags": [
+        "R0 demonstrations"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-baseline-uniform-r0-dp-r18-sepenc-imagenet-pred12-drop2-100k-eval5k-save25k-seed-1-vdrek7f9-checkpoint_75000:v0",
+      "name": "baseline_uniform_r0_checkpoint_75000",
+      "environment": "square_d2",
+      "round": 0,
+      "method": "HG-DAgger baseline",
+      "tags": [
+        "R0 demonstrations"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r0-dp-r18-sepenc-imagen-4f263e47-l8192-init0-seed-1-taskcrops-3cam-gxxqfvw6-checkpoint_75000:v0",
+      "name": "baseline_uniform_r0_checkpoint_75000",
+      "environment": "routing_d1",
+      "round": 0,
+      "method": "HG-DAgger baseline",
+      "tags": [
+        "R0 demonstrations"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-marker-d2-baseline-uniform-r0-dp-r18-sepenc-imagenet-pred12-drop2-seed-1-1q7cuyw6-final:v0",
+      "name": "baseline_uniform_r0_final",
+      "environment": "marker_d2",
+      "round": 0,
+      "method": "HG-DAgger baseline",
+      "tags": [
+        "R0 demonstrations"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "hf://ankile/openpi-pi05-routing-d1-baseline-uniform-r0-3cam-crop-20k-idle-ft-iris",
+      "name": "baseline_uniform_r0_pi05",
+      "environment": "routing_d1",
+      "round": 0,
+      "method": "HG-DAgger baseline",
+      "tags": [
+        "R0 demonstrations",
+        "π0.5"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r1-ef25cov25-r0b100-r1n-d376a913-l5k-save25k-eval8192-init0-seed-1-skkfrn1j-checkpoint_75000:v0",
+      "name": "baseline_uniform_r1_checkpoint_75000",
+      "environment": "routing_d1",
+      "round": 1,
+      "method": "HG-DAgger baseline",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r2-ef25cov25-r0b100-r1n-7e9d9989-p2-100k-eval5k-save25k-eval8192-init0-seed-1-5y8v8ey8-final:v0",
+      "name": "baseline_uniform_r2_checkpoint_100000",
+      "environment": "routing_d1",
+      "round": 2,
+      "method": "HG-DAgger baseline",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r3-ef25cov25-r0b100-r1n-7e1681f5-p2-100k-eval5k-save25k-eval8192-init0-seed-1-gb9x6ie3-final:v0",
+      "name": "baseline_uniform_r3_checkpoint_100000",
+      "environment": "routing_d1",
+      "round": 3,
+      "method": "HG-DAgger baseline",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r4-ef25cov25-r0b100-r1n-3b9076aa-p2-100k-eval5k-save25k-eval8192-init0-seed-1-a0w8hxab-final:v0",
+      "name": "baseline_uniform_r4_checkpoint_100000",
+      "environment": "routing_d1",
+      "round": 4,
+      "method": "HG-DAgger baseline",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r5-ef20cov30-r0b100-r1n-fb278f66-p2-100k-eval5k-save25k-eval8192-init0-seed-1-bbepb3x4-final:v0",
+      "name": "baseline_uniform_r5_checkpoint_100000",
+      "environment": "routing_d1",
+      "round": 5,
+      "method": "HG-DAgger baseline",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r6-ef25cov25-r0b100-r1n-a52c2297-p2-100k-eval5k-save25k-eval8192-init0-seed-1-gdj04cws-final:v0",
+      "name": "baseline_uniform_r6_checkpoint_100000",
+      "environment": "routing_d1",
+      "round": 6,
+      "method": "HG-DAgger baseline",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r7-ef25cov25-r0b100-r1n-1fd15346-p2-100k-eval5k-save25k-eval8192-init0-seed-1-vv7cofj2-final:v0",
+      "name": "baseline_uniform_r7_checkpoint_100000",
+      "environment": "routing_d1",
+      "round": 7,
+      "method": "HG-DAgger baseline",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r8-ef25cov25-r0b100-r1n-89d8e2f5-p2-100k-eval5k-save25k-eval8192-init0-seed-1-as1wlv6f-final:v0",
+      "name": "baseline_uniform_r8_checkpoint_100000",
+      "environment": "routing_d1",
+      "round": 8,
+      "method": "HG-DAgger baseline",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r8-ef25cov25-r0o100-r1-5bcf2cf4-48-200k-eval5k-save25k-eval8192-init0-seed-1-108vxber-final:v0",
+      "name": "ours_bigr34_r8_final_200k",
+      "environment": "routing_d1",
+      "round": 8,
+      "method": "HG-DAgger mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-ours-sobol-freecf-r1-ef25cov25-r0o100-r1f-e6844f54-5k-save25k-eval8192-init0-seed-1-6ni9pgyy-checkpoint_100000:v0",
+      "name": "ours_freecf_r1_checkpoint_100000",
+      "environment": "square_d2",
+      "round": 1,
+      "method": "HG-DAgger mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-real01b-md2-r1-fcf-divl-cropfix-r1roll-s1-final:v0",
+      "name": "ours_freecf_r1_checkpoint_100000_iql_n4",
+      "environment": "marker_d2",
+      "round": 1,
+      "method": "HiL-IDQL mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-marker-d2-ours-sobol-freecf-r2-ef25cov25-r0o100-r1f-03c21d2f-p2-100k-eval5k-save25k-eval8192-init0-seed-1-7868xk8p-final:v0",
+      "name": "ours_freecf_r2_anchor",
+      "environment": "marker_d2",
+      "round": 2,
+      "method": "HG-DAgger mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-md2-final-g0997p0-fixnorm-s1-step_125000:v0",
+      "name": "ours_freecf_r2_c100k_iql_m1c125k_n16",
+      "environment": "marker_d2",
+      "round": 2,
+      "method": "HiL-IDQL mulligan",
+      "tags": [],
+      "round_evidence": "policy name training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-md2-final-g0997p1-fixnorm-s1-final:v0",
+      "name": "ours_freecf_r2_c100k_iql_m2c150k_n16",
+      "environment": "marker_d2",
+      "round": 2,
+      "method": "HiL-IDQL mulligan",
+      "tags": [],
+      "round_evidence": "policy name training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-ours-sobol-freecf-r2-ef25cov25-r0o100-r1f-91bea7b1-p2-100k-eval5k-save25k-eval8192-init0-seed-1-xlobm02s-final:v0",
+      "name": "ours_freecf_r2_checkpoint_100000",
+      "environment": "square_d2",
+      "round": 2,
+      "method": "HG-DAgger mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-ours-sobol-freecf-r3-ef25cov25-r0o100-r1f-208345bf-p2-100k-eval5k-save25k-eval8192-init0-seed-1-ekqn6w74-final:v0",
+      "name": "ours_freecf_r3_c100k_dp",
+      "environment": "square_d2",
+      "round": 3,
+      "method": "HG-DAgger mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-marker-d2-ours-sobol-freecf-r3-ef25cov25-r0o100-r1f-2d8cf258-p2-100k-eval5k-save25k-eval8192-init0-seed-1-95lf7kcd-final:v0",
+      "name": "ours_freecf_r3_c100k_dp",
+      "environment": "marker_d2",
+      "round": 3,
+      "method": "HG-DAgger mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-md2-r3-g0997p0-vp-s1-step_100000:v0",
+      "name": "ours_freecf_r3_c100k_iql_vpc100k_n16",
+      "environment": "marker_d2",
+      "round": 3,
+      "method": "HiL-IDQL mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-ours-sobol-freecf-r4-ef25cov25-r0o100-r1f-b9c6ec27-p2-100k-eval5k-save25k-eval8192-init0-seed-1-5vb3cuvp-final:v0",
+      "name": "ours_freecf_r4_c100k_dp",
+      "environment": "square_d2",
+      "round": 4,
+      "method": "HG-DAgger mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-sd2-r4-g099p0-fixnorm-s1-final:v0",
+      "name": "ours_freecf_r4_c100k_iql_s2final_n16",
+      "environment": "square_d2",
+      "round": 4,
+      "method": "HiL-IDQL mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-marker-d2-ours-sobol-freecf-r4-ef25cov25-r0o100-r1f-5ccc3e87-p2-100k-eval5k-save25k-eval8192-init0-seed-1-9nf6nwx2-final:v0",
+      "name": "ours_freecf_r4_dp",
+      "environment": "marker_d2",
+      "round": 4,
+      "method": "HG-DAgger mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-md2-r4-g0997p0-vp-s1-step_125000:v0",
+      "name": "ours_freecf_r4_iql_c125k_n16",
+      "environment": "marker_d2",
+      "round": 4,
+      "method": "HiL-IDQL mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-ours-sobol-freecf-r5-ef25cov25-r0o100-r1f-abbcdffd-p2-100k-eval5k-save25k-eval8192-init0-seed-1-wko0uw59-final:v0",
+      "name": "ours_freecf_r5_c100k_dp",
+      "environment": "square_d2",
+      "round": 5,
+      "method": "HG-DAgger mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-sd2-r5-flatcache-film-utd300k-s1-step_200000:v0",
+      "name": "ours_freecf_r5_c100k_iql_film-c200k_n16",
+      "environment": "square_d2",
+      "round": 5,
+      "method": "HiL-IDQL mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-sd2-r5-plus-r5dpiql-flatcache-tdl-h480-film-targetiid-k4-s1-step_200000:v0",
+      "name": "ours_freecf_r5_c100k_iql_h480-film-targetiid-k4_c200k_n32",
+      "environment": "square_d2",
+      "round": 5,
+      "method": "HiL-IDQL mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-marker-d2-ours-sobol-freecf-r5-ef25cov25-r0o100-r1f-43bcc09f-p2-100k-eval5k-save25k-eval8192-init0-seed-1-1cw5il4n-final:v0",
+      "name": "ours_freecf_r5_dp",
+      "environment": "marker_d2",
+      "round": 5,
+      "method": "HG-DAgger mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-md2-r5-flatcache-tdl-h798-utd1-lr1e4-film-targetiid-k4-s1-step_200000:v0",
+      "name": "ours_freecf_r5_iql_h798-film-targetiid-k4_c200k_n32",
+      "environment": "marker_d2",
+      "round": 5,
+      "method": "HiL-IDQL mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-marker-d2-ours-sobol-r1-ef25cov25-r0o100-r1nocf50-d-c9c1dd47-5k-save25k-eval8192-init0-seed-1-mqoqfiot-checkpoint_100000:v0",
+      "name": "ours_nocf_r1_checkpoint_100000",
+      "environment": "marker_d2",
+      "round": 1,
+      "method": "HG-DAgger mulligan (no CF)",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-ours-sobol-r1-ef25cov25-r0o100-r1nocf50-d-c6507d7b-5k-save25k-eval8192-init0-seed-1-mr4iagdw-checkpoint_100000:v0",
+      "name": "ours_nocf_r1_checkpoint_100000",
+      "environment": "square_d2",
+      "round": 1,
+      "method": "HG-DAgger mulligan (no CF)",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-ours-sobol-r2-ef25cov25-r0o100-r1fcf50-r2-8bf0e55b--eval5k-save25k-eval8192-init0-seed-1-fresh1-nwj741ut-final:v0",
+      "name": "ours_nocf_r2_checkpoint_100000",
+      "environment": "square_d2",
+      "round": 2,
+      "method": "HG-DAgger mulligan (no CF)",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-ours-sobol-r3-ef25cov25-r0o100-r1fcf50-r2-36f68c3d-p2-100k-eval5k-save25k-eval8192-init0-seed-1-mgoqmy7e-final:v0",
+      "name": "ours_nocf_r3_checkpoint_100000",
+      "environment": "square_d2",
+      "round": 3,
+      "method": "HG-DAgger mulligan (no CF)",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-marker-d2-ours-sobol-r1-ef25cov25-r0o100-r1nocf50-d-c08931c9-5k-save25k-eval8192-init2-seed-2-98aev6mp-checkpoint_100000:v0",
+      "name": "ours_nocf_seed2_checkpoint_100000",
+      "environment": "marker_d2",
+      "round": 1,
+      "method": "HG-DAgger mulligan (no CF)",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r1-ef25cov25-r0o100-r1-0c6cb816-l5k-save25k-eval8192-init0-seed-1-lu9ovzwh-checkpoint_75000:v0",
+      "name": "ours_sobol_freecf_r1_checkpoint_75000",
+      "environment": "routing_d1",
+      "round": 1,
+      "method": "HG-DAgger mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r2-ef25cov25-r0o100-r1-38eb1b3c-p2-100k-eval5k-save25k-eval8192-init0-seed-1-z2amv0qz-final:v0",
+      "name": "ours_sobol_freecf_r2_checkpoint_100000",
+      "environment": "routing_d1",
+      "round": 2,
+      "method": "HG-DAgger mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r3-ef25cov25-r0o100-r1-fdf1ae59-p2-100k-eval5k-save25k-eval8192-init0-seed-1-1z1cgyyp-final:v0",
+      "name": "ours_sobol_freecf_r3_checkpoint_100000",
+      "environment": "routing_d1",
+      "round": 3,
+      "method": "HG-DAgger mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r4-ef25cov25-r0o100-r1-7bda46c2-p2-100k-eval5k-save25k-eval8192-init0-seed-1-ttng2f8f-final:v0",
+      "name": "ours_sobol_freecf_r4_checkpoint_100000",
+      "environment": "routing_d1",
+      "round": 4,
+      "method": "HG-DAgger mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-routing-d1-r4-g0997-p0-s1-final:v0",
+      "name": "ours_sobol_freecf_r4_iql_g0997_n16",
+      "environment": "routing_d1",
+      "round": 4,
+      "method": "HiL-IDQL mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r5-ef20cov30-r0o100-r1-e0c590e8-p2-100k-eval5k-save25k-eval8192-init0-seed-1-jxmkz5g2-final:v0",
+      "name": "ours_sobol_freecf_r5_checkpoint_100000",
+      "environment": "routing_d1",
+      "round": 5,
+      "method": "HG-DAgger mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-routing-d1-r5-g0997-flatcache-noeval-s1-final:v0",
+      "name": "ours_sobol_freecf_r5_iql_g0997_n16",
+      "environment": "routing_d1",
+      "round": 5,
+      "method": "HiL-IDQL mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r6-ef25cov25-r0o100-r1-29238c6e-p2-100k-eval5k-save25k-eval8192-init0-seed-1-gnmdbngn-final:v0",
+      "name": "ours_sobol_freecf_r6_checkpoint_100000",
+      "environment": "routing_d1",
+      "round": 6,
+      "method": "HG-DAgger mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-routing-d1-r6-g0997-flatcache-s1-final:v0",
+      "name": "ours_sobol_freecf_r6_iql_g0997_n16",
+      "environment": "routing_d1",
+      "round": 6,
+      "method": "HiL-IDQL mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r7-ef25cov25-r0o100-r1-1e1aa92f-p2-100k-eval5k-save25k-eval8192-init0-seed-1-i46yosy6-final:v0",
+      "name": "ours_sobol_freecf_r7_checkpoint_100000",
+      "environment": "routing_d1",
+      "round": 7,
+      "method": "HG-DAgger mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-routing-d1-r7-g0997-flatcache-s1-final:v0",
+      "name": "ours_sobol_freecf_r7_iql_g0997_n16",
+      "environment": "routing_d1",
+      "round": 7,
+      "method": "HiL-IDQL mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r8-ef25cov25-r0o100-r1-3d905b80-p2-100k-eval5k-save25k-eval8192-init0-seed-1-fwmfqppp-final:v0",
+      "name": "ours_sobol_freecf_r8_checkpoint_100000",
+      "environment": "routing_d1",
+      "round": 8,
+      "method": "HG-DAgger mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-routing-d1-r8-g0997-flatcache-tdl-h846-lr1e4-film-targetiid-k4-s1-final:v0",
+      "name": "ours_sobol_freecf_r8_iql_g0997_n32",
+      "environment": "routing_d1",
+      "round": 8,
+      "method": "HiL-IDQL mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-r0-dp-r18-sepenc-imagenet-pred12-drop2-100k-eval5k-save25k-eval8192-init0-seed-1-qtdgzzll-final:v0",
+      "name": "ours_sobol_r0_checkpoint_100000",
+      "environment": "routing_d1",
+      "round": 0,
+      "method": "HG-DAgger mulligan",
+      "tags": [
+        "R0 demonstrations"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-ours-sobol-r0-dp-r18-sepenc-imagenet-pred12-drop2-100k-eval5k-save25k-seed-1-g54qxm7u-checkpoint_75000:v0",
+      "name": "ours_sobol_r0_checkpoint_75000",
+      "environment": "square_d2",
+      "round": 0,
+      "method": "HG-DAgger mulligan",
+      "tags": [
+        "R0 demonstrations"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-r0-dp-r18-sepenc-imagenet-pre-eb7c7f91-l8192-init0-seed-1-taskcrops-3cam-vufd391k-checkpoint_75000:v0",
+      "name": "ours_sobol_r0_checkpoint_75000",
+      "environment": "routing_d1",
+      "round": 0,
+      "method": "HG-DAgger mulligan",
+      "tags": [
+        "R0 demonstrations"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-marker-d2-ours-sobol-r0-dp-r18-sepenc-imagenet-pred12-drop2-seed-1-t4xya1up-final:v0",
+      "name": "ours_sobol_r0_final",
+      "environment": "marker_d2",
+      "round": 0,
+      "method": "HG-DAgger mulligan",
+      "tags": [
+        "R0 demonstrations"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "hf://ankile/openpi-pi05-routing-d1-ours-sobol-r0-3cam-crop-20k-idle-ft-iris",
+      "name": "ours_sobol_r0_pi05",
+      "environment": "routing_d1",
+      "round": 0,
+      "method": "HG-DAgger mulligan",
+      "tags": [
+        "R0 demonstrations",
+        "π0.5"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-r0-dp-r18-sepenc-imagenet-pre-56c61020-92-init0-seed-1-umirel-schemep-proprioanchor-1wbp1jd8-final:v0",
+      "name": "ours_umirel_r0_final",
+      "environment": "routing_d1",
+      "round": 0,
+      "method": "HG-DAgger mulligan",
+      "tags": [
+        "R0 demonstrations",
+        "UMI relative"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r2-ef25cov25-r0o100-r1-46794cd3-92-init0-seed-1-umirel-schemep-proprioanchor-aunzdjy0-final:v0",
+      "name": "ours_umirel_r2_final",
+      "environment": "routing_d1",
+      "round": 2,
+      "method": "HG-DAgger mulligan",
+      "tags": [
+        "UMI relative"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r4-ef25cov25-r0o100-r1-b77363f2-92-init0-seed-1-umirel-schemep-proprioanchor-tubt35k0-final:v0",
+      "name": "ours_umirel_r4_final",
+      "environment": "routing_d1",
+      "round": 4,
+      "method": "HG-DAgger mulligan",
+      "tags": [
+        "UMI relative"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r6-ef25cov25-r0o100-r1-6e1f8652-92-init0-seed-1-umirel-schemep-proprioanchor-x9bqq2ss-final:v0",
+      "name": "ours_umirel_r6_final",
+      "environment": "routing_d1",
+      "round": 6,
+      "method": "HG-DAgger mulligan",
+      "tags": [
+        "UMI relative"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-routing-d1-r6-g0997-flatcache-tdl-h846-lr1e4-film-targetiid-k4-umirel-s1-final:v0",
+      "name": "ours_umirel_r6_iql_g0997_n32",
+      "environment": "routing_d1",
+      "round": 6,
+      "method": "HiL-IDQL mulligan",
+      "tags": [
+        "UMI relative"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r8-ef25cov25-r0o100-r1-1e5837d4-92-init0-seed-1-umirel-schemep-proprioanchor-utx7y67c-final:v0",
+      "name": "ours_umirel_r8_final",
+      "environment": "routing_d1",
+      "round": 8,
+      "method": "HG-DAgger mulligan",
+      "tags": [
+        "UMI relative"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-routing-d1-r8-g0997-flatcache-tdl-h846-lr1e4-film-targetiid-k4-umirel-s1-final:v0",
+      "name": "ours_umirel_r8_iql_g0997_n32",
+      "environment": "routing_d1",
+      "round": 8,
+      "method": "HiL-IDQL mulligan",
+      "tags": [
+        "UMI relative"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r9-umirel-ef50cov50-r0-f21af13c-92-init0-seed-1-umirel-schemep-proprioanchor-m5n2jkmr-final:v0",
+      "name": "ours_umirel_r9_final",
+      "environment": "routing_d1",
+      "round": 9,
+      "method": "HG-DAgger mulligan",
+      "tags": [
+        "UMI relative"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-routing-d1-r9-g0997-flatcache-tdl-h846-lr1e4-film-targetiid-k4-umirel-s1-final:v0",
+      "name": "ours_umirel_r9_iql_g0997_n32",
+      "environment": "routing_d1",
+      "round": 9,
+      "method": "HiL-IDQL mulligan",
+      "tags": [
+        "UMI relative"
+      ],
+      "round_evidence": "model_id training-round token"
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-marker-d2-ours-sobol-freecf-r1-ef25cov25-r0o100-r1f-bb319f01-5k-save25k-eval8192-init0-seed-1-zc98adjg-checkpoint_100000:v0",
+      "name": "standard_ref_r1_ckpt100k",
+      "environment": "marker_d2",
+      "round": 1,
+      "method": "HG-DAgger mulligan",
+      "tags": [],
+      "round_evidence": "model_id training-round token"
+    }
+  ]
+}

@@ -11,6 +11,8 @@ import LabelingLab from "./components/LabelingLab";
 import EvalSessions from "./components/EvalSessions";
 import Pairings from "./components/Pairings";
 import PolicyDetail from "./components/PolicyDetail";
+import { PolicyTagBadges } from "./components/PolicyTags";
+import { matchesPolicyTags, policyTagOptions } from "../convex/policyTags";
 import { StatusBadge } from "./components/StatusBadge";
 import TaskStatusManager from "./components/TaskStatusManager";
 import { useSearchParam, useSearchParamNullable, clearSearchParams } from "./lib/useSearchParam";
@@ -90,6 +92,9 @@ function App() {
   const [showParam, setShowParam] = useSearchParam("show", "mainline");
   const showAll = showParam === "all";
   const [managerOpen, setManagerOpen] = useState(false);
+  const [roundFilter, setRoundFilter] = useSearchParam("round", "");
+  const [methodFilter, setMethodFilter] = useSearchParam("method", "");
+  const [tagFilter, setTagFilter] = useSearchParam("tag", "");
 
   const viewer = useQuery(api.users.viewer);
   const envList = useQuery(api.policies.environmentsDetailed);
@@ -113,8 +118,10 @@ function App() {
   const visibleEnvs = (envList ?? []).filter(
     (e) => showAll || e.status === "mainline"
   );
-  const visiblePolicies = (policies ?? [])
-    .filter((p) => showAll || p.effective_status === "mainline")
+  const lensPolicies = (policies ?? []).filter((p) => showAll || p.effective_status === "mainline");
+  const tagOptions = policyTagOptions(lensPolicies);
+  const visiblePolicies = lensPolicies
+    .filter((p) => matchesPolicyTags(p, roundFilter, methodFilter, tagFilter))
     .map((p) => {
       const id = p._id as string;
       const rating = arenaStats?.ratings.get(id) ?? null;
@@ -263,6 +270,24 @@ function App() {
               </div>
             )}
 
+            <div className="flex flex-wrap items-end gap-3 mb-6">
+              {[
+                { label: "Round", value: roundFilter, set: setRoundFilter, options: tagOptions.rounds.map((r) => ({ value: String(r), label: `Round ${r}` })), missing: true },
+                { label: "Method", value: methodFilter, set: setMethodFilter, options: tagOptions.methods.map((m) => ({ value: m, label: m })), missing: true },
+                { label: "Tag", value: tagFilter, set: setTagFilter, options: tagOptions.tags.map((t) => ({ value: t, label: t })), missing: false },
+              ].map((filter) => <label key={filter.label} className="text-xs text-ink-muted">
+                {filter.label}
+                <select aria-label={filter.label} value={filter.value} onChange={(e) => filter.set(e.target.value)} className="block mt-1 rounded-lg border border-warm-200 bg-white px-3 py-2 text-sm text-ink max-w-72">
+                  <option value="">All {filter.label.toLowerCase()}s</option>
+                  {filter.missing && <option value="untagged">Unassigned</option>}
+                  {filter.value && filter.value !== "untagged" && !filter.options.some((o) => o.value === filter.value) && <option value={filter.value}>{filter.value}</option>}
+                  {filter.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </label>)}
+              {(roundFilter || methodFilter || tagFilter) && <button onClick={() => clearSearchParams("round", "method", "tag")} className="text-xs text-teal py-2 cursor-pointer">Clear tag filters</button>}
+              <p className="w-full text-xs text-ink-muted">Tag filters select policies. Ratings use all comparisons in the current Mainline or All view.</p>
+            </div>
+
             {/* Stats summary */}
             <div
               className="grid grid-cols-3 gap-4 mb-10"
@@ -279,9 +304,9 @@ function App() {
                 },
                 {
                   label: "Comparisons",
-                  value: Math.round(sortedPolicies
+                  value: Math.round(lensPolicies
                     .reduce(
-                      (a, p) => a + p.wdl.wins + p.wdl.losses + p.wdl.draws,
+                      (a, p) => { const wdl = arenaStats?.wdl.get(p._id); return a + (wdl ? wdl.wins + wdl.losses + wdl.draws : 0); },
                       0
                     ) / 2).toString(),
                 },
@@ -310,8 +335,7 @@ function App() {
               </div>
             ) : sortedPolicies.length === 0 ? (
               <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8 text-center text-ink-muted">
-                No policies registered yet. Submit an eval session to get
-                started.
+                {lensPolicies.length ? "No policies match these tags. Clear the tag filters to see all policies." : "No policies registered yet. Submit an eval session to get started."}
               </div>
             ) : (
               <div
@@ -389,7 +413,7 @@ function App() {
                             <div className="font-body font-semibold text-ink text-[15px] truncate" title={policy.name}>
                               {policy.name}
                             </div>
-                            <div className="mt-1 flex items-center gap-1.5">
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
                               <EnvironmentTag env={policy.environment} />
                               {showAll && (
                                 <StatusBadge
@@ -398,6 +422,7 @@ function App() {
                                 />
                               )}
                             </div>
+                            <div className="mt-1.5"><PolicyTagBadges policy={policy} /></div>
                           </div>
                           <svg
                             width="12"

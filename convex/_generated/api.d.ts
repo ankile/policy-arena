@@ -38,6 +38,7 @@ import type * as maintenance from "../maintenance.js";
 import type * as operators from "../operators.js";
 import type * as pairings from "../pairings.js";
 import type * as policies from "../policies.js";
+import type * as policyTags from "../policyTags.js";
 import type * as ratings from "../ratings.js";
 import type * as recommendations from "../recommendations.js";
 import type * as reviews from "../reviews.js";
@@ -97,6 +98,7 @@ declare const fullApi: ApiFromModules<{
   operators: typeof operators;
   pairings: typeof pairings;
   policies: typeof policies;
+  policyTags: typeof policyTags;
   ratings: typeof ratings;
   recommendations: typeof recommendations;
   reviews: typeof reviews;

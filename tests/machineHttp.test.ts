@@ -142,6 +142,10 @@ const operationsByScope = {
   ],
   curate: [
     {
+      operation: "policies/setTags",
+      mutationName: getFunctionName(api.policies.setTags),
+    },
+    {
       operation: "evalSessions/setStatus",
       mutationName: getFunctionName(api.evalSessions.setStatus),
     },

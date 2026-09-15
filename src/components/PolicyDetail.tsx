@@ -4,6 +4,7 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import RolloutSection from "./RolloutSection";
 import { StatusBadge, StatusSelect } from "./StatusBadge";
+import { PolicyTagBadges, PolicyTagEditor } from "./PolicyTags";
 import { ratingTrajectory, visibleSessions } from "../lib/arenaRatings";
 import { useSearchParam, useSearchParamNullable } from "../lib/useSearchParam";
 
@@ -158,6 +159,8 @@ export default function PolicyDetail({
               </dd>
             </div>
           </dl>
+          <div className="mt-3"><PolicyTagBadges policy={policy} /></div>
+          {viewer?.isEditor && <PolicyTagEditor policy={policy} />}
 
           {/* Rating History (Bradley-Terry fit per chronological prefix) */}
           {trajectory.length > 0 && (

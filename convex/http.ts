@@ -337,6 +337,11 @@ const routes: MachineRouteOptions[] = [
     mutation: api.policies.setStatus,
   },
   {
+    operation: "policies/setTags",
+    scope: "curate",
+    mutation: api.policies.setTags,
+  },
+  {
     operation: "policies/updateEnvironment",
     scope: "curate",
     mutation: api.policies.updateEnvironment,
