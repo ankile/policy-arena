@@ -1,0 +1,166 @@
+{
+  "date": "2026-09-15",
+  "criterion": "Policy identities in the frozen paper main method curves; excludes the separate no-CF ablation and later tracker-only variants.",
+  "source": "self-improving-robots/paper/appendix/real_results/config.json suite square_d2",
+  "expected_mainline": [
+    {
+      "round": 0,
+      "arm": "baseline",
+      "name": "baseline_uniform_r0_checkpoint_75000",
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-baseline-uniform-r0-dp-r18-sepenc-imagenet-pred12-drop2-100k-eval5k-save25k-seed-1-vdrek7f9-checkpoint_75000:v0"
+    },
+    {
+      "round": 0,
+      "arm": "ours_freecf",
+      "name": "ours_sobol_r0_checkpoint_75000",
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-ours-sobol-r0-dp-r18-sepenc-imagenet-pred12-drop2-100k-eval5k-save25k-seed-1-g54qxm7u-checkpoint_75000:v0"
+    },
+    {
+      "round": 1,
+      "arm": "baseline",
+      "name": "baseline_nocf_r1_checkpoint_100000",
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-baseline-uniform-r1-ef25cov25-r0b100-r1no-c7cae6b9-5k-save25k-eval8192-init0-seed-1-u8sgd90j-checkpoint_100000:v0"
+    },
+    {
+      "round": 1,
+      "arm": "ours_freecf",
+      "name": "ours_freecf_r1_checkpoint_100000",
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-ours-sobol-freecf-r1-ef25cov25-r0o100-r1f-e6844f54-5k-save25k-eval8192-init0-seed-1-6ni9pgyy-checkpoint_100000:v0"
+    },
+    {
+      "round": 2,
+      "arm": "baseline",
+      "name": "baseline_nocf_r2_checkpoint_100000",
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-baseline-uniform-r2-ef25cov25-r0b100-r1no-a0998a31-p2-100k-eval5k-save25k-eval8192-init0-seed-1-tx3etku7-final:v0"
+    },
+    {
+      "round": 2,
+      "arm": "ours_freecf",
+      "name": "ours_freecf_r2_checkpoint_100000",
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-ours-sobol-freecf-r2-ef25cov25-r0o100-r1f-91bea7b1-p2-100k-eval5k-save25k-eval8192-init0-seed-1-xlobm02s-final:v0"
+    },
+    {
+      "round": 3,
+      "arm": "baseline",
+      "name": "baseline_nocf_r3_c100k",
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-baseline-uniform-r3-ef25cov25-r0b100-r1no-9340a0d0-p2-100k-eval5k-save25k-eval8192-init0-seed-1-fwcc97lq-final:v0"
+    },
+    {
+      "round": 3,
+      "arm": "final_iql",
+      "name": "ours_freecf_r3_c100k_iql_s1final_n16",
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-sd2-final-g099p0-fixnorm-s1-final:v0"
+    },
+    {
+      "round": 3,
+      "arm": "ours_freecf",
+      "name": "ours_freecf_r3_c100k_dp",
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-ours-sobol-freecf-r3-ef25cov25-r0o100-r1f-208345bf-p2-100k-eval5k-save25k-eval8192-init0-seed-1-ekqn6w74-final:v0"
+    },
+    {
+      "round": 4,
+      "arm": "baseline",
+      "name": "baseline_nocf_r4_c100k",
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-baseline-uniform-r4-ef25cov25-r0b100-r1no-9e005962-p2-100k-eval5k-save25k-eval8192-init0-seed-1-2436iwd9-final:v0"
+    },
+    {
+      "round": 4,
+      "arm": "final_iql",
+      "name": "ours_freecf_r4_c100k_iql_s2final_n16",
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-sd2-r4-g099p0-fixnorm-s1-final:v0"
+    },
+    {
+      "round": 4,
+      "arm": "ours_freecf",
+      "name": "ours_freecf_r4_c100k_dp",
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-ours-sobol-freecf-r4-ef25cov25-r0o100-r1f-b9c6ec27-p2-100k-eval5k-save25k-eval8192-init0-seed-1-5vb3cuvp-final:v0"
+    },
+    {
+      "round": 5,
+      "arm": "baseline",
+      "name": "baseline_nocf_r5_c100k",
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-baseline-uniform-r5-ef25cov25-r0b100-r1no-4a0e65fc-p2-100k-eval5k-save25k-eval8192-init0-seed-1-qrlav1ef-final:v0"
+    },
+    {
+      "round": 5,
+      "arm": "final_iql",
+      "name": "ours_freecf_r5_c100k_iql_h6bs1024-c200k_n16",
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-sd2-r5-flatcache-h6-bs1024-s1-step_200000:v0"
+    },
+    {
+      "round": 5,
+      "arm": "ours_freecf",
+      "name": "ours_freecf_r5_c100k_dp",
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-ours-sobol-freecf-r5-ef25cov25-r0o100-r1f-abbcdffd-p2-100k-eval5k-save25k-eval8192-init0-seed-1-wko0uw59-final:v0"
+    }
+  ],
+  "changes": [
+    {
+      "name": "ours_nocf_r1_checkpoint_100000",
+      "status": "ablation",
+      "reason": "2026-09-15 - Counterfactual-demo ablation; excluded from the main paper method curves. Evidence: paper/appendix/real_results/config.json suite vs stage square_d2.",
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-ours-sobol-r1-ef25cov25-r0o100-r1nocf50-d-c6507d7b-5k-save25k-eval8192-init0-seed-1-mr4iagdw-checkpoint_100000:v0",
+      "before_status": "mainline",
+      "before_status_override": null,
+      "before_reason": null
+    },
+    {
+      "name": "ours_nocf_r2_checkpoint_100000",
+      "status": "ablation",
+      "reason": "2026-09-15 - Counterfactual-demo ablation; excluded from the main paper method curves. Evidence: paper/appendix/real_results/config.json suite vs stage square_d2.",
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-ours-sobol-r2-ef25cov25-r0o100-r1fcf50-r2-8bf0e55b--eval5k-save25k-eval8192-init0-seed-1-fresh1-nwj741ut-final:v0",
+      "before_status": "mainline",
+      "before_status_override": null,
+      "before_reason": null
+    },
+    {
+      "name": "ours_nocf_r3_checkpoint_100000",
+      "status": "ablation",
+      "reason": "2026-09-15 - Counterfactual-demo ablation; excluded from the main paper method curves. Evidence: paper/appendix/real_results/config.json suite vs stage square_d2.",
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-square-d2-ours-sobol-r3-ef25cov25-r0o100-r1fcf50-r2-36f68c3d-p2-100k-eval5k-save25k-eval8192-init0-seed-1-mgoqmy7e-final:v0",
+      "before_status": "mainline",
+      "before_status_override": null,
+      "before_reason": null
+    },
+    {
+      "name": "ours_freecf_r5_c100k_iql_film-c200k_n16",
+      "status": "testing",
+      "reason": "2026-09-15 - R5 FiLM candidate-screen policy, not the selected paper critic. The frozen paper selects h6bs1024-c200k_n16. Evidence: paper/appendix/real_results/config.json suite square_d2 R5.",
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-sd2-r5-flatcache-film-utd300k-s1-step_200000:v0",
+      "before_status": "mainline",
+      "before_status_override": "mainline",
+      "before_reason": null
+    },
+    {
+      "name": "ours_freecf_r5_c100k_iql_h480-film-targetiid-k4_c200k_n32",
+      "status": "testing",
+      "reason": "2026-09-15 - Later R5 redo critic used by the current tracker, outside the frozen paper study. Paper Mainline selects h6bs1024-c200k_n16. Evidence: paper/appendix/real_results/config.json and t01b_d2_line_headline_configs.py.",
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-sd2-r5-plus-r5dpiql-flatcache-tdl-h480-film-targetiid-k4-s1-step_200000:v0",
+      "before_status": "mainline",
+      "before_status_override": null,
+      "before_reason": null
+    },
+    {
+      "name": "ours_freecf_r3_c100k_iql_s1final_n16",
+      "status": "mainline",
+      "reason": "2026-09-15 - Restore the selected R3 HiL-IDQL mulligan policy used in the frozen paper curves. Evidence: paper/appendix/real_results/config.json suite square_d2 R3.",
+      "round": 3,
+      "method": "HiL-IDQL mulligan",
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-sd2-final-g099p0-fixnorm-s1-final:v0",
+      "before_status": "retired",
+      "before_status_override": "retired",
+      "before_reason": null
+    },
+    {
+      "name": "ours_freecf_r5_c100k_iql_h6bs1024-c200k_n16",
+      "status": "mainline",
+      "reason": "2026-09-15 - Restore the selected R5 H6 batch-1024 critic used in the frozen paper curves. Evidence: paper/appendix/real_results/config.json suite square_d2 R5.",
+      "round": 5,
+      "method": "HiL-IDQL mulligan",
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-sd2-r5-flatcache-h6-bs1024-s1-step_200000:v0",
+      "before_status": "testing",
+      "before_status_override": "testing",
+      "before_reason": null
+    }
+  ]
+}
