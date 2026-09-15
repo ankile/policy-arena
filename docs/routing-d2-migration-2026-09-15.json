@@ -1,0 +1,451 @@
+{
+  "date": "2026-09-15",
+  "source": "self-improving-robots/experiments/tracking/scripts/t01b_routing_d2_paper_config.py",
+  "scope": "Arena policy task classification and round tags. Original policy names, model IDs, evaluation results and source dataset task metadata retained.",
+  "session_id": "jh7c5z4v3zbrnqg19eac34fyhd8dz0rn",
+  "round_results_sha256": "da38a2d991f05b515604a06744922b422a3065038b711e9592fbb9042c3d67b7",
+  "before_task_statuses": [
+    {
+      "_creationTime": 1787274361540.4458,
+      "_id": "mh724h03gperjvyr67t9h972w58cx3vv",
+      "status": "mainline",
+      "task": "routing_d1",
+      "updated_at": 1787274361540,
+      "updated_by": "seedDefaults"
+    }
+  ],
+  "task_changes": [
+    {
+      "task": "routing_d2",
+      "status": "mainline",
+      "reason": "2026-09-15: UMI-relative routing paper series, rounds 0-5."
+    },
+    {
+      "task": "routing_d1",
+      "status": "retired",
+      "superseded_by": "routing_d2",
+      "reason": "2026-09-15: Obsolete; superseded by the UMI-relative routing_d2 series."
+    }
+  ],
+  "policies": [
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r0-dp-r18-sepenc-imagen-dbc10b90-92-init0-seed-1-umirel-schemep-proprioanchor-knf2zjdr-final:v0",
+      "name": "baseline_umirel_r0_final",
+      "before": {
+        "_creationTime": 1788551996607.2803,
+        "_id": "j979h213hje57jxek1mep36nw18dsvx3",
+        "effective_status": "testing",
+        "environment": "routing_d1",
+        "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r0-dp-r18-sepenc-imagen-dbc10b90-92-init0-seed-1-umirel-schemep-proprioanchor-knf2zjdr-final:v0",
+        "model_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/artifacts/policy/real01b-routing-d1-baseline-uniform-r0-dp-r18-sepenc-imagen-dbc10b90-92-init0-seed-1-umirel-schemep-proprioanchor-knf2zjdr-final/v0",
+        "name": "baseline_umirel_r0_final",
+        "status": "testing",
+        "training_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/runs/knf2zjdr"
+      },
+      "after": {
+        "environment": "routing_d2",
+        "round": 0,
+        "method": "HG-DAgger baseline",
+        "tags": [
+          "R0 demonstrations",
+          "UMI relative"
+        ],
+        "status": "mainline"
+      }
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r2-ef25cov25-r0b100-r1n-f8bb1069-92-init0-seed-1-umirel-schemep-proprioanchor-qart0kc4-final:v0",
+      "name": "baseline_umirel_r2_final",
+      "before": {
+        "_creationTime": 1788817901574.821,
+        "_id": "j977gpn6x05a5hr32c8y63866x8dydj1",
+        "effective_status": "mainline",
+        "environment": "routing_d1",
+        "method": "HG-DAgger baseline",
+        "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r2-ef25cov25-r0b100-r1n-f8bb1069-92-init0-seed-1-umirel-schemep-proprioanchor-qart0kc4-final:v0",
+        "model_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/artifacts/policy/real01b-routing-d1-baseline-uniform-r2-ef25cov25-r0b100-r1n-f8bb1069-92-init0-seed-1-umirel-schemep-proprioanchor-qart0kc4-final/v0",
+        "name": "baseline_umirel_r2_final",
+        "round": 2,
+        "tags": [
+          "UMI relative"
+        ],
+        "training_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/runs/qart0kc4"
+      },
+      "after": {
+        "environment": "routing_d2",
+        "round": 1,
+        "method": "HG-DAgger baseline",
+        "tags": [
+          "UMI relative"
+        ],
+        "status": "mainline"
+      }
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r4-ef25cov25-r0b100-r1n-e8c2da82-92-init0-seed-1-umirel-schemep-proprioanchor-sfsz2jwf-final:v0",
+      "name": "baseline_umirel_r4_final",
+      "before": {
+        "_creationTime": 1788817901574.8215,
+        "_id": "j973zapkcj1qpxrf15nanbnfv98dy1z9",
+        "effective_status": "mainline",
+        "environment": "routing_d1",
+        "method": "HG-DAgger baseline",
+        "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r4-ef25cov25-r0b100-r1n-e8c2da82-92-init0-seed-1-umirel-schemep-proprioanchor-sfsz2jwf-final:v0",
+        "model_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/artifacts/policy/real01b-routing-d1-baseline-uniform-r4-ef25cov25-r0b100-r1n-e8c2da82-92-init0-seed-1-umirel-schemep-proprioanchor-sfsz2jwf-final/v0",
+        "name": "baseline_umirel_r4_final",
+        "round": 4,
+        "tags": [
+          "UMI relative"
+        ],
+        "training_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/runs/sfsz2jwf"
+      },
+      "after": {
+        "environment": "routing_d2",
+        "round": 2,
+        "method": "HG-DAgger baseline",
+        "tags": [
+          "UMI relative"
+        ],
+        "status": "mainline"
+      }
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r6-ef25cov25-r0b100-r1n-07a6d377-92-init0-seed-1-umirel-schemep-proprioanchor-7w2wlmpo-final:v0",
+      "name": "baseline_umirel_r6_final",
+      "before": {
+        "_creationTime": 1788817901574.822,
+        "_id": "j979x2y1zemdved820zy9rhpkx8dzh3m",
+        "effective_status": "mainline",
+        "environment": "routing_d1",
+        "method": "HG-DAgger baseline",
+        "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r6-ef25cov25-r0b100-r1n-07a6d377-92-init0-seed-1-umirel-schemep-proprioanchor-7w2wlmpo-final:v0",
+        "model_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/artifacts/policy/real01b-routing-d1-baseline-uniform-r6-ef25cov25-r0b100-r1n-07a6d377-92-init0-seed-1-umirel-schemep-proprioanchor-7w2wlmpo-final/v0",
+        "name": "baseline_umirel_r6_final",
+        "round": 6,
+        "tags": [
+          "UMI relative"
+        ],
+        "training_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/runs/7w2wlmpo"
+      },
+      "after": {
+        "environment": "routing_d2",
+        "round": 3,
+        "method": "HG-DAgger baseline",
+        "tags": [
+          "UMI relative"
+        ],
+        "status": "mainline"
+      }
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r8-ef25cov25-r0b100-r1n-30ce35e6-92-init0-seed-1-umirel-schemep-proprioanchor-rq3j6t4c-final:v0",
+      "name": "baseline_umirel_r8_final",
+      "before": {
+        "_creationTime": 1788480246180.417,
+        "_id": "j97a14k8qhrnhhdrcha9h6dzxs8drfnn",
+        "effective_status": "mainline",
+        "environment": "routing_d1",
+        "method": "HG-DAgger baseline",
+        "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r8-ef25cov25-r0b100-r1n-30ce35e6-92-init0-seed-1-umirel-schemep-proprioanchor-rq3j6t4c-final:v0",
+        "model_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/artifacts/policy/real01b-routing-d1-baseline-uniform-r8-ef25cov25-r0b100-r1n-30ce35e6-92-init0-seed-1-umirel-schemep-proprioanchor-rq3j6t4c-final/v0",
+        "name": "baseline_umirel_r8_final",
+        "round": 8,
+        "tags": [
+          "UMI relative"
+        ],
+        "training_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/runs/rq3j6t4c"
+      },
+      "after": {
+        "environment": "routing_d2",
+        "round": 4,
+        "method": "HG-DAgger baseline",
+        "tags": [
+          "UMI relative"
+        ],
+        "status": "mainline"
+      }
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r9-umirel-ef50cov50-r0b-f9851337-92-init0-seed-1-umirel-schemep-proprioanchor-was58pev-final:v0",
+      "name": "baseline_umirel_r9_final",
+      "before": {
+        "_creationTime": 1788824547129.7617,
+        "_id": "j97dz1nk0bqva66t4khpkcp3598dzkg3",
+        "effective_status": "mainline",
+        "environment": "routing_d1",
+        "method": "HG-DAgger baseline",
+        "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-baseline-uniform-r9-umirel-ef50cov50-r0b-f9851337-92-init0-seed-1-umirel-schemep-proprioanchor-was58pev-final:v0",
+        "model_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/artifacts/policy/real01b-routing-d1-baseline-uniform-r9-umirel-ef50cov50-r0b-f9851337-92-init0-seed-1-umirel-schemep-proprioanchor-was58pev-final/v0",
+        "name": "baseline_umirel_r9_final",
+        "round": 9,
+        "tags": [
+          "UMI relative"
+        ],
+        "training_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/runs/was58pev"
+      },
+      "after": {
+        "environment": "routing_d2",
+        "round": 5,
+        "method": "HG-DAgger baseline",
+        "tags": [
+          "UMI relative"
+        ],
+        "status": "mainline"
+      }
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-r0-dp-r18-sepenc-imagenet-pre-56c61020-92-init0-seed-1-umirel-schemep-proprioanchor-1wbp1jd8-final:v0",
+      "name": "ours_umirel_r0_final",
+      "before": {
+        "_creationTime": 1788551996607.2805,
+        "_id": "j97b0n5808xgenjxtykdw6gqvh8dr5xy",
+        "effective_status": "mainline",
+        "environment": "routing_d1",
+        "method": "HG-DAgger mulligan",
+        "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-r0-dp-r18-sepenc-imagenet-pre-56c61020-92-init0-seed-1-umirel-schemep-proprioanchor-1wbp1jd8-final:v0",
+        "model_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/artifacts/policy/real01b-routing-d1-ours-sobol-r0-dp-r18-sepenc-imagenet-pre-56c61020-92-init0-seed-1-umirel-schemep-proprioanchor-1wbp1jd8-final/v0",
+        "name": "ours_umirel_r0_final",
+        "round": 0,
+        "tags": [
+          "R0 demonstrations",
+          "UMI relative"
+        ],
+        "training_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/runs/1wbp1jd8"
+      },
+      "after": {
+        "environment": "routing_d2",
+        "round": 0,
+        "method": "HG-DAgger mulligan",
+        "tags": [
+          "R0 demonstrations",
+          "UMI relative"
+        ],
+        "status": "mainline"
+      }
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r2-ef25cov25-r0o100-r1-46794cd3-92-init0-seed-1-umirel-schemep-proprioanchor-aunzdjy0-final:v0",
+      "name": "ours_umirel_r2_final",
+      "before": {
+        "_creationTime": 1788817901574.8213,
+        "_id": "j9777frsf9n7n24n0kv4gsq3ks8dzzmk",
+        "effective_status": "mainline",
+        "environment": "routing_d1",
+        "method": "HG-DAgger mulligan",
+        "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r2-ef25cov25-r0o100-r1-46794cd3-92-init0-seed-1-umirel-schemep-proprioanchor-aunzdjy0-final:v0",
+        "model_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/artifacts/policy/real01b-routing-d1-ours-sobol-freecf-r2-ef25cov25-r0o100-r1-46794cd3-92-init0-seed-1-umirel-schemep-proprioanchor-aunzdjy0-final/v0",
+        "name": "ours_umirel_r2_final",
+        "round": 2,
+        "tags": [
+          "UMI relative"
+        ],
+        "training_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/runs/aunzdjy0"
+      },
+      "after": {
+        "environment": "routing_d2",
+        "round": 1,
+        "method": "HG-DAgger mulligan",
+        "tags": [
+          "UMI relative"
+        ],
+        "status": "mainline"
+      }
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r4-ef25cov25-r0o100-r1-b77363f2-92-init0-seed-1-umirel-schemep-proprioanchor-tubt35k0-final:v0",
+      "name": "ours_umirel_r4_final",
+      "before": {
+        "_creationTime": 1788817901574.8218,
+        "_id": "j975s9kpwgqpanevaeanx122c18dz6wy",
+        "effective_status": "mainline",
+        "environment": "routing_d1",
+        "method": "HG-DAgger mulligan",
+        "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r4-ef25cov25-r0o100-r1-b77363f2-92-init0-seed-1-umirel-schemep-proprioanchor-tubt35k0-final:v0",
+        "model_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/artifacts/policy/real01b-routing-d1-ours-sobol-freecf-r4-ef25cov25-r0o100-r1-b77363f2-92-init0-seed-1-umirel-schemep-proprioanchor-tubt35k0-final/v0",
+        "name": "ours_umirel_r4_final",
+        "round": 4,
+        "tags": [
+          "UMI relative"
+        ],
+        "training_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/runs/tubt35k0"
+      },
+      "after": {
+        "environment": "routing_d2",
+        "round": 2,
+        "method": "HG-DAgger mulligan",
+        "tags": [
+          "UMI relative"
+        ],
+        "status": "mainline"
+      }
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r6-ef25cov25-r0o100-r1-6e1f8652-92-init0-seed-1-umirel-schemep-proprioanchor-x9bqq2ss-final:v0",
+      "name": "ours_umirel_r6_final",
+      "before": {
+        "_creationTime": 1788817901574.8223,
+        "_id": "j978cxp72h214fesz135c3xd418dzgh7",
+        "effective_status": "mainline",
+        "environment": "routing_d1",
+        "method": "HG-DAgger mulligan",
+        "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r6-ef25cov25-r0o100-r1-6e1f8652-92-init0-seed-1-umirel-schemep-proprioanchor-x9bqq2ss-final:v0",
+        "model_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/artifacts/policy/real01b-routing-d1-ours-sobol-freecf-r6-ef25cov25-r0o100-r1-6e1f8652-92-init0-seed-1-umirel-schemep-proprioanchor-x9bqq2ss-final/v0",
+        "name": "ours_umirel_r6_final",
+        "round": 6,
+        "tags": [
+          "UMI relative"
+        ],
+        "training_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/runs/x9bqq2ss"
+      },
+      "after": {
+        "environment": "routing_d2",
+        "round": 3,
+        "method": "HG-DAgger mulligan",
+        "tags": [
+          "UMI relative"
+        ],
+        "status": "mainline"
+      }
+    },
+    {
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-routing-d1-r6-g0997-flatcache-tdl-h846-lr1e4-film-targetiid-k4-umirel-s1-final:v0",
+      "name": "ours_umirel_r6_iql_g0997_n32",
+      "before": {
+        "_creationTime": 1788817901574.8225,
+        "_id": "j974swghkarpw3rny3zjna6qpd8dz1ha",
+        "effective_status": "mainline",
+        "environment": "routing_d1",
+        "method": "HiL-IDQL mulligan",
+        "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-routing-d1-r6-g0997-flatcache-tdl-h846-lr1e4-film-targetiid-k4-umirel-s1-final:v0",
+        "model_url": "https://wandb.ai/self-improving/real-value-learning-01b/artifacts/policy/vision-idql-viql01b-routing-d1-r6-g0997-flatcache-tdl-h846-lr1e4-film-targetiid-k4-umirel-s1-final/v0",
+        "name": "ours_umirel_r6_iql_g0997_n32",
+        "round": 6,
+        "tags": [
+          "UMI relative"
+        ],
+        "training_url": "https://wandb.ai/self-improving/real-value-learning-01b/runs/ze4we52p"
+      },
+      "after": {
+        "environment": "routing_d2",
+        "round": 3,
+        "method": "HiL-IDQL mulligan",
+        "tags": [
+          "UMI relative"
+        ],
+        "status": "mainline"
+      }
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r8-ef25cov25-r0o100-r1-1e5837d4-92-init0-seed-1-umirel-schemep-proprioanchor-utx7y67c-final:v0",
+      "name": "ours_umirel_r8_final",
+      "before": {
+        "_creationTime": 1788465908954.1074,
+        "_id": "j972pah9wkrhekx07wqe1r4p4n8dpk45",
+        "effective_status": "mainline",
+        "environment": "routing_d1",
+        "method": "HG-DAgger mulligan",
+        "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r8-ef25cov25-r0o100-r1-1e5837d4-92-init0-seed-1-umirel-schemep-proprioanchor-utx7y67c-final:v0",
+        "model_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/artifacts/policy/real01b-routing-d1-ours-sobol-freecf-r8-ef25cov25-r0o100-r1-1e5837d4-92-init0-seed-1-umirel-schemep-proprioanchor-utx7y67c-final/v0",
+        "name": "ours_umirel_r8_final",
+        "round": 8,
+        "tags": [
+          "UMI relative"
+        ],
+        "training_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/runs/utx7y67c"
+      },
+      "after": {
+        "environment": "routing_d2",
+        "round": 4,
+        "method": "HG-DAgger mulligan",
+        "tags": [
+          "UMI relative"
+        ],
+        "status": "mainline"
+      }
+    },
+    {
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-routing-d1-r8-g0997-flatcache-tdl-h846-lr1e4-film-targetiid-k4-umirel-s1-final:v0",
+      "name": "ours_umirel_r8_iql_g0997_n32",
+      "before": {
+        "_creationTime": 1788650034292.2322,
+        "_id": "j976carx660fqetxwyq832t24x8dv2bq",
+        "effective_status": "mainline",
+        "environment": "routing_d1",
+        "method": "HiL-IDQL mulligan",
+        "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-routing-d1-r8-g0997-flatcache-tdl-h846-lr1e4-film-targetiid-k4-umirel-s1-final:v0",
+        "model_url": "https://wandb.ai/self-improving/real-value-learning-01b/artifacts/policy/vision-idql-viql01b-routing-d1-r8-g0997-flatcache-tdl-h846-lr1e4-film-targetiid-k4-umirel-s1-final/v0",
+        "name": "ours_umirel_r8_iql_g0997_n32",
+        "round": 8,
+        "tags": [
+          "UMI relative"
+        ],
+        "training_url": "https://wandb.ai/self-improving/real-value-learning-01b/runs/u2r46obn"
+      },
+      "after": {
+        "environment": "routing_d2",
+        "round": 4,
+        "method": "HiL-IDQL mulligan",
+        "tags": [
+          "UMI relative"
+        ],
+        "status": "mainline"
+      }
+    },
+    {
+      "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r9-umirel-ef50cov50-r0-f21af13c-92-init0-seed-1-umirel-schemep-proprioanchor-m5n2jkmr-final:v0",
+      "name": "ours_umirel_r9_final",
+      "before": {
+        "_creationTime": 1788824547129.762,
+        "_id": "j97c9v5f42q8ap88eh4t7hy5a18dyqhg",
+        "effective_status": "mainline",
+        "environment": "routing_d1",
+        "method": "HG-DAgger mulligan",
+        "model_id": "wandb://self-improving/real-dagger-mining-01b/real01b-routing-d1-ours-sobol-freecf-r9-umirel-ef50cov50-r0-f21af13c-92-init0-seed-1-umirel-schemep-proprioanchor-m5n2jkmr-final:v0",
+        "model_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/artifacts/policy/real01b-routing-d1-ours-sobol-freecf-r9-umirel-ef50cov50-r0-f21af13c-92-init0-seed-1-umirel-schemep-proprioanchor-m5n2jkmr-final/v0",
+        "name": "ours_umirel_r9_final",
+        "round": 9,
+        "tags": [
+          "UMI relative"
+        ],
+        "training_url": "https://wandb.ai/self-improving/real-dagger-mining-01b/runs/m5n2jkmr"
+      },
+      "after": {
+        "environment": "routing_d2",
+        "round": 5,
+        "method": "HG-DAgger mulligan",
+        "tags": [
+          "UMI relative"
+        ],
+        "status": "mainline"
+      }
+    },
+    {
+      "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-routing-d1-r9-g0997-flatcache-tdl-h846-lr1e4-film-targetiid-k4-umirel-s1-final:v0",
+      "name": "ours_umirel_r9_iql_g0997_n32",
+      "before": {
+        "_creationTime": 1788824547129.7622,
+        "_id": "j971j9re46rm437znv79thgp218dy0bj",
+        "effective_status": "mainline",
+        "environment": "routing_d1",
+        "method": "HiL-IDQL mulligan",
+        "model_id": "wandb://self-improving/real-value-learning-01b/vision-idql-viql01b-routing-d1-r9-g0997-flatcache-tdl-h846-lr1e4-film-targetiid-k4-umirel-s1-final:v0",
+        "model_url": "https://wandb.ai/self-improving/real-value-learning-01b/artifacts/policy/vision-idql-viql01b-routing-d1-r9-g0997-flatcache-tdl-h846-lr1e4-film-targetiid-k4-umirel-s1-final/v0",
+        "name": "ours_umirel_r9_iql_g0997_n32",
+        "round": 9,
+        "tags": [
+          "UMI relative"
+        ],
+        "training_url": "https://wandb.ai/self-improving/real-value-learning-01b/runs/kxlgx84t"
+      },
+      "after": {
+        "environment": "routing_d2",
+        "round": 5,
+        "method": "HiL-IDQL mulligan",
+        "tags": [
+          "UMI relative"
+        ],
+        "status": "mainline"
+      }
+    }
+  ]
+}

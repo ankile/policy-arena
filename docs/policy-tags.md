@@ -56,3 +56,16 @@ bun scripts/backfill_policy_tags.ts docs/policy-tags-2026-09-15.json --apply
 The backfill checks identities and statuses, rejects conflicting existing tags,
 skips already-matching entries, and verifies saved values by reading them back.
 It does not automatically classify future registrations.
+
+## Routing D2 migration, 2026-09-15
+
+The 15 UMI-relative routing policies now belong to mainline `routing_d2`.
+Their round tags map original lineage rounds 0/2/4/6/8/9 to paper rounds
+0/1/2/3/4/5. The R0 baseline inherits Mainline instead of its former Testing
+override. `routing_d1` is Retired with `superseded_by: routing_d2`.
+
+The [migration record](routing-d2-migration-2026-09-15.json) preserves the
+original policy metadata, mapping, and evaluation-results hash. Policy names,
+model IDs, evaluation results, and source dataset task metadata retain their
+original identifiers. The initial classification manifest above is historical;
+its Routing D1 entries predate this migration and must not be reapplied.
