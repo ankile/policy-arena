@@ -42,7 +42,7 @@ function AttemptInput({ value, disabled, name, onCommit, onPending }: {
 
 /** One visible timestamp per shared physical event. The legacy wire fields are
  * materialized only on explicit edits; rendering never normalizes source data. */
-export function TrajectoryEventTimeline(props: StageLabelFormProps) {
+export function TrajectoryEventTimeline(props: StageLabelFormProps & { focusOnly?: boolean }) {
   const { row, spec, disabled } = props;
   const tag = spec.trajectory!;
   const task = tag.task_definition;
@@ -247,14 +247,15 @@ export function TrajectoryEventTimeline(props: StageLabelFormProps) {
   const sortEvents = (events: StageLabelRow[]) => [...events].sort((a, b) => Number(a.time_s) - Number(b.time_s));
   const newOccurrence = () => ({ attempt_index: 1, time_s: null, confidence: "medium", evidence: "" });
   return <section aria-label="Episode events" className="space-y-4">
-    <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-base font-medium">Episode events</h3>
+    <div hidden={props.focusOnly} className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-base font-medium">Episode events</h3>
       {props.compactEvents && <button className={buttonClass} disabled={props.hasPendingInput} onClick={() => setShowAll(!showAll)}>{showAll ? "Compact event list" : "Expand all event details"}</button>}
       <select className={inputClass} aria-label="Event display order" disabled={structuralDisabled} value={order} onChange={(e) => setOrder(e.target.value as typeof order)}><option value="chronological">Time order</option><option value="recorded">Recorded order</option></select>
     </div>
-    <p className="text-xs text-ink-muted">Review each physical event once. Shared action and stage times update together. Event details hold attempts and retained source evidence.</p>
+    {!props.focusOnly && <p className="text-xs text-ink-muted">Review each physical event once. Shared action and stage times update together. Event details hold attempts and retained source evidence.</p>}
+    {props.focusOnly && !props.selectedEventKey && <p className="text-sm text-ink-muted">Click a recorded mark below the video to inspect or correct it here.</p>}
     {undo?.after === signature(row, links) && <button className={buttonClass} disabled={structuralDisabled} onClick={() => { props.onEdit(undo.before); props.onEventLinksChange?.(undo.links); props.onSelectEvent?.(null); setUndo(null); }}>Undo last event edit</button>}
     {validLinks.length !== links.length && <div role="alert" className="rounded-lg bg-gold-light p-3 text-xs space-y-2"><p>Some saved event associations no longer identify a unique pair. Review these events separately before confirming.</p><button className={buttonClass} disabled={structuralDisabled} onClick={() => change(row, validLinks, true)}>Clear unmatched event associations</button></div>}
-    <div className="rounded-lg border border-warm-200 bg-warm-50 p-3 text-sm space-y-2" aria-label="Primary failure summary">
+    <div hidden={props.focusOnly} className="rounded-lg border border-warm-200 bg-warm-50 p-3 text-sm space-y-2" aria-label="Primary failure summary">
       <p>Primary failure: {noFailure ? "None" : primaryIndex !== null && failures ? `${task.failureModes.some((f) => f.id === failures[primaryIndex].failure_mode_id) ? readable(String(failures[primaryIndex].failure_mode_id)) : "Unset or invalid failure"} at ${timeValue(failures[primaryIndex].time_s)?.toFixed(2) ?? "unset"} s` : "Choose a failure event below"}</p>
       {!noFailure && primaryIndex === null && !!row.failure_mode && <p className="text-xs text-ink-muted">Earlier summary: {task.failureModes.some((f) => f.id === row.failure_mode) ? readable(String(row.failure_mode)) : "unset or invalid"}, {timeValue(row.primary_failure_time_s)?.toFixed(2) ?? "unset"} s. Select the matching event to resolve it.</p>}
       <label className="flex items-center gap-2 text-xs"><input type="radio" name="primary-failure-event" checked={noFailure} disabled={structuralDisabled} onChange={() => change({ ...row, failure_mode: task.successDefinition.noFailureModeId, primary_failure_time_s: null }, links, true)} />No primary failure, successful episode</label>
@@ -272,7 +273,7 @@ export function TrajectoryEventTimeline(props: StageLabelFormProps) {
       const sharedSelection = paired.find((group) => `transition:${group.transitionIndex}` === props.selectedEventKey);
       const selectedKey = sharedSelection ? `action:${sharedSelection.actionIndex}:${sharedSelection.occurrenceIndex}` : props.selectedEventKey;
       const expanded = !compact || selectedKey === entry.key;
-      return <div key={entry.key} className={compact && expanded ? "order-first" : ""}>
+      return <div key={entry.key} hidden={props.focusOnly && selectedKey !== entry.key} className={compact && expanded ? "order-first" : ""}>
         {compact && <button className={`w-full flex items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm cursor-pointer ${expanded ? "border-teal bg-teal/5" : "border-warm-200"}`} disabled={props.hasPendingInput}
           aria-expanded={expanded} onClick={() => { props.onSelectEvent?.(expanded ? null : entry.key); if (!expanded && entry.time !== null) props.onSeekTime(entry.time); }}>
           <span className="font-mono text-xs text-teal w-16 shrink-0">{entry.time?.toFixed(2) ?? "Unset"}{entry.time !== null ? " s" : ""}</span>
@@ -282,7 +283,7 @@ export function TrajectoryEventTimeline(props: StageLabelFormProps) {
       </div>;
     })}</div>
     {(!actions || !transitions || !failures) && <p role="alert" className="text-sm text-coral">An event list has an invalid structure. Its contents are preserved; inspect the source before replacing it.</p>}
-    <div className="flex flex-wrap gap-2">
+    <div hidden={props.focusOnly} className="flex flex-wrap gap-2">
       {transitions && <button className={buttonClass} disabled={structuralDisabled} onClick={() => structuralChange({ ...row, stage_transitions: [...transitions, { ...newOccurrence(), from_stage_id: task.stages[0].id, from_stage_index: task.stages[0].index, to_stage_id: task.stages[0].id, to_stage_index: task.stages[0].index }] })}>Add transition</button>}
       {failures && <button className={buttonClass} disabled={structuralDisabled} onClick={() => {
         const event = { ...newOccurrence(), failure_mode_id: task.failureModes.find((f) => f.id !== task.successDefinition.noFailureModeId)!.id };
@@ -291,7 +292,7 @@ export function TrajectoryEventTimeline(props: StageLabelFormProps) {
         structuralChange(next);
       }}>Add failure event</button>}
     </div>
-    <details className="rounded-lg border border-warm-200 p-3 space-y-3"><summary className="cursor-pointer text-sm text-teal">Add an action or another occurrence</summary>
+    <details hidden={props.focusOnly} className="rounded-lg border border-warm-200 p-3 space-y-3"><summary className="cursor-pointer text-sm text-teal">Add an action or another occurrence</summary>
       {actions?.map((action, index) => <div key={index} className="pt-2">
         {!records(action.occurrences) || action.occurrences.length === 0 ? <TrajectoryActionEditor {...props} action={action} index={index} definition={task.keyActions.find((a) => a.id === action.action_id)} onChange={(next) => structuralChange({ ...row, key_action_observations: actions.map((a, i) => i === index ? next : a) })} />
           : <button className={buttonClass} disabled={structuralDisabled} onClick={() => structuralChange({ ...row, key_action_observations: actions.map((a, i) => i === index ? setActionOccurrences(a, [...action.occurrences as StageLabelRow[], newOccurrence()]) : a) })}>Add another {task.keyActions.find((a) => a.id === action.action_id)?.name ?? `action ${index + 1}`} occurrence</button>}

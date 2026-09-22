@@ -7,6 +7,7 @@ export type VideoEventKind = "stage" | "action" | "failure";
 export interface VideoEvent {
   key: string;
   kind: VideoEventKind;
+  definitionId: string | null;
   title: string;
   time: number | null;
   attempt: number | null;
@@ -27,19 +28,19 @@ export function projectVideoEvents(spec: TrajectoryReviewSpec, row: StageLabelRo
   const events: VideoEvent[] = [];
   eventRecords(row.stage_transitions).forEach((event, index) => {
     const stage = task.stages.find((s) => s.id === event.to_stage_id);
-    events.push({ key: `transition:${index}`, kind: "stage", time: finite(event.time_s), attempt: finite(event.attempt_index),
+    events.push({ key: `transition:${index}`, kind: "stage", definitionId: stage?.id ?? null, time: finite(event.time_s), attempt: finite(event.attempt_index),
       title: stage ? `S${stage.index} · ${stage.name === `S${stage.index}` ? readableEventName(stage.id) : stage.name}` : "Unknown stage" });
   });
   eventRecords(row.key_action_observations).forEach((action, index) => {
     const definition = task.keyActions.find((a) => a.id === action.action_id);
     eventRecords(action.occurrences).forEach((event, occurrence) => {
-      events.push({ key: `action:${index}:${occurrence}`, kind: "action", time: finite(event.time_s), attempt: finite(event.attempt_index),
+      events.push({ key: `action:${index}:${occurrence}`, kind: "action", definitionId: definition?.id ?? null, time: finite(event.time_s), attempt: finite(event.attempt_index),
         title: definition?.name ?? "Unknown action" });
     });
   });
   eventRecords(row.failure_events).forEach((event, index) => {
     const definition = task.failureModes.find((f) => f.id === event.failure_mode_id);
-    events.push({ key: `failure:${index}`, kind: "failure", time: finite(event.time_s), attempt: finite(event.attempt_index),
+    events.push({ key: `failure:${index}`, kind: "failure", definitionId: definition?.id ?? null, time: finite(event.time_s), attempt: finite(event.attempt_index),
       title: definition ? readableEventName(definition.id) : "Unknown failure" });
   });
   return events.sort((a, b) => (a.time ?? Infinity) - (b.time ?? Infinity));

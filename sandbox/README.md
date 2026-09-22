@@ -18,16 +18,26 @@ Open <http://127.0.0.1:5174/sandbox/stage-review.html>. Node users can run
    a dataset without legacy predictions to try annotation from scratch.
 2. Play or scrub the synchronized cameras. Use **−1 frame / +1 frame**,
    slower playback, or **Enlarge** on the camera with the clearest evidence.
-3. Click **Stage reached**, **Action happened**, or **Failure observed** to
-   pause and capture that frame. Choose the label and attempt, then mark it.
-   Stage and action observations are independent; marking one does not invent
-   the other. The furthest-stage and primary-failure summaries change only
-   when their explicit checkboxes are selected.
-4. Click an existing timeline mark to seek and open its inspector. Position
-   the video and use **Move to current frame** to correct its timestamp.
+3. In **What happens here?**, review the recorded progress at the playhead.
+   **Mark S… here** pauses and captures the next milestone in one click. If it
+   already has a mark, **Move S… to this frame** corrects that mark instead of
+   duplicating it. At most three related actions are offered nearby; completed
+   actions drop out. The checked, visible summary option only advances the
+   episode's furthest stage; it never lowers it. Uncheck it for an event-only edit.
+4. Click a stage on the progress strip or open **All marks** to seek and inspect
+   an existing observation in **This moment**. Position the video and use
+   **Move to current frame** to correct its timestamp.
    Unresolved conditional action/stage pairs are not silently retimed together;
    choose a shared timestamp explicitly if they describe the same event.
-5. Use **Save draft** for partial work, or review the full structured label
+5. Use **Something went wrong** to capture a failure. **Other label / retry**
+   offers every stage/action, an attempt override, and **Start another attempt**.
+   Starting an attempt records no events. Suggestions follow task-defined
+   stage/action links and recorded times, not live video recognition; they do
+   not enforce a strict path or invent skipped stages. Stages and actions remain
+   independent. **Undo last mark** restores the preceding edit exactly.
+6. Open **Episode summary** for endpoint judgments and human notes, or
+   **All fields** for the complete editor. Use **Save draft** for partial work,
+   or review the full structured label
    before confirming. Reload to verify persistence. **Export local saves**
    downloads your trial review history (Convex JSON encoding, including int64).
 

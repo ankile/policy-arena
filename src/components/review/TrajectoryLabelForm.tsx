@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { TrajectoryEventTimeline } from "./TrajectoryEventTimeline";
 import type { StageLabelFormProps } from "./StageLabelForm";
 import { trajectoryReviewMessage } from "../../lib/trajectoryReviewMessages";
@@ -12,6 +13,10 @@ function number(value: unknown): number | null {
  * decisions. Explicit action edits synchronize redundant occurrence summaries. */
 export function TrajectoryLabelForm(props: StageLabelFormProps) {
   const { spec, row, disabled, blind = false } = props;
+  const [panel, setPanel] = useState<{ tab: "moment" | "summary" | "all"; selection: string | null | undefined }>({ tab: "moment", selection: props.selectedEventKey });
+  // Selecting a different video mark brings its editor back into view, while
+  // ordinary playback never switches tabs or unmounts unfinished inputs.
+  const tab = !props.compactEvents ? "all" : panel.selection !== props.selectedEventKey ? "moment" : panel.tab;
   const violations = props.violations.filter((violation) => violation.code !== "trajectory_timeline");
   const onEdit = props.onEdit;
   if (!spec.trajectory) throw new Error("Trajectory form requires a trajectory spec");
@@ -41,7 +46,12 @@ export function TrajectoryLabelForm(props: StageLabelFormProps) {
   </label>;
 
   return <div className="flex flex-col gap-5" data-testid="trajectory-form">
-    <div>
+    {props.compactEvents && <div className="flex border-b border-warm-200" role="tablist" aria-label="Review panel">
+      {(["moment", "summary", "all"] as const).map((value) => <button key={value} role="tab" aria-selected={tab === value} disabled={props.hasPendingInput}
+        className={`px-3 py-3 text-sm cursor-pointer border-b-2 disabled:opacity-40 ${tab === value ? "border-teal text-teal font-medium" : "border-transparent text-ink-muted"}`}
+        onClick={() => setPanel({ tab: value, selection: props.selectedEventKey })}>{value === "moment" ? "This moment" : value === "summary" ? "Episode summary" : "All fields"}</button>)}
+    </div>}
+    <div hidden={tab === "moment"}>
       <h3 className="text-base font-medium text-ink">Episode summary</h3>
       <p className="mt-1 text-xs text-ink-muted">Check the summary and event times against the video. Confirmation covers these structured judgments; retained source text and confidence are excluded.</p>
     </div>
@@ -50,6 +60,7 @@ export function TrajectoryLabelForm(props: StageLabelFormProps) {
       {props.manualAnnotation && <p className="text-sm">Start with a mark beside the video, then complete the episode summary. You can save an unfinished draft.</p>}
       {violations.map((violation, index) => <p key={index} className="text-xs text-ink-muted">{trajectoryReviewMessage(violation, spec, blind)}</p>)}
     </details>}
+    <div hidden={tab === "moment"} className="space-y-5">
     <fieldset>
       <legend className="mb-2 text-sm font-medium">Furthest stage reached</legend>
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Maximum stage">
@@ -76,14 +87,16 @@ export function TrajectoryLabelForm(props: StageLabelFormProps) {
       <label className="text-xs flex flex-col gap-1">Final state{select("Final state", row.final_state, options(task.finalStates), (final_state) => onEdit({ final_state }))}</label>
       <label className="text-xs flex flex-col gap-1">Attempt count{integer("Attempt count", row.attempt_count, (attempt_count) => onEdit({ attempt_count }))}</label>
     </div>
-    <div className={props.compactEvents && props.selectedEventKey ? "order-first" : ""}><TrajectoryEventTimeline {...props} /></div>
-    <label className="block text-sm font-medium">Your review notes
+    <p className="text-sm text-ink-muted">Primary failure: {typeof row.failure_mode === "string" && task.failureModes.some((f) => f.id === row.failure_mode) ? readable(row.failure_mode) : "Not chosen"}. Edit the failure event from the timeline or All fields.</p>
+    </div>
+    <div hidden={tab === "summary"}><TrajectoryEventTimeline {...props} focusOnly={tab === "moment"} /></div>
+    <label hidden={tab === "moment"} className="block text-sm font-medium">Your review notes
       <textarea aria-label="Your review notes" disabled={disabled || !props.onHumanNotesChange} className={`${inputClass} block w-full mt-2`} rows={3}
         placeholder="Optional observations or uncertainty from your review" value={props.humanNotes ?? ""}
         onChange={(event) => props.onHumanNotesChange?.(event.target.value)} />
       <span className="block mt-1 text-xs font-normal text-ink-muted">Saved separately from the prediction. Available while policy identity stays hidden.</span>
     </label>
-    <details className="rounded-lg border border-warm-200 p-3 space-y-3">
+    <details hidden={tab !== "all"} className="rounded-lg border border-warm-200 p-3 space-y-3">
       <summary className="cursor-pointer text-xs text-ink-muted">Retained source text and confidence · excluded from human review</summary>
       <p className="text-xs text-ink-muted">These fields come from the starting label and may describe events you have corrected. They are preserved for compatibility, not treated as your reviewed explanations or confidence.</p>
       <label className="text-xs flex flex-col gap-1">Source confidence{confidence("Overall confidence", row.confidence, (confidence) => onEdit({ confidence }))}</label>

@@ -41,6 +41,8 @@ function fixture(
 // suite separately covers compact selection and capture from the player.
 async function settle() {
   await act(async () => {});
+  const allFields = Array.from(document.querySelectorAll('[role="tab"]')).find((button) => button.textContent === "All fields");
+  if (allFields) await act(async () => fireEvent.click(allFields));
   const expand = Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "Expand all event details");
   if (expand) await act(async () => fireEvent.click(expand));
 }
@@ -869,6 +871,7 @@ test("human notes remain separate, editable while blind, and survive draft navig
   expect(fixture.state.saves[0].review_protocol).toBe("structured-v1");
   expect(fixture.state.saves[0].notes).toBe("No jaw closure; the source explanation is wrong.");
   expect(fixture.state.saves[0].label).toEqual(selected.review_label);
+  await settle();
   expect((view.getByRole("textbox", { name: "Your review notes" }) as HTMLTextAreaElement).value).toBe("No jaw closure; the source explanation is wrong.");
 });
 

@@ -34,6 +34,7 @@ import { LabelHistoryPanel } from "./review/LabelHistoryPanel";
 import { ReviewViewer, type ViewerControls } from "./review/ReviewViewer";
 import { StageLabelForm } from "./review/StageLabelForm";
 import { TrajectoryVideoTools } from "./review/TrajectoryVideoTools";
+import { TrajectoryEventRail } from "./review/TrajectoryEventRail";
 import {
   cameraRoleForVideoKey,
   clamp,
@@ -1765,6 +1766,14 @@ export default function StageReview({
                   renderTimelineOverlays={renderTimelineOverlays}
                 />
               )}
+              {spec.trajectory && pending && episodeDurationS !== null && <TrajectoryEventRail
+                spec={spec} row={pending} violations={violations} frame={frame} markFrame={markFrame}
+                markDisabled={formDisabled} disabled={formDisabled} hasPendingInput={pendingInputCount > 0}
+                onEdit={edit} onSeekTime={seekTime} selectedEventKey={selectedEventKey} onSelectEvent={setSelectedEventKey}
+              />}
+              </div>
+
+              <div className={spec.trajectory ? "min-w-0" : ""}>
               {spec.trajectory && pending && episodeDurationS !== null && <TrajectoryVideoTools
                 key={sourceKey} sourceKey={sourceKey ?? ""} spec={spec} row={pending} duration={episodeDurationS}
                 violations={violations} frame={frame} markFrame={markFrame}
@@ -1773,9 +1782,6 @@ export default function StageReview({
                 onEdit={edit} onSeekTime={seekTime} eventLinks={draft?.eventLinks ?? []}
                 onEventLinksChange={editEventLinks} selectedEventKey={selectedEventKey} onSelectEvent={setSelectedEventKey}
               />}
-              </div>
-
-              <div className={spec.trajectory ? "min-w-0" : ""}>
               {pending !== null && (
                 <StageLabelForm
                   key={sourceKey}
