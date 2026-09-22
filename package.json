@@ -17,7 +17,9 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test": "bun test",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:release": "tsc -b && vite build --config vite.release.config.ts",
+    "package:release": "bun scripts/package_release.ts"
   },
   "dependencies": {
     "@auth/core": "^0.41.3",

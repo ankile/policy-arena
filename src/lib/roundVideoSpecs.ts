@@ -23,6 +23,8 @@ export interface RoundVideoSpec {
   episodeIndex: number;
   datasetRepo: string;
   cameraKey: string;
+  /** Immutable release URL, including the actual camera chunk and file. */
+  videoUrl?: string;
   episode: EpisodeWithoutSuccess | null; // null => no metadata for this episode
   /** Short arm label (`"3"`, or `"B3"` in the joined view); see `Arm.label`. */
   badge: string | null;

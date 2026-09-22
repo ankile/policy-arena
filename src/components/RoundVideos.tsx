@@ -33,9 +33,11 @@ export function RoundVideos({
   }
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
   const [playing, setPlaying] = useState(false);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
   const animFrameRef = useRef<number>(0);
 
   const togglePlay = useCallback(() => {
+    setPlaybackError(null);
     setPlaying((p) => !p);
   }, []);
 
@@ -61,14 +63,31 @@ export function RoundVideos({
     }
 
     if (playing) {
-      for (const { el } of active) el.play();
+      let cancelled = false;
+      // Keep finished clips at their last frame until the whole comparison ends.
+      // Rewinding each clip immediately makes a shorter clip appear unfinished
+      // on the next animation frame and prevents the group from ever stopping.
+      const complete = ({ el, episode }: typeof active[number]) =>
+        el.ended || el.currentTime >= episode.toTimestamp - 0.05;
+      if (active.every(complete)) {
+        for (const { el, episode } of active) el.currentTime = episode.fromTimestamp;
+      }
+      for (const item of active) {
+        if (!complete(item)) {
+          void item.el.play().catch((error: unknown) => {
+            if (cancelled) return;
+            setPlaybackError(error instanceof Error ? error.message : String(error));
+            setPlaying(false);
+          });
+        }
+      }
 
       const sync = () => {
         let allDone = true;
-        for (const { el, episode } of active) {
-          if (el.currentTime >= episode.toTimestamp - 0.05) {
+        for (const item of active) {
+          const { el } = item;
+          if (complete(item)) {
             el.pause();
-            el.currentTime = episode.fromTimestamp;
           } else {
             allDone = false;
           }
@@ -80,6 +99,11 @@ export function RoundVideos({
         animFrameRef.current = requestAnimationFrame(sync);
       };
       animFrameRef.current = requestAnimationFrame(sync);
+      return () => {
+        cancelled = true;
+        cancelAnimationFrame(animFrameRef.current);
+        for (const { el } of active) el.pause();
+      };
     } else {
       for (const { el } of active) el.pause();
     }
@@ -89,6 +113,7 @@ export function RoundVideos({
 
   return (
     <div className="mt-3 mb-1">
+      {playbackError && <p role="alert" className="text-sm text-red-700">Video playback failed: {playbackError}</p>}
       <div className={`grid gap-3 ${gridClass}`}>
         {videos.map((spec, i) => {
           if (spec === null) {
@@ -112,7 +137,7 @@ export function RoundVideos({
                 ref={(el) => {
                   videoRefs.current[i] = el;
                 }}
-                src={getVideoUrl(
+                src={spec.videoUrl ?? getVideoUrl(
                   spec.cameraKey,
                   episode.videoFileIndex,
                   spec.datasetRepo
