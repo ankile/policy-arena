@@ -19,8 +19,8 @@ export interface ViewerControls {
   togglePlay: () => void;
   /** Stop playback and snap the frame counter to the displayed frame.
    *  Returns the snapped frame when playback WAS running, else null — mark
-   *  handlers must use it: during playback the parent `frame` state is frozen
-   *  at the play-start value and marking there lands frames early. */
+   *  handlers must use it: the live frame counter can lag the video clock by
+   *  a render, so marking must use the synchronous snap instead. */
   pause: () => number | null;
 }
 
@@ -72,6 +72,8 @@ export function ReviewViewer({
   const seekTokenRef = useRef(0);
   const playingRef = useRef(false);
   const [playing, setPlaying] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [focusedCamera, setFocusedCamera] = useState<string | null>(null);
   const [drift, setDrift] = useState<string | null>(null);
   const [unverifiable, setUnverifiable] = useState(false);
   // Station crop display defaults ON to match the cv2 editor's review view.
@@ -218,6 +220,10 @@ export function ReviewViewer({
     onUnverifiable?.(unverifiable);
   }, [unverifiable, onUnverifiable]);
 
+  useEffect(() => {
+    for (const video of videoRefs.current.values()) video.playbackRate = playbackRate;
+  }, [playbackRate, metadataEpoch]);
+
   // Playback: the primary camera drives, the others follow its offset-corrected
   // clock; playback halts at the raw end of the episode segment.
   useEffect(() => {
@@ -230,8 +236,11 @@ export function ReviewViewer({
     for (const video of videos) void video.play();
 
     let raf = 0;
+    let lastFrame = -1;
     const tick = () => {
       const elapsed = primary.currentTime - primaryFrom;
+      const displayed = clamp(Math.floor(elapsed * fps), 0, episode.rawLength - 1);
+      if (displayed !== lastFrame) { lastFrame = displayed; onFrame(displayed); }
       for (const key of cameraKeys) {
         const video = videoRefs.current.get(key);
         if (!video || video === primary) continue;
@@ -249,7 +258,7 @@ export function ReviewViewer({
       cancelAnimationFrame(raf);
       for (const video of videos) video.pause();
     };
-  }, [playing, cameraKeys, episode, primaryKey, primaryFrom, primaryTo, stopAndSnap]);
+  }, [playing, cameraKeys, episode, primaryKey, primaryFrom, primaryTo, stopAndSnap, fps, onFrame]);
 
   // All cameras in ONE row at EQUAL HEIGHT, like the cv2 editor's side-by-side
   // composite: each tile's flex-grow is its aspect ratio (basis 0), so widths
@@ -269,8 +278,8 @@ export function ReviewViewer({
   };
 
   // Decision overlays are domain-specific (outcome tint / stage event border)
-  // and injected by the parent; suppressed during playback — the frame counter
-  // only tracks while scrubbing.
+  // and injected by the parent; suppressed during playback so decisions are
+  // made on a paused, verified frame rather than the approximate live clock.
   const videoOverlay = !playing ? renderVideoOverlay?.(frame) : null;
 
   return (
@@ -294,7 +303,7 @@ export function ReviewViewer({
         </div>
       )}
 
-      <div className="flex gap-3">
+      <div className="flex items-start gap-3">
         {cameraKeys.map((key) => {
           const box = cropByCameraKey?.[key];
           // Stable DOM per camera: cropping is style/class-only so toggling
@@ -319,7 +328,7 @@ export function ReviewViewer({
             <div
               key={key}
               className={`relative min-w-0 ${cropped ? "overflow-hidden rounded-lg bg-warm-100" : ""}`}
-              style={{ ...containerStyle, flex: `${tileAspect(key)} 1 0%` }}
+              style={{ ...containerStyle, flex: `${tileAspect(key) * (focusedCamera === key ? 2.5 : 1)} 1 0%` }}
             >
               <video
                 ref={setVideoRef(key)}
@@ -348,6 +357,11 @@ export function ReviewViewer({
                 }}
               />
               {videoOverlay}
+              <button className="absolute top-2 right-2 rounded bg-black/60 px-2 py-1 text-xs text-white cursor-pointer"
+                aria-label={`${focusedCamera === key ? "Restore" : "Enlarge"} ${cameraLabel(key)} camera`}
+                aria-pressed={focusedCamera === key} onClick={() => setFocusedCamera(focusedCamera === key ? null : key)}>
+                {focusedCamera === key ? "Restore" : "Enlarge"}
+              </button>
               <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/60 text-white text-[11px] font-mono">
                 {cameraLabel(key)}
                 {key === primaryKey ? " ·primary" : ""}
@@ -369,7 +383,7 @@ export function ReviewViewer({
         renderOverlays={renderTimelineOverlays}
       />
 
-      <div className="flex items-center gap-3 mt-3">
+      <div className="flex flex-wrap items-center gap-2 mt-3">
         <button
           onClick={togglePlay}
           className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-teal text-white font-body font-medium text-xs hover:bg-teal/90 transition-colors cursor-pointer"
@@ -387,6 +401,14 @@ export function ReviewViewer({
           {playing ? "Pause" : "Play"}
           <span className="font-mono text-[10px] opacity-70">space</span>
         </button>
+        {[-1, 1].map((delta) => <button key={delta} className="rounded-lg border border-warm-200 px-2 py-1.5 text-xs cursor-pointer"
+          aria-label={delta < 0 ? "Previous frame" : "Next frame"}
+          onClick={() => { const current = pause() ?? frame; onFrame(clamp(current + delta, 0, episode.rawLength - 1)); }}>
+          {delta < 0 ? "−1 frame" : "+1 frame"}
+        </button>)}
+        <select aria-label="Playback speed" className="rounded-lg border border-warm-200 px-2 py-1.5 text-xs" value={playbackRate} onChange={(e) => setPlaybackRate(Number(e.target.value))}>
+          {[0.25, 0.5, 1, 1.5, 2].map((speed) => <option key={speed} value={speed}>{speed}×</option>)}
+        </select>
         <span className="font-mono text-xs text-ink">
           frame {frame} / {episode.rawLength - 1} · {(frame / fps).toFixed(2)}s
         </span>

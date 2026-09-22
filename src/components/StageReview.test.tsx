@@ -37,7 +37,13 @@ function fixture(
   return { state, view, rerender };
 }
 
-async function settle() { await act(async () => {}); }
+// The existing integrity suite exercises the full inspector. The video tools
+// suite separately covers compact selection and capture from the player.
+async function settle() {
+  await act(async () => {});
+  const expand = Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "Expand all event details");
+  if (expand) await act(async () => fireEvent.click(expand));
+}
 function key(value: string) { fireEvent.keyDown(window, { key: value }); }
 
 function chooseVersion(view: ReturnType<typeof render>, version: string) {
@@ -417,7 +423,7 @@ describe("generic trajectory review", () => {
     await settle();
     expect(view.getByTestId("trajectory-form")).toBeTruthy();
     expect((view.getByRole("combobox", { name: "Task success" }) as HTMLSelectElement).value).toBe("false");
-    expect(view.getByRole("group", { name: "Maximum stage" }).querySelector('[aria-pressed="true"]')?.textContent).toBe(`S${selected.review_label!.max_stage}`);
+    expect(view.getByRole("group", { name: "Maximum stage" }).querySelector('[aria-pressed="true"]')?.textContent).toStartWith(`S${selected.review_label!.max_stage} · `);
     expect(state.saves).toHaveLength(0);
     fireEvent.click(view.getByRole("button", { name: /model evidence/ }));
     expect(view.container.textContent).toContain(`Prediction source revision: ${"f".repeat(40)}`);
@@ -507,6 +513,7 @@ test("generic timestamps keep exact source precision through untouched blur and 
   fireEvent.focus(timeInput); fireEvent.blur(timeInput);
   await act(async () => chooseVersion(view, "B"));
   expect(fixture.state.saves).toHaveLength(0);
+  await settle();
   const nextInput = view.getByRole("group", { name: "Transition 1 time" }).querySelector("input")!;
   fireEvent.change(nextInput, { target: { value: "1.234568" } }); fireEvent.blur(nextInput);
   await act(async () => chooseVersion(view, "A"));
@@ -560,7 +567,7 @@ test("fractional episode URLs cannot throw during the cross-schema availability 
 });
 
 for (const control of ["clear", "mark"] as const) {
-  test(`generic ${control} resolves invalid local timestamp text even when the stored value stays the same`, async () => {
+  test(control === "clear" ? "generic clear resolves invalid local timestamp text even when the stored value stays the same" : "generic mark preserves unfinished text when no verified video is available", async () => {
     window.history.replaceState(null, "", "/?episode=0&prediction=A");
     const fixture = createStageReviewFixture(); const { selected } = configureTrajectoryFixture(fixture);
     const label = structuredClone(selected.review_label!);
@@ -571,10 +578,18 @@ for (const control of ["clear", "mark"] as const) {
     let group = view.getByRole("group", { name: groupName });
     fireEvent.change(group.querySelector("input")!, { target: { value: "-" } });
     const button = control === "clear" ? group.querySelector('[title="Clear Failure 1 time"]')!
-      : Array.from(group.querySelectorAll("button")).find((item) => item.textContent!.includes("mark"))!;
+      : Array.from(group.querySelectorAll("button")).find((item) => item.textContent!.includes("Move to current frame"))!;
     fireEvent.click(button); await settle();
     group = view.getByRole("group", { name: groupName });
-    expect((group.querySelector("input") as HTMLInputElement).value).toBe(control === "clear" ? "" : "0");
+    if (control === "mark") {
+      // This fixture intentionally has no video. Capturing must not manufacture
+      // a frame or erase unfinished text when there is no verified evidence.
+      expect((group.querySelector("input") as HTMLInputElement).value).toBe("-");
+      expect(view.container.textContent).toContain("verified video frame is required");
+      expect(fixture.state.saves).toHaveLength(0);
+      return;
+    }
+    expect((group.querySelector("input") as HTMLInputElement).value).toBe("");
     expect(view.container.textContent).not.toContain("unfinished or invalid text");
     await act(async () => key("u"));
     expect(fixture.state.saves).toHaveLength(1);
@@ -594,6 +609,7 @@ test("source-free generic annotation waits for policy signals and pins the valid
   expect(view.queryByTestId("trajectory-form")).toBeNull();
   await act(async () => key("u")); expect(fixture.state.saves).toHaveLength(0);
   await act(async () => release?.());
+  await settle();
   expect(view.container.textContent).toContain("policy 8.0s / raw 450f");
   expect((view.getByRole("combobox", { name: "Task success" }) as HTMLSelectElement).value).toBe("__invalid__");
   fireEvent.click(view.getByRole("button", { name: "Add failure event" }));

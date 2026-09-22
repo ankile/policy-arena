@@ -7,6 +7,7 @@ import { patchActionOccurrence, removeActionOccurrence, setActionOccurrences } f
 import { TrajectoryActionEditor } from "./TrajectoryActionEditor";
 import { TimeControls } from "./ReviewTimeControls";
 import type { StageLabelFormProps } from "./StageLabelForm";
+import { projectVideoEvents } from "../../lib/trajectoryVideoEvents";
 
 const buttonClass = "rounded-lg border border-warm-200 bg-white px-2 py-1.5 text-xs text-teal hover:bg-warm-50 cursor-pointer disabled:opacity-40";
 const inputClass = "rounded-lg border border-warm-200 bg-white px-2 py-1.5 text-sm min-w-0 max-w-full disabled:opacity-40";
@@ -48,6 +49,8 @@ export function TrajectoryEventTimeline(props: StageLabelFormProps) {
   const links = props.eventLinks ?? [];
   const [undo, setUndo] = useState<{ before: StageLabelRow; links: TrajectoryEventLink[]; after: string } | null>(null);
   const [order, setOrder] = useState<"chronological" | "recorded">("chronological");
+  const [showAll, setShowAll] = useState(false);
+  const compact = props.compactEvents && !showAll;
   const malformed = props.violations.some((v) => v.code === "trajectory_shape");
   const structuralDisabled = disabled || props.hasPendingInput || malformed;
   const actions = records(row.key_action_observations) ? row.key_action_observations : null;
@@ -81,7 +84,11 @@ export function TrajectoryEventTimeline(props: StageLabelFormProps) {
     const candidates = getUnifiedEventCandidates(tag, next);
     return links.filter((link) => candidates.some((group) => sameRef(link, group)));
   };
-  const structuralChange = (next: StageLabelRow) => change(next, retainRefs(next), true);
+  const structuralChange = (next: StageLabelRow) => {
+    change(next, retainRefs(next), true);
+    // Selection keys are array positions, not persistent event identities.
+    props.onSelectEvent?.(null);
+  };
   const stageTitle = (id: unknown) => {
     const stage = task.stages.find((value) => value.id === id);
     return stage ? `S${stage.index}: ${stage.name === `S${stage.index}` ? readable(stage.id) : stage.name}` : "Unset stage";
@@ -117,6 +124,8 @@ export function TrajectoryEventTimeline(props: StageLabelFormProps) {
       <option value="" disabled>Choose a stage</option>{task.stages.map((s) => <option key={s.id} value={s.id}>{stageTitle(s.id)}</option>)}
     </select></label>;
   const entries: { key: string; time: number | null; node: ReactNode }[] = [];
+  let summaries: ReturnType<typeof projectVideoEvents> = [];
+  try { summaries = projectVideoEvents(tag, row); } catch { /* Existing malformed-source warning below. */ }
   actions?.forEach((action, actionIndex) => {
     if (!records(action.occurrences)) return;
     const occurrenceList = action.occurrences;
@@ -155,8 +164,8 @@ export function TrajectoryEventTimeline(props: StageLabelFormProps) {
             {!group.sameTime && <button className={buttonClass} disabled={structuralDisabled || group.stageTimeS === null} onClick={() => sharedTime(group, group.stageTimeS, true)}>Use {(group.stageTimeS?.toFixed(2) ?? "unset")} s for this event</button>}
           </div>
         </div>}
-        {eventTime(`${name} time`, event.time_s, (time) => group ? sharedTime(group, time, true) : edit({ time_s: time }), !!group && malformed)}
-        {group && <p className="text-xs text-ink-muted">{linked ? "Editing this time updates the action and stage together." : "Entering or marking a time above uses it for both observations."}</p>}
+        {eventTime(`${name} time`, event.time_s, (time) => group && (linked || group.relation === "equivalent") ? sharedTime(group, time, true) : edit({ time_s: time }), !!group && malformed)}
+        {group && <p className="text-xs text-ink-muted">{linked || group.relation === "equivalent" ? "Editing this time updates the action and stage together." : "This control edits the action only. Choose a shared time above to update both, or keep separate events."}</p>}
         {group && group.relation !== "equivalent" && <button className={buttonClass} disabled={structuralDisabled} onClick={() => separate(group)}>Keep as separate events</button>}
         {group && issueNotes("transition", group.transitionIndex, !linked ? group.actionIndex : undefined)}
         {group && linked && <details className="text-xs"><summary className="cursor-pointer text-teal">Stage definition and retained evidence</summary>
@@ -211,7 +220,7 @@ export function TrajectoryEventTimeline(props: StageLabelFormProps) {
       <p className="text-xs text-ink-muted">{task.stages.find((s) => s.id === event.to_stage_id)?.description}</p>
       {issueNotes("transition", index)}
       {eventTime(`${name} time`, event.time_s, (time_s) => edit({ time_s }))}
-      {candidate && <button className={buttonClass} disabled={structuralDisabled || candidate.actionTimeS === null} onClick={() => sharedTime(candidate, candidate.actionTimeS, true)}>Link to action at {(candidate.actionTimeS?.toFixed(2) ?? "unset")} s</button>}
+      {candidate && <div className="rounded-lg bg-warm-50 p-3 text-xs space-y-2"><p>{candidate.explanation}</p><button className={buttonClass} disabled={structuralDisabled || candidate.actionTimeS === null} onClick={() => sharedTime(candidate, candidate.actionTimeS, true)}>Use action time for both · {(candidate.actionTimeS?.toFixed(2) ?? "unset")} s</button></div>}
       {details(name, event, edit, <div className="grid gap-3">{stageSelect(name, event, "from", edit)}{stageSelect(name, event, "to", edit)}</div>)}
     </article> });
   });
@@ -239,10 +248,11 @@ export function TrajectoryEventTimeline(props: StageLabelFormProps) {
   const newOccurrence = () => ({ attempt_index: 1, time_s: null, confidence: "medium", evidence: "" });
   return <section aria-label="Episode events" className="space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-base font-medium">Episode events</h3>
+      {props.compactEvents && <button className={buttonClass} disabled={props.hasPendingInput} onClick={() => setShowAll(!showAll)}>{showAll ? "Compact event list" : "Expand all event details"}</button>}
       <select className={inputClass} aria-label="Event display order" disabled={structuralDisabled} value={order} onChange={(e) => setOrder(e.target.value as typeof order)}><option value="chronological">Time order</option><option value="recorded">Recorded order</option></select>
     </div>
     <p className="text-xs text-ink-muted">Review each physical event once. Shared action and stage times update together. Event details hold attempts and retained source evidence.</p>
-    {undo?.after === signature(row, links) && <button className={buttonClass} disabled={structuralDisabled} onClick={() => { props.onEdit(undo.before); props.onEventLinksChange?.(undo.links); setUndo(null); }}>Undo last event edit</button>}
+    {undo?.after === signature(row, links) && <button className={buttonClass} disabled={structuralDisabled} onClick={() => { props.onEdit(undo.before); props.onEventLinksChange?.(undo.links); props.onSelectEvent?.(null); setUndo(null); }}>Undo last event edit</button>}
     {validLinks.length !== links.length && <div role="alert" className="rounded-lg bg-gold-light p-3 text-xs space-y-2"><p>Some saved event associations no longer identify a unique pair. Review these events separately before confirming.</p><button className={buttonClass} disabled={structuralDisabled} onClick={() => change(row, validLinks, true)}>Clear unmatched event associations</button></div>}
     <div className="rounded-lg border border-warm-200 bg-warm-50 p-3 text-sm space-y-2" aria-label="Primary failure summary">
       <p>Primary failure: {noFailure ? "None" : primaryIndex !== null && failures ? `${task.failureModes.some((f) => f.id === failures[primaryIndex].failure_mode_id) ? readable(String(failures[primaryIndex].failure_mode_id)) : "Unset or invalid failure"} at ${timeValue(failures[primaryIndex].time_s)?.toFixed(2) ?? "unset"} s` : "Choose a failure event below"}</p>
@@ -251,13 +261,26 @@ export function TrajectoryEventTimeline(props: StageLabelFormProps) {
     </div>
     {needsSort && <div role="alert" className="rounded-lg bg-gold-light p-3 text-xs space-y-2">
       <p>The corrected times changed the recorded event order. Update that order before confirming; no timestamps will change.</p>
-      <button className={buttonClass} disabled={structuralDisabled || !canSort} onClick={() => change({ ...row,
+      <button className={buttonClass} disabled={structuralDisabled || !canSort} onClick={() => structuralChange({ ...row,
         stage_transitions: sortEvents(transitions!), failure_events: sortEvents(failures!),
         key_action_observations: actions!.map((action) => ({ ...action, occurrences: sortEvents(action.occurrences as StageLabelRow[]) })),
-      }, links, true)}>Update recorded event order</button>
+      })}>Update recorded event order</button>
       {!canSort && <p>Finish every event time before updating the order.</p>}
     </div>}
-    {entries.map((entry) => <div key={entry.key}>{entry.node}</div>)}
+    <div className="flex flex-col gap-2">{entries.map((entry) => {
+      const summary = summaries.find((event) => event.key === entry.key);
+      const sharedSelection = paired.find((group) => `transition:${group.transitionIndex}` === props.selectedEventKey);
+      const selectedKey = sharedSelection ? `action:${sharedSelection.actionIndex}:${sharedSelection.occurrenceIndex}` : props.selectedEventKey;
+      const expanded = !compact || selectedKey === entry.key;
+      return <div key={entry.key} className={compact && expanded ? "order-first" : ""}>
+        {compact && <button className={`w-full flex items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm cursor-pointer ${expanded ? "border-teal bg-teal/5" : "border-warm-200"}`} disabled={props.hasPendingInput}
+          aria-expanded={expanded} onClick={() => { props.onSelectEvent?.(expanded ? null : entry.key); if (!expanded && entry.time !== null) props.onSeekTime(entry.time); }}>
+          <span className="font-mono text-xs text-teal w-16 shrink-0">{entry.time?.toFixed(2) ?? "Unset"}{entry.time !== null ? " s" : ""}</span>
+          <span className="flex-1">{summary?.title ?? "Event"}</span><span className="text-ink-muted">{expanded ? "−" : "+"}</span>
+        </button>}
+        <div hidden={!expanded} className={props.compactEvents ? "mt-2" : ""}>{entry.node}</div>
+      </div>;
+    })}</div>
     {(!actions || !transitions || !failures) && <p role="alert" className="text-sm text-coral">An event list has an invalid structure. Its contents are preserved; inspect the source before replacing it.</p>}
     <div className="flex flex-wrap gap-2">
       {transitions && <button className={buttonClass} disabled={structuralDisabled} onClick={() => structuralChange({ ...row, stage_transitions: [...transitions, { ...newOccurrence(), from_stage_id: task.stages[0].id, from_stage_index: task.stages[0].index, to_stage_id: task.stages[0].id, to_stage_index: task.stages[0].index }] })}>Add transition</button>}

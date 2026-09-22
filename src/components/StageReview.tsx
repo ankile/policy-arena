@@ -33,6 +33,7 @@ import { HelpOverlay } from "./review/HelpOverlay";
 import { LabelHistoryPanel } from "./review/LabelHistoryPanel";
 import { ReviewViewer, type ViewerControls } from "./review/ReviewViewer";
 import { StageLabelForm } from "./review/StageLabelForm";
+import { TrajectoryVideoTools } from "./review/TrajectoryVideoTools";
 import {
   cameraRoleForVideoKey,
   clamp,
@@ -673,6 +674,7 @@ export default function StageReview({
 
   // -- Working state ------------------------------------------------------------
   const [frame, setFrame] = useState(0);
+  const [selectedEventKey, setSelectedEventKey] = useState<string | null>(null);
   const [viewerDrift, setViewerDrift] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -762,6 +764,7 @@ export default function StageReview({
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- reset video controls on source change */
     setFrame(0);
+    setSelectedEventKey(null);
     setViewerDrift(null);
     setActionError(null);
     /* eslint-enable react-hooks/set-state-in-effect */
@@ -813,8 +816,8 @@ export default function StageReview({
   const stepFrame = useCallback(
     (delta: number) => {
       if (!currentEpisode) return;
-      controlsRef.current?.pause();
-      setFrame((prev) => clamp(prev + delta, 0, currentEpisode.rawLength - 1));
+      const snapped = controlsRef.current?.pause();
+      setFrame((prev) => clamp((snapped ?? prev) + delta, 0, currentEpisode.rawLength - 1));
     },
     [currentEpisode]
   );
@@ -830,8 +833,17 @@ export default function StageReview({
       );
       return null;
     }
-    return controlsRef.current?.pause() ?? frame;
-  }, [frame, viewerDrift, formDisabled]);
+    if (unverifiable || cameraKeys.length === 0) {
+      setActionError("A verified video frame is required to capture an event.");
+      return null;
+    }
+    const captured = controlsRef.current?.pause() ?? frame;
+    if (spec?.trajectory && (episodeDurationS === null || captured / spec.fps > episodeDurationS)) {
+      setActionError("This frame is outside the policy episode. Seek before the reset footage to mark an event.");
+      return null;
+    }
+    return captured;
+  }, [frame, viewerDrift, formDisabled, unverifiable, cameraKeys.length, spec, episodeDurationS]);
 
   // -- Save flow ------------------------------------------------------------------
   const doSave = useCallback(
@@ -1701,7 +1713,7 @@ export default function StageReview({
                       ? "The form was copied from another human review. Its original prediction source is preserved."
                       : currentPrefill
                       ? "The form started from the selected prediction; edits are your review."
-                      : "No model prediction seeded this form."}</p>
+                      : "Manual annotation — no prediction available. No model prediction seeded this form."}</p>
                   <details className="mt-1"><summary className="cursor-pointer text-teal">Saved label provenance</summary>
                     <p className="font-mono break-all">Review source: {attributionDescription(draft.attribution)}</p>
                     <p className="mt-1">Human labels can be scored against other predictions using compatible labeling definitions. The prediction shown during annotation is recorded for the audit.</p>
@@ -1728,7 +1740,7 @@ export default function StageReview({
                 </div>
               )}
 
-              <div className={spec.trajectory ? "grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)] items-start" : ""}>
+              <div className={spec.trajectory ? "grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(350px,1fr)] items-start" : ""}>
               <div className={spec.trajectory ? "min-w-0 xl:sticky xl:top-4" : ""}>
               {cameraKeys.length === 0 ? (
                 <div className="rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-sm text-coral font-mono">
@@ -1753,6 +1765,14 @@ export default function StageReview({
                   renderTimelineOverlays={renderTimelineOverlays}
                 />
               )}
+              {spec.trajectory && pending && episodeDurationS !== null && <TrajectoryVideoTools
+                key={sourceKey} sourceKey={sourceKey ?? ""} spec={spec} row={pending} duration={episodeDurationS}
+                violations={violations} frame={frame} markFrame={markFrame}
+                markDisabled={viewerDrift !== null || unverifiable || cameraKeys.length === 0 || formDisabled}
+                disabled={formDisabled} hasPendingInput={pendingInputCount > 0}
+                onEdit={edit} onSeekTime={seekTime} eventLinks={draft?.eventLinks ?? []}
+                onEventLinksChange={editEventLinks} selectedEventKey={selectedEventKey} onSelectEvent={setSelectedEventKey}
+              />}
               </div>
 
               <div className={spec.trajectory ? "min-w-0" : ""}>
@@ -1779,6 +1799,10 @@ export default function StageReview({
                   onSeekTime={seekTime}
                   disabled={formDisabled}
                   blind={blind}
+                  compactEvents
+                  selectedEventKey={selectedEventKey}
+                  onSelectEvent={setSelectedEventKey}
+                  manualAnnotation={!currentPrefill && !currentOwn}
                 />
               )}
               </div>
@@ -1843,7 +1867,9 @@ export default function StageReview({
 
               {/* Verdict bar */}
               <div className="sticky bottom-0 z-20 mt-4 flex flex-wrap items-center gap-2 border-t border-warm-200 bg-white px-2 py-3">
-                <span className="text-xs text-ink-muted">{dirty ? "Unsaved changes" : currentOwn ? "Your saved label" : "Reviewing prediction"}</span>
+                <span className="text-xs text-ink-muted">{dirty ? "Unsaved changes" : currentOwn ? "Your saved label" : currentPrefill ? "Reviewing prediction" : "Manual annotation"}</span>
+                <button disabled={formDisabled || !dirty || currentOwn?.status === "confirmed" || currentOwn?.status === "corrected"}
+                  onClick={() => void leaveForm(() => {})} className="px-3 py-1.5 rounded-lg text-xs border border-warm-200 cursor-pointer disabled:opacity-40">Save draft</button>
                 <button
                   disabled={formDisabled}
                   onClick={() => void verdict("uncertain")}

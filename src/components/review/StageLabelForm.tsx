@@ -38,6 +38,11 @@ export interface StageLabelFormProps {
   onPendingInputChange?: (id: string, pending: boolean) => void;
   /** Do not reorder index-keyed event editors while local timestamp text is unfinished. */
   hasPendingInput?: boolean;
+  /** Optional video-centered presentation; selection is UI-only. */
+  compactEvents?: boolean;
+  selectedEventKey?: string | null;
+  onSelectEvent?: (key: string | null) => void;
+  manualAnnotation?: boolean;
 }
 
 export function StageLabelForm(props: StageLabelFormProps) {

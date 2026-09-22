@@ -40,25 +40,26 @@ export function TrajectoryLabelForm(props: StageLabelFormProps) {
       value={typeof value === "string" ? value : ""} />
   </label>;
 
-  return <div className="space-y-5" data-testid="trajectory-form">
+  return <div className="flex flex-col gap-5" data-testid="trajectory-form">
     <div>
-      <h3 className="text-base font-medium text-ink">Episode label</h3>
+      <h3 className="text-base font-medium text-ink">Episode summary</h3>
       <p className="mt-1 text-xs text-ink-muted">Check the summary and event times against the video. Confirmation covers these structured judgments; retained source text and confidence are excluded.</p>
     </div>
-    {violations.length > 0 && <div role="alert" className="rounded-lg border border-coral/30 bg-coral-light p-3 space-y-1">
-      <p className="text-sm font-medium text-coral">Resolve before confirming</p>
-      {violations.map((violation, index) => <p key={index} className="text-xs text-coral">{trajectoryReviewMessage(violation, spec, blind)}</p>)}
-    </div>}
+    {violations.length > 0 && <details className="rounded-lg border border-gold/30 bg-gold-light p-3 space-y-1">
+      <summary className="text-sm font-medium cursor-pointer">{props.manualAnnotation ? "Finish your annotation" : "Review checklist"} · {violations.length} items</summary>
+      {props.manualAnnotation && <p className="text-sm">Start with a mark beside the video, then complete the episode summary. You can save an unfinished draft.</p>}
+      {violations.map((violation, index) => <p key={index} className="text-xs text-ink-muted">{trajectoryReviewMessage(violation, spec, blind)}</p>)}
+    </details>}
     <fieldset>
       <legend className="mb-2 text-sm font-medium">Furthest stage reached</legend>
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Maximum stage">
         {task.stages.map((stage) => <button key={stage.id} disabled={disabled} aria-pressed={selectedStage?.id === stage.id}
           aria-label={`S${stage.index}: ${stageName(stage)}`} title={stage.description}
           onClick={() => onEdit({ max_stage: stage.index, max_stage_id: stage.id })}
-          className={`rounded-lg px-3 py-2 text-sm font-mono cursor-pointer border ${selectedStage?.id === stage.id ? "bg-teal border-teal text-white" : "border-warm-200 text-ink-muted hover:border-teal"} disabled:opacity-40`}>S{stage.index}</button>)}
+          className={`rounded-lg px-2 py-1.5 text-xs cursor-pointer border ${selectedStage?.id === stage.id ? "bg-teal border-teal text-white" : "border-warm-200 text-ink-muted hover:border-teal"} disabled:opacity-40`}>S{stage.index} · {stageName(stage)}</button>)}
       </div>
       {selectedStage ? <p className="mt-2 text-sm text-ink-muted"><strong className="text-ink">{stageName(selectedStage)}.</strong> {selectedStage.description}</p>
-        : <p role="alert" className="mt-2 text-sm text-coral">Choose a valid maximum stage.</p>}
+        : <p className="mt-2 text-sm text-ink-muted">Choose the furthest stage achieved anywhere in the episode.</p>}
       <p className="mt-1 text-xs text-ink-muted">Keep earlier progress even if the episode ends in failure.</p>
     </fieldset>
     <details className="text-xs"><summary className="cursor-pointer text-teal">Task definition and decision rules</summary>
@@ -75,7 +76,7 @@ export function TrajectoryLabelForm(props: StageLabelFormProps) {
       <label className="text-xs flex flex-col gap-1">Final state{select("Final state", row.final_state, options(task.finalStates), (final_state) => onEdit({ final_state }))}</label>
       <label className="text-xs flex flex-col gap-1">Attempt count{integer("Attempt count", row.attempt_count, (attempt_count) => onEdit({ attempt_count }))}</label>
     </div>
-    <TrajectoryEventTimeline {...props} />
+    <div className={props.compactEvents && props.selectedEventKey ? "order-first" : ""}><TrajectoryEventTimeline {...props} /></div>
     <label className="block text-sm font-medium">Your review notes
       <textarea aria-label="Your review notes" disabled={disabled || !props.onHumanNotesChange} className={`${inputClass} block w-full mt-2`} rows={3}
         placeholder="Optional observations or uncertainty from your review" value={props.humanNotes ?? ""}
