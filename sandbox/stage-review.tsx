@@ -6,6 +6,7 @@ import { convexToJson, jsonToConvex, type Value } from "convex/values";
 import { api } from "../convex/_generated/api";
 import StageReview from "../src/components/StageReview";
 import { stageReviewDataSource, type StageReviewDataSource } from "../src/lib/stageReviewDataSource";
+import { stageReviewCoverage } from "../convex/stageReviewCoverage";
 import "../src/index.css";
 
 // Development-only entry, not an input to the production Vite build.
@@ -14,6 +15,7 @@ const client = new ConvexReactClient("https://grandiose-rook-292.convex.cloud");
 const storageKey = "policy-arena-stage-playground-v1";
 type Saved = FunctionArgs<typeof api.stageReviews.save> & {
   _id: string; reviewer: string; reviewer_user_id: string; saved_at: number;
+  review_coverage?: ReturnType<typeof stageReviewCoverage>;
 };
 const stored = localStorage.getItem(storageKey);
 let reviews: Saved[] = [];
@@ -61,7 +63,8 @@ const dataSource: StageReviewDataSource = {
     if (getFunctionName(mutation) !== "stageReviews:save") throw new Error("Only local stage-review saves are supported in the playground.");
     return async (args: FunctionArgs<typeof api.stageReviews.save>) => {
       if (storageError) throw new Error(storageError);
-      const review: Saved = { ...args, _id: `local-${crypto.randomUUID()}`, reviewer: "Local playground", reviewer_user_id: "local-reviewer", saved_at: Date.now() };
+      const coverage = stageReviewCoverage(args.review_protocol, args.status, args.review_protocol !== undefined);
+      const review: Saved = { ...args, ...(coverage ? { review_coverage: coverage } : {}), _id: `local-${crypto.randomUUID()}`, reviewer: "Local playground", reviewer_user_id: "local-reviewer", saved_at: Date.now() };
       const next = [...reviews, review];
       localStorage.setItem(storageKey, JSON.stringify(convexToJson(next as unknown as Value)));
       reviews = next; refresh();

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { convexTest } from "convex-test";
 import { api } from "../convex/_generated/api";
 import schema from "../convex/schema";
-import { EXCLUDED_REVIEW_FIELDS, stageReviewCoverage, STRUCTURED_REVIEW_FIELDS } from "../convex/stageReviewCoverage";
+import { EXCLUDED_REVIEW_FIELDS, stageReviewCoverage, STRUCTURED_REVIEW_FIELDS, STAGE_REVIEW_FIELDS } from "../convex/stageReviewCoverage";
 import { manifestDigest, predictionDigest } from "../convex/stagePredictionContract";
 import { trajectoryFromReview } from "../convex/trajectoryReview";
 import { validateStageLabel, type ExportedStageSpec } from "../convex/stageConsistency";
@@ -46,6 +46,33 @@ function args() {
 }
 
 describe("structured review coverage", () => {
+  test("stage-only confirmation preserves conflicting model fields without attesting them", async () => {
+    const input = args();
+    input.label.key_action_observations[0].first_time_s = 999;
+    input.label.key_action_observations[0].occurrences[0].time_s = 998;
+    input.label.failure_mode = "other";
+    input.label.task_success = false;
+    const before = structuredClone(input.label);
+    const id = await t.mutation(api.stageReviews.save, { ...input, review_protocol: "stages-v1" });
+    const saved = await t.run((ctx) => ctx.db.get(id));
+    expect(saved!.label).toEqual(before);
+    expect(saved!.review_coverage!.protocol).toBe("stages-v1");
+    expect(saved!.review_coverage!.reviewed_fields).toEqual([...STAGE_REVIEW_FIELDS]);
+    expect(saved!.review_coverage!.reviewed_fields.some((field) => /action|failure|task_success|final_state/.test(field))).toBe(false);
+    expect(saved!.review_coverage!.excluded_fields).toContain("key_action_observations.*.first_time_s");
+    expect(saved!.review_coverage!.excluded_fields).toContain("task_success");
+  });
+
+  test("stage-only drafts have no completed coverage and confirmation still checks stage times and identities", async () => {
+    const input = args(); input.label.stage_transitions[0].time_s = 999;
+    await expect(t.mutation(api.stageReviews.save, { ...input, review_protocol: "stages-v1" })).rejects.toThrow("before reset footage");
+    const id = await t.mutation(api.stageReviews.save, { ...input, status: "draft", review_protocol: "stages-v1" });
+    expect((await t.run((ctx) => ctx.db.get(id)))!.review_coverage!.reviewed_fields).toEqual([]);
+    input.label.stage_transitions[0].time_s = 2;
+    input.label.trajectory_identity.sample_id = "wrong/episode";
+    await expect(t.mutation(api.stageReviews.save, { ...input, review_protocol: "stages-v1" })).rejects.toThrow("trajectory identity");
+  });
+
   test("completed coverage is fixed, explicit, and never claims source prose or confidence", () => {
     for (const status of ["confirmed", "corrected"]) {
       const coverage = stageReviewCoverage("structured-v1", status, true)!;

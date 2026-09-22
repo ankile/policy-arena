@@ -20,7 +20,9 @@ export function eligibleGold(rows: Doc<"stageReviews">[], taxonomy: string) {
   const eligible: Doc<"stageReviews">[] = [], excluded: bigint[] = [];
   for (const [episode, reviews] of byEpisode) {
     // Multi-reviewer cases require explicit adjudication, even if summaries agree.
-    if (reviews.length !== 1 || !["confirmed", "corrected"].includes(reviews[0].status) || !reviews[0].label || !reviews[0].prediction_id) excluded.push(episode);
+    // Stage-only reviews cannot serve as gold for full-summary outcome/failure
+    // scoring. Their unreviewed pipeline fields are retained, not certified.
+    if (reviews.length !== 1 || !["confirmed", "corrected"].includes(reviews[0].status) || !reviews[0].label || !reviews[0].prediction_id || reviews[0].review_coverage?.protocol === "stages-v1") excluded.push(episode);
     else eligible.push(reviews[0]);
   }
   return { eligible: eligible.sort((a,b) => Number(a.episode_index-b.episode_index)), excluded };

@@ -5,6 +5,8 @@ import { v } from "convex/values";
  * A confirmed structured-v1 review covers the structured judgments below,
  * including retained values. Source prose and confidence remain lossless but
  * explicitly outside that attestation. Human notes live at review.notes.
+ * stages-v1 attests only stage transitions, maximum stage and attempt count;
+ * all other pipeline fields remain outside the human review.
  * Missing coverage on historical rows means unknown coverage, never all fields.
  */
 export const STRUCTURED_REVIEW_FIELDS = [
@@ -29,7 +31,9 @@ export const EXCLUDED_REVIEW_FIELDS = [
   "failure_events.*.evidence", "failure_events.*.confidence",
 ] as const;
 
-export const reviewProtocolValidator = v.literal("structured-v1");
+export const STAGE_REVIEW_FIELDS = STRUCTURED_REVIEW_FIELDS.filter((path) =>
+  path === "max_stage" || path === "max_stage_id" || path === "attempt_count" || path.startsWith("stage_transitions."));
+export const reviewProtocolValidator = v.union(v.literal("structured-v1"), v.literal("stages-v1"));
 export const reviewCoverageValidator = v.object({
   protocol: reviewProtocolValidator,
   reviewed_fields: v.array(v.string()),
@@ -37,14 +41,16 @@ export const reviewCoverageValidator = v.object({
 });
 
 export function stageReviewCoverage(
-  protocol: "structured-v1" | undefined, status: string, trajectory: boolean,
+  protocol: "structured-v1" | "stages-v1" | undefined, status: string, trajectory: boolean,
 ) {
   if (protocol === undefined) return undefined;
-  if (!trajectory) throw new Error("structured-v1 review protocol requires a trajectory schema");
+  if (!trajectory) throw new Error(`${protocol} review protocol requires a trajectory schema`);
   if (status === "cleared") throw new Error("A cleared review must not carry a review protocol");
   return {
     protocol,
-    reviewed_fields: status === "confirmed" || status === "corrected" ? [...STRUCTURED_REVIEW_FIELDS] : [],
-    excluded_fields: [...EXCLUDED_REVIEW_FIELDS],
+    reviewed_fields: status === "confirmed" || status === "corrected"
+      ? [...(protocol === "stages-v1" ? STAGE_REVIEW_FIELDS : STRUCTURED_REVIEW_FIELDS)] : [],
+    excluded_fields: [...EXCLUDED_REVIEW_FIELDS, ...(protocol === "stages-v1"
+      ? STRUCTURED_REVIEW_FIELDS.filter((path) => !STAGE_REVIEW_FIELDS.includes(path)) : [])],
   };
 }

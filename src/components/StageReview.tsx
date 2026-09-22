@@ -1,4 +1,4 @@
-import { validateTrajectoryEventLinks, type TrajectoryEventLink } from "../../convex/trajectoryEventLinks";
+import { type TrajectoryEventLink } from "../../convex/trajectoryEventLinks";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../convex/_generated/api";
 import { blankTrajectoryReview } from "../../convex/trajectoryReview";
@@ -25,7 +25,7 @@ import {
   type PredictionAttribution,
 } from "../lib/stagePredictionReview";
 import { useStageReviewDraft } from "../lib/useStageReviewDraft";
-import { analyzeTrajectoryTimeline } from "../../convex/trajectoryTimeline";
+import { validateStageOnlyReview } from "../../convex/stageOnlyReview";
 import { stageReviewDataSource, type StageReviewDataSource } from "../lib/stageReviewDataSource";
 import { useSearchParam, useSearchParamNumber, useSearchParamNavigationGuard, setSearchParams } from "../lib/useSearchParam";
 import { EvidencePanel, type StagePrefillView } from "./review/EvidencePanel";
@@ -33,8 +33,8 @@ import { HelpOverlay } from "./review/HelpOverlay";
 import { LabelHistoryPanel } from "./review/LabelHistoryPanel";
 import { ReviewViewer, type ViewerControls } from "./review/ReviewViewer";
 import { StageLabelForm } from "./review/StageLabelForm";
-import { TrajectoryVideoTools } from "./review/TrajectoryVideoTools";
-import { TrajectoryEventRail } from "./review/TrajectoryEventRail";
+import { TrajectoryStageEditor } from "./review/TrajectoryStageEditor";
+import { TrajectoryStageRail } from "./review/TrajectoryStageRail";
 import {
   cameraRoleForVideoKey,
   clamp,
@@ -108,9 +108,9 @@ const HELP_KEYS: [string, string][] = [
   ["[ / ]", "step 30 frames"],
   ["Home / End", "first / last frame"],
   ["space", "play / pause"],
-  ["0–9", "set the stage rung"],
+  ["0–9", "set the furthest stage (does not mark a time)"],
   ["- / =", "decrement / increment the stage (covers S10)"],
-  ["c", "confirm: reviewed labels and event times (gold-eligible) + advance"],
+  ["c", "confirm stage review + next episode"],
   ["u", "uncertain: reviewed but not gold-eligible + advance"],
   ["e", "toggle the model-evidence rail"],
   ["n", "next episode (drafts unsaved edits)"],
@@ -778,16 +778,9 @@ export default function StageReview({
   const episodeDurationS = shownAttribution?.episode_duration_s ??
     (spec?.trajectory ? policyDurationS : spec && currentEpisode ? currentEpisode.rawLength / spec.fps : null);
   const violations = useMemo(
-    () => (spec && pending ? [
-      ...validateStageLabel(spec, pending, episodeDurationS),
-      ...validateTrajectoryEventLinks(pending, draft?.eventLinks ?? []).map((message) => ({
-        code: "trajectory_event_links", message, fields: ["stage_transitions", "key_action_observations"],
-      })),
-      ...(spec.trajectory ? analyzeTrajectoryTimeline(spec.trajectory, pending).map((issue) => ({
-        code: "trajectory_timeline", message: issue.message, fields: ["stage_transitions", "key_action_observations", "failure_events"],
-      })) : []),
-    ] : []),
-    [spec, pending, episodeDurationS, draft?.eventLinks]
+    () => spec && pending ? (spec.trajectory ? validateStageOnlyReview(spec.trajectory, pending, episodeDurationS)
+      : validateStageLabel(spec, pending, episodeDurationS)) : [],
+    [spec, pending, episodeDurationS]
   );
   const edit = useCallback((patch: StageLabelRow) => {
     if (formDisabled || saveInFlight.current) return;
@@ -868,7 +861,7 @@ export default function StageReview({
           status,
           label: label ?? undefined,
           ...(spec.trajectory && status !== "cleared" ? {
-            review_protocol: "structured-v1" as const,
+            review_protocol: "stages-v1" as const,
             notes: draft.humanNotes ?? "",
             event_links: draft.eventLinks ?? [],
           } : {}),
@@ -1766,7 +1759,7 @@ export default function StageReview({
                   renderTimelineOverlays={renderTimelineOverlays}
                 />
               )}
-              {spec.trajectory && pending && episodeDurationS !== null && <TrajectoryEventRail
+              {spec.trajectory && pending && episodeDurationS !== null && <TrajectoryStageRail
                 spec={spec} row={pending} violations={violations} frame={frame} markFrame={markFrame}
                 markDisabled={formDisabled} disabled={formDisabled} hasPendingInput={pendingInputCount > 0}
                 onEdit={edit} onSeekTime={seekTime} selectedEventKey={selectedEventKey} onSelectEvent={setSelectedEventKey}
@@ -1774,15 +1767,18 @@ export default function StageReview({
               </div>
 
               <div className={spec.trajectory ? "min-w-0" : ""}>
-              {spec.trajectory && pending && episodeDurationS !== null && <TrajectoryVideoTools
-                key={sourceKey} sourceKey={sourceKey ?? ""} spec={spec} row={pending} duration={episodeDurationS}
+              {spec.trajectory && pending && <TrajectoryStageEditor
+                key={sourceKey} spec={spec} row={pending}
                 violations={violations} frame={frame} markFrame={markFrame}
                 markDisabled={viewerDrift !== null || unverifiable || cameraKeys.length === 0 || formDisabled}
                 disabled={formDisabled} hasPendingInput={pendingInputCount > 0}
-                onEdit={edit} onSeekTime={seekTime} eventLinks={draft?.eventLinks ?? []}
-                onEventLinksChange={editEventLinks} selectedEventKey={selectedEventKey} onSelectEvent={setSelectedEventKey}
+                onPendingInputChange={onPendingInputChange}
+                onEdit={edit} onSeekTime={seekTime} selectedEventKey={selectedEventKey} onSelectEvent={setSelectedEventKey}
+                humanNotes={draft?.humanNotes ?? ""} onHumanNotesChange={(notes) => {
+                  if (!formDisabled && !saveInFlight.current) editHumanNotes(notes);
+                }}
               />}
-              {pending !== null && (
+              {pending !== null && !spec.trajectory && (
                 <StageLabelForm
                   key={sourceKey}
                   onPendingInputChange={onPendingInputChange}
@@ -1894,7 +1890,7 @@ export default function StageReview({
                       : "bg-teal text-white hover:bg-teal/90 cursor-pointer"
                   }`}
                 >
-                  {spec.trajectory ? "confirm — labels reviewed" : "confirm — fully annotated"}
+                  {spec.trajectory ? "Confirm stages & next" : "confirm — fully annotated"}
                   <span className="ml-1.5 font-mono text-[10px] opacity-70">c</span>
                 </button>
               </div>

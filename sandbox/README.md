@@ -18,34 +18,51 @@ Open <http://127.0.0.1:5174/sandbox/stage-review.html>. Node users can run
    a dataset without legacy predictions to try annotation from scratch.
 2. Play or scrub the synchronized cameras. Use **−1 frame / +1 frame**,
    slower playback, or **Enlarge** on the camera with the clearest evidence.
-3. In **What happens here?**, review the recorded progress at the playhead.
-   **Mark S… here** pauses and captures the next milestone in one click. If it
-   already has a mark, **Move S… to this frame** corrects that mark instead of
-   duplicating it. At most three related actions are offered nearby; completed
-   actions drop out. The checked, visible summary option only advances the
-   episode's furthest stage; it never lowers it. Uncheck it for an event-only edit.
-4. Click a stage on the progress strip or open **All marks** to seek and inspect
-   an existing observation in **This moment**. Position the video and use
-   **Move to current frame** to correct its timestamp.
-   Unresolved conditional action/stage pairs are not silently retimed together;
-   choose a shared timestamp explicitly if they describe the same event.
-5. Use **Something went wrong** to capture a failure. **Other label / retry**
-   offers every stage/action, an attempt override, and **Start another attempt**.
-   Starting an attempt records no events. Suggestions follow task-defined
-   stage/action links and recorded times, not live video recognition; they do
-   not enforce a strict path or invent skipped stages. Stages and actions remain
-   independent. **Undo last mark** restores the preceding edit exactly.
-6. Open **Episode summary** for endpoint judgments and human notes, or
-   **All fields** for the complete editor. Use **Save draft** for partial work,
-   or review the full structured label
-   before confirming. Reload to verify persistence. **Export local saves**
+3. In **Label stages**, choose the stage reached. Its description and entry
+   criteria explain what counts. **Mark S… here** pauses and captures the
+   current frame. **Move S… to this frame** corrects an existing mark instead
+   of adding a duplicate. The suggested stage follows recorded progress, not
+   live video recognition; select another stage to skip an unobserved rung.
+4. Click a named stage below the video to seek and adjust its time, change its
+   stage, or remove it. **Next stage** returns to marking the next milestone.
+   **Undo stage edit** restores the exact previous label. No action or failure
+   editor is shown for the structured trajectory tasks.
+5. Check **Furthest stage reached in the episode**. New marks advance it if
+   needed; a later failure does not erase earlier progress. S0 needs no time.
+   **Retries and timeline settings** lets you start or select another attempt
+   and explicitly reorder stage records after a time correction.
+6. Add optional review notes, **Save draft**, or **Confirm stages & next**.
+   Confirmation checks only stage judgments and times; hidden pipeline fields
+   remain untouched and are not human-verified. **Export local saves**
    downloads your trial review history (Convex JSON encoding, including int64).
 
 Existing source timestamps retain their original precision until explicitly
 edited. Time-sorted display does not reorder the source arrays. The checklist
-still blocks invalid confirmations; use **Update recorded event order** when
-an edit requires chronological array order. This first pass does not add
-per-event gold/reviewed status, timeline dragging, or change the prediction schema.
+still blocks invalid stage confirmations. Previous-stage references are derived
+from the visible sequence after explicit edits; no intermediate stages or
+actions are invented. This does not change the model prediction schema.
+
+## Review scope and rollout
+
+Structured task reviews now use `review_protocol: stages-v1`. Completed
+`review_coverage.reviewed_fields` covers the furthest stage, attempt count, and
+stage transitions only. Actions, failure modes/times, outcome, final state,
+source prose and confidence are retained but excluded. Drafts and uncertain
+reviews have no completed coverage. Existing `structured-v1` and historical
+reviews retain their previous semantics; nothing is migrated in place.
+
+The new validator checks stage identities, attempts, ordering, maximum stage,
+and policy-time bounds. It does not require a model action to agree with a
+human stage correction. A stage-only saved row is a scoped review, **not** a
+fully validated model response. Consumers must honor coverage; the existing
+full-summary benchmark excludes these rows rather than scoring unreviewed
+outcome/failure fields as gold. A stage-only benchmark is future work.
+
+The local playground needs no backend deployment. Before deploying the shared
+frontend, the backend must support the additive `stages-v1` protocol and its
+coverage validator. Follow the repo's documented single-deployment procedure;
+do not run `convex deploy`. This PR does not deploy the shared backend or UI.
+Legacy non-trajectory taxonomies retain their existing editor and protocol.
 
 ## Safety and scope
 
@@ -59,8 +76,8 @@ per-event gold/reviewed status, timeline dragging, or change the prediction sche
 - Trial saves live under `policy-arena-stage-playground-v1`, scoped to this
   browser and exact origin. Export before clearing site data. They are not
   uploaded, synced, backed up, or suitable as a shared labeling database.
-- The HTML entry is dev-only, excluded from the production Vite build. No
-  Convex/schema deployment is needed for these frontend changes.
+- The HTML entry is dev-only, excluded from the production Vite build. Local
+  exports include the same scoped coverage metadata as the new backend.
 
 ## Checks
 

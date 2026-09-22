@@ -7,6 +7,7 @@ import { blankTrajectoryReview } from "./trajectoryReview";
 import { requireEditorOrService } from "./access";
 import { reviewProtocolValidator, stageReviewCoverage } from "./stageReviewCoverage";
 import { analyzeTrajectoryTimeline } from "./trajectoryTimeline";
+import { validateStageOnlyReview } from "./stageOnlyReview";
 import { eventLinksValidator, validateTrajectoryEventLinks } from "./trajectoryEventLinks";
 import {
   canonicalizeStageLabel,
@@ -26,7 +27,8 @@ import {
  * supersedes), plus draft/cleared:
  *  - confirmed:  the episode's review is complete (gold-eligible within its
  *    recorded review_coverage; missing historical coverage means unknown).
- *    For structured-v1, source prose/confidence are not human gold. Whether the
+ *    For structured-v1, source prose/confidence are not human gold. stages-v1
+ *    covers only stage judgments, never the retained pipeline fields. Whether the
  *    reviewer edited the prediction is not encoded here — it is derivable
  *    from the row's label vs the prefill generation it was shown
  *    (prefill_pushed_at) and from the HF ledger's vlm/human event chain.
@@ -222,9 +224,11 @@ export const save = mutation({
         throw new Error("trajectory identity must match the exact prediction source or source-free episode identity");
       }
       if ((COMMITTED as readonly string[]).includes(args.status)) {
-        const linkErrors = validateTrajectoryEventLinks(label, args.event_links ?? []);
+        const stagesOnly = args.review_protocol === "stages-v1" && spec.trajectory;
+        const linkErrors = stagesOnly ? [] : validateTrajectoryEventLinks(label, args.event_links ?? []);
         if (linkErrors.length > 0) throw new Error(linkErrors.join("; "));
-        const violations = validateStageLabel(spec, label, resolvedDuration);
+        const violations = stagesOnly ? validateStageOnlyReview(stagesOnly, label, resolvedDuration)
+          : validateStageLabel(spec, label, resolvedDuration);
         if (violations.length > 0) {
           throw new Error(
             `label is internally inconsistent (${violations.length} violation(s)): ` +
@@ -233,7 +237,7 @@ export const save = mutation({
         }
         // A review-only gate: immutable imported predictions and historical
         // saved labels remain untouched, including their original conflicts.
-        if (spec.trajectory) {
+        if (spec.trajectory && !stagesOnly) {
           const timelineIssues = analyzeTrajectoryTimeline(spec.trajectory, label);
           if (timelineIssues.length > 0) {
             throw new Error("label timeline is inconsistent: " + timelineIssues.map((issue) => issue.message).join("; "));

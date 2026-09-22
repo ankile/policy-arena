@@ -1,7 +1,7 @@
 import type { TrajectoryEventLink } from "../../../convex/trajectoryEventLinks";
 import { useMemo, useState } from "react";
 import { TimeControls } from "./ReviewTimeControls";
-import { TrajectoryLabelForm } from "./TrajectoryLabelForm";
+import { TrajectoryStageEditor } from "./TrajectoryStageEditor";
 import type { ExportedStageSpec, StageLabelRow, Violation } from "../../../convex/stageConsistency";
 
 // ---------------------------------------------------------------------------
@@ -46,7 +46,7 @@ export interface StageLabelFormProps {
 }
 
 export function StageLabelForm(props: StageLabelFormProps) {
-  return props.spec.trajectory ? <TrajectoryLabelForm {...props} /> : <LegacyStageLabelForm {...props} />;
+  return props.spec.trajectory ? <TrajectoryStageEditor {...props} /> : <LegacyStageLabelForm {...props} />;
 }
 
 function LegacyStageLabelForm({
