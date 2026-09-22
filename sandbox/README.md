@@ -18,16 +18,18 @@ Open <http://127.0.0.1:5174/sandbox/stage-review.html>. Node users can run
    a dataset without legacy predictions to try annotation from scratch.
 2. Play or scrub the synchronized cameras. Use **−1 frame / +1 frame**,
    slower playback, or **Enlarge** on the camera with the clearest evidence.
-3. In **Label stages**, choose the stage reached. Its description and entry
-   criteria explain what counts. **Mark S… here** pauses and captures the
+3. Directly below the video scrubber, choose the **Stage reached** and click
+   **Mark S… here** to pause and capture the
    current frame. **Move S… to this frame** corrects an existing mark instead
    of adding a duplicate. The suggested stage follows recorded progress, not
    live video recognition; select another stage to skip an unobserved rung.
+   Expand **What counts as this stage?** for its description and entry criteria.
 4. Click a named stage below the video to seek and adjust its time, change its
    stage, or remove it. **Next stage** returns to marking the next milestone.
    **Undo stage edit** restores the exact previous label. No action or failure
    editor is shown for the structured trajectory tasks.
-5. Check **Furthest stage reached in the episode**. New marks advance it if
+5. In the separate **Episode review** panel, check **Furthest stage reached in
+   the episode**. New marks advance it if
    needed; a later failure does not erase earlier progress. S0 needs no time.
    **Retries and timeline settings** lets you start or select another attempt
    and explicitly reorder stage records after a time correction.

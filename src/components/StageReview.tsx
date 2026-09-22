@@ -1244,6 +1244,16 @@ export default function StageReview({
   const currentChain = fullChain.filter(
     (event) => event.label_kind !== "stage" || event.source.agent === viewer?.username
   );
+  const reviewVideo = currentEpisode && (cameraKeys.length === 0 ? (
+    <div className="rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-sm text-coral font-mono">
+      Episode {currentEpisode.episodeIndex} exposes no reviewable camera streams.
+    </div>
+  ) : (
+    <ReviewViewer datasetId={repoId} episode={currentEpisode} cameraKeys={cameraKeys} primaryKey={primaryKey}
+      fps={spec.fps} frame={frame} onFrame={setFrame} lastValidFrame={null} controlsRef={controlsRef}
+      cropByCameraKey={cropByCameraKey} storedFrameHW={storedFrameHW} onDrift={setViewerDrift}
+      onUnverifiable={setUnverifiable} renderTimelineOverlays={renderTimelineOverlays} />
+  ));
 
   return (
     <div className="bg-white rounded-2xl border border-warm-200 shadow-sm overflow-clip">
@@ -1734,41 +1744,14 @@ export default function StageReview({
                 </div>
               )}
 
-              <div className={spec.trajectory ? "grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(350px,1fr)] items-start" : ""}>
-              <div className={spec.trajectory ? "min-w-0 xl:sticky xl:top-4" : ""}>
-              {cameraKeys.length === 0 ? (
-                <div className="rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-sm text-coral font-mono">
-                  Episode {currentEpisode.episodeIndex} exposes no reviewable camera
-                  streams.
-                </div>
-              ) : (
-                <ReviewViewer
-                  datasetId={repoId}
-                  episode={currentEpisode}
-                  cameraKeys={cameraKeys}
-                  primaryKey={primaryKey}
-                  fps={spec.fps}
-                  frame={frame}
-                  onFrame={setFrame}
-                  lastValidFrame={null}
-                  controlsRef={controlsRef}
-                  cropByCameraKey={cropByCameraKey}
-                  storedFrameHW={storedFrameHW}
-                  onDrift={setViewerDrift}
-                  onUnverifiable={setUnverifiable}
-                  renderTimelineOverlays={renderTimelineOverlays}
-                />
-              )}
-              {spec.trajectory && pending && episodeDurationS !== null && <TrajectoryStageRail
-                spec={spec} row={pending} violations={violations} frame={frame} markFrame={markFrame}
-                markDisabled={formDisabled} disabled={formDisabled} hasPendingInput={pendingInputCount > 0}
-                onEdit={edit} onSeekTime={seekTime} selectedEventKey={selectedEventKey} onSelectEvent={setSelectedEventKey}
-              />}
-              </div>
-
-              <div className={spec.trajectory ? "min-w-0" : ""}>
-              {spec.trajectory && pending && <TrajectoryStageEditor
+              {spec.trajectory && pending ? <TrajectoryStageEditor
                 key={sourceKey} spec={spec} row={pending}
+                video={reviewVideo}
+                timeline={episodeDurationS !== null && <TrajectoryStageRail
+                  spec={spec} row={pending} violations={violations} frame={frame} markFrame={markFrame}
+                  markDisabled={formDisabled} disabled={formDisabled} hasPendingInput={pendingInputCount > 0}
+                  onEdit={edit} onSeekTime={seekTime} selectedEventKey={selectedEventKey} onSelectEvent={setSelectedEventKey}
+                />}
                 violations={violations} frame={frame} markFrame={markFrame}
                 markDisabled={viewerDrift !== null || unverifiable || cameraKeys.length === 0 || formDisabled}
                 disabled={formDisabled} hasPendingInput={pendingInputCount > 0}
@@ -1777,14 +1760,13 @@ export default function StageReview({
                 humanNotes={draft?.humanNotes ?? ""} onHumanNotesChange={(notes) => {
                   if (!formDisabled && !saveInFlight.current) editHumanNotes(notes);
                 }}
-              />}
-              {pending !== null && !spec.trajectory && (
-                <StageLabelForm
+              /> : <>
+                {reviewVideo}
+                {pending !== null && !spec.trajectory && <StageLabelForm
                   key={sourceKey}
                   onPendingInputChange={onPendingInputChange}
                   hasPendingInput={pendingInputCount > 0}
-                  spec={spec}
-                  row={pending}
+                  spec={spec} row={pending}
                   eventLinks={draft?.eventLinks ?? []}
                   onEventLinksChange={(links) => {
                     if (!formDisabled && !saveInFlight.current) editEventLinks(links);
@@ -1793,22 +1775,13 @@ export default function StageReview({
                   onHumanNotesChange={(notes) => {
                     if (!formDisabled && !saveInFlight.current) editHumanNotes(notes);
                   }}
-                  violations={violations}
-                  frame={frame}
-                  markFrame={markFrame}
+                  violations={violations} frame={frame} markFrame={markFrame}
                   markDisabled={viewerDrift !== null || formDisabled}
-                  onEdit={edit}
-                  onSeekTime={seekTime}
-                  disabled={formDisabled}
-                  blind={blind}
-                  compactEvents
-                  selectedEventKey={selectedEventKey}
-                  onSelectEvent={setSelectedEventKey}
+                  onEdit={edit} onSeekTime={seekTime} disabled={formDisabled} blind={blind}
+                  compactEvents selectedEventKey={selectedEventKey} onSelectEvent={setSelectedEventKey}
                   manualAnnotation={!currentPrefill && !currentOwn}
-                />
-              )}
-              </div>
-              </div>
+                />}
+              </>}
 
               {blind && (
                 <button onClick={unblind} className="mt-3 text-xs text-teal hover:underline cursor-pointer">

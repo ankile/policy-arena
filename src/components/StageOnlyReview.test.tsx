@@ -27,9 +27,30 @@ function Fixture({ initial = blankTrajectoryReview(spec.trajectory!, "test/repo"
     onEdit: setRow, onSeekTime: setSeek, selectedEventKey: selected, onSelectEvent: setSelected,
     humanNotes: notes, onHumanNotesChange: setNotes, onPendingInputChange: pendingChange, hasPendingInput: pending,
     violations: validateStageOnlyReview(spec.trajectory!, row, 30) };
-  return <><TrajectoryStageRail {...props} /><TrajectoryStageEditor {...props} /><output data-testid="state">{JSON.stringify({ row, seek, selected })}</output></>;
+  return <><TrajectoryStageEditor {...props}
+    video={<div data-testid="review-player"><video data-testid="review-video" /><input type="range" aria-label="Video position" /></div>}
+    timeline={<TrajectoryStageRail {...props} />}
+  /><output data-testid="state">{JSON.stringify({ row, seek, selected })}</output></>;
 }
 const state = (view: ReturnType<typeof render>) => JSON.parse(view.getByTestId("state").textContent!);
+
+test("stage capture and retiming stay directly below the player, ahead of the timeline and separate from notes", () => {
+  const view = render(<Fixture />);
+  const workspace = view.getByTestId("video-labeling-workspace");
+  const video = view.getByTestId("review-video");
+  const controls = view.getByRole("region", { name: "Stage marking controls" });
+  const settings = view.getByRole("complementary", { name: "Episode review settings" });
+  expect(controls.previousElementSibling === view.getByTestId("review-player")).toBe(true);
+  expect(view.getByRole("region", { name: "Stage timeline" }).previousElementSibling === controls).toBe(true);
+  expect(workspace.contains(view.getByRole("combobox", { name: "Stage reached" }))).toBe(true);
+  expect(controls.contains(view.getByRole("button", { name: "Mark S1 here" }))).toBe(true);
+  expect(workspace.contains(view.getByRole("textbox", { name: "Your review notes" }))).toBe(false);
+  expect(settings.contains(view.getByRole("textbox", { name: "Your review notes" }))).toBe(true);
+  expect(settings.contains(view.getByRole("combobox", { name: "Furthest stage" }))).toBe(true);
+  fireEvent.click(view.getByRole("button", { name: "Mark S1 here" }));
+  expect(controls.contains(view.getByRole("group", { name: "Transition 1 time" }))).toBe(true);
+  expect(view.getByTestId("review-video") === video).toBe(true);
+});
 
 test("stage-only controls mark the paused frame, advance the maximum, and undo without touching pipeline fields", () => {
   const view = render(<Fixture />);
