@@ -78,18 +78,29 @@ On 2026-09-22 UTC:
 - A second live export was identical for stage reviews, prefills, schemas,
   outcome reviews, datasets, policies, sessions, and round results.
 
-## Public preview
+## Public sandbox
 
-The public preview at `https://temporary-turbo-emerald-gggwnui.vercel.app` was
-verified on 2026-09-22 UTC. A new browser identity loaded both videos, edited
-and confirmed episode 0, and recovered the saved edit after reloading. API
-readback verified the separate reviewer identities and confirmed no sandbox
-review reached the live database. The hosted page responds without a Vercel
-login gate and its CSP points only to the sandbox backend.
+The stable collaborator URL is
+[policy-arena-stage-sandbox.vercel.app](https://policy-arena-stage-sandbox.vercel.app/?tab=explorer&dataset=ankile%2Freal01b-md2-r5-repeat-base-dp-filmtiidk4-c200k-n32-s2026070704&view=stage).
+It belongs to the separate Vercel project `policy-arena-stage-sandbox`, project ID
+`prj_27hHLlG1b17o3fk67O1zKwPTPGNw`, under `ankiles-projects`. Deployment
+`dpl_9iJx6FtEiVGJx3UZtoANqKGJwhiV` was published on 2026-09-22 UTC after owner
+Vercel authorization. This replaces the one-hour temporary preview.
 
-This is a temporary Vercel deployment, expiring at 2026-09-22 04:19:32 UTC unless
-claimed by the owner. A durable account deployment needs Vercel authorization;
-the database and this branch persist independently of that temporary frontend.
+The canonical URL responds without a Vercel login gate. A fresh browser
+received an anonymous reviewer identity, loaded both camera videos and the
+original form, saved a confirmed edit, and recovered it after reloading.
+The CSP permits only the sandbox backend. Vercel's `VITE_CONVEX_URL` is pinned
+to the sandbox in Production, Preview, and Development environments.
+
+Future frontend deployments must target the separate project explicitly:
+
+```bash
+bunx vercel deploy --project policy-arena-stage-sandbox --prod --yes
+```
+
+Here `--prod` means the sandbox project's stable frontend URL. It does not
+refer to the main Policy Arena project or deploy any Convex backend code.
 
 ## Development
 
