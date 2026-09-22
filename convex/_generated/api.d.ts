@@ -12,6 +12,8 @@ import type * as datasets from "../datasets.js";
 import type * as elo from "../elo.js";
 import type * as eloHistory from "../eloHistory.js";
 import type * as evalSessions from "../evalSessions.js";
+import type * as http from "../http.js";
+import type * as machineAuth from "../machineAuth.js";
 import type * as maintenance from "../maintenance.js";
 import type * as pairings from "../pairings.js";
 import type * as policies from "../policies.js";
@@ -30,6 +32,8 @@ declare const fullApi: ApiFromModules<{
   elo: typeof elo;
   eloHistory: typeof eloHistory;
   evalSessions: typeof evalSessions;
+  http: typeof http;
+  machineAuth: typeof machineAuth;
   maintenance: typeof maintenance;
   pairings: typeof pairings;
   policies: typeof policies;

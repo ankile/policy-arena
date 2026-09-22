@@ -247,6 +247,32 @@ function SessionDetail({ sessionId }: { sessionId: Id<"evalSessions"> }) {
   );
 }
 
+function ExclusionControl({
+  excluded,
+  reason,
+}: {
+  excluded: boolean;
+  reason: string | undefined;
+}) {
+  if (!excluded) return null;
+
+  return (
+    <div className="px-6 pb-3">
+      <div className="rounded-lg border border-coral/30 bg-coral-light/40 px-4 py-3">
+        <span className="text-xs font-semibold text-coral uppercase tracking-wide">
+          Excluded from metrics
+        </span>
+        {reason && (
+          <p className="text-xs text-ink-light mt-2 whitespace-pre-wrap">{reason}</p>
+        )}
+        <p className="text-[11px] text-ink-muted mt-2">
+          Change exclusion through the authenticated Policy Arena client.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 type SessionModeFilter = "all" | "manual" | "pool-sample" | "calibrate" | "rollout";
 
 const SESSION_MODE_FILTERS: { id: SessionModeFilter; label: string }[] = [
@@ -262,6 +288,7 @@ export default function EvalSessions() {
   const [expandedSession, setExpandedSessionRaw] = useSearchParamNullable("session");
   const [modeFilter, setModeFilter] = useSearchParam("mode", "all");
   const [taskFilter, setTaskFilter] = useSearchParam("task", "all");
+  const [showExcluded, setShowExcluded] = useState(false);
 
   const setExpandedSession = (id: string | null) => {
     if (id === null) clearSearchParams("round");
@@ -298,10 +325,20 @@ export default function EvalSessions() {
       ? sessions
       : sessions.filter((s) => (s.session_mode ?? "manual") === modeFilter);
 
-  const filteredSessions =
+  const taskFiltered =
     taskFilter === "all"
       ? modeFiltered
       : modeFiltered.filter((s) => s.task === taskFilter);
+
+  // Hide excluded sessions by default. Always keep the currently expanded
+  // session visible so a deeplink to an excluded session still resolves.
+  const excludedCount = sessions.filter((s) => s.excluded).length;
+  const filteredSessions = taskFiltered.filter(
+    (s) =>
+      !s.excluded ||
+      showExcluded ||
+      (s._id as string) === expandedSession
+  );
 
   // Count sessions per mode for the filter badges
   const modeCounts = new Map<string, number>();
@@ -388,6 +425,27 @@ export default function EvalSessions() {
             })}
           </div>
         )}
+
+        {/* Excluded toggle */}
+        {excludedCount > 0 && (
+          <button
+            onClick={() => setShowExcluded((v) => !v)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+              showExcluded
+                ? "bg-coral text-white shadow-sm"
+                : "bg-white border border-warm-200 text-ink-muted hover:border-warm-300 hover:text-ink"
+            }`}
+          >
+            {showExcluded ? "Hide excluded" : "Show excluded"}
+            <span
+              className={`font-mono text-[10px] ${
+                showExcluded ? "text-white/70" : "text-ink-muted/60"
+              }`}
+            >
+              {excludedCount}
+            </span>
+          </button>
+        )}
       </div>
 
       {filteredSessions.length === 0 ? (
@@ -398,7 +456,11 @@ export default function EvalSessions() {
         filteredSessions.map((session) => (
         <div
           key={session._id}
-          className="bg-white rounded-2xl border border-warm-200 shadow-sm overflow-hidden"
+          className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${
+            session.excluded
+              ? "border-coral/30 opacity-60 hover:opacity-100 transition-opacity"
+              : "border-warm-200"
+          }`}
         >
           {/* Session header */}
           <button
@@ -426,6 +488,11 @@ export default function EvalSessions() {
                   {Number(session.num_rounds)} rounds
                 </span>
                 <SessionModeTag mode={session.session_mode ?? "manual"} />
+                {session.excluded && (
+                  <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-coral-light text-coral">
+                    excluded
+                  </span>
+                )}
                 <a
                   href={`?tab=explorer&dataset=${encodeURIComponent(session.dataset_repo)}`}
                   className="hover:text-teal transition-colors font-mono"
@@ -476,9 +543,15 @@ export default function EvalSessions() {
             </div>
           )}
 
-          {/* Expanded detail */}
+          {/* Exclusion control + expanded detail */}
           {expandedSession === (session._id as string) && (
-            <SessionDetail sessionId={session._id} />
+            <>
+              <ExclusionControl
+                excluded={session.excluded ?? false}
+                reason={session.exclusion_reason}
+              />
+              <SessionDetail sessionId={session._id} />
+            </>
           )}
         </div>
       ))

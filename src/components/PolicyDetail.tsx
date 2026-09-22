@@ -4,6 +4,35 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import RolloutSection from "./RolloutSection";
 import { useSearchParamNullable } from "../lib/useSearchParam";
+import { parseWandbModelId } from "../lib/wandb";
+
+function CopyButton({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        await navigator.clipboard.writeText(value);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1200);
+      }}
+      title={copied ? "Copied!" : label}
+      className="shrink-0 text-ink-muted hover:text-teal transition-colors cursor-pointer"
+    >
+      {copied ? (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-teal">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      ) : (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+      )}
+    </button>
+  );
+}
 
 function CollapsibleSection({
   title,
@@ -80,6 +109,15 @@ export default function PolicyDetail({
 
   if (!policy) return null;
 
+  const wandb = parseWandbModelId(policy.model_id);
+  // The training run: authoritative once backfilled into training_url, otherwise
+  // derived from a wandb:// id when its run is recoverable from the name.
+  const trainingUrl = policy.training_url ?? wandb?.runUrl ?? null;
+  // The Model ID links to its own home first (the HF page via model_url), then
+  // the training run, then the wandb project as a last resort.
+  const modelIdUrl =
+    policy.model_url ?? trainingUrl ?? wandb?.projectUrl ?? null;
+
   return (
     <div className="px-6 py-5 bg-warm-50/30">
       <div className="grid grid-cols-2 gap-6">
@@ -89,32 +127,34 @@ export default function PolicyDetail({
           <dl className="space-y-2 text-xs">
             <div className="flex gap-2">
               <dt className="text-ink-muted w-24 shrink-0">Model ID</dt>
-              <dd className="font-mono text-ink break-all">
-                {policy.model_url ? (
+              <dd className="font-mono text-ink break-all flex items-start gap-1.5 min-w-0">
+                {modelIdUrl ? (
                   <a
-                    href={policy.model_url}
+                    href={modelIdUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-teal hover:underline"
+                    className="text-teal hover:underline break-all"
+                    title="Open in a new tab"
                   >
                     {policy.model_id}
                   </a>
                 ) : (
-                  policy.model_id
+                  <span className="break-all">{policy.model_id}</span>
                 )}
+                <CopyButton value={policy.model_id} label="Copy model ID" />
               </dd>
             </div>
-            {policy.training_url && (
+            {trainingUrl && (
               <div className="flex gap-2">
                 <dt className="text-ink-muted w-24 shrink-0">Training Run</dt>
                 <dd>
                   <a
-                    href={policy.training_url}
+                    href={trainingUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-teal hover:underline font-mono"
                   >
-                    View run &rarr;
+                    {wandb?.runId ?? "View run"} &rarr;
                   </a>
                 </dd>
               </div>

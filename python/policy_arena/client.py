@@ -1,13 +1,77 @@
+import json
+import os
 import random
+import uuid
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
-from convex import ConvexClient
+from convex import ConvexClient, convex_to_json, json_to_convex
 
 from policy_arena.types import DatasetInput, PolicyInput, RoundInput, RoundResultInput
 
 
+class PolicyArenaAPIError(RuntimeError):
+    """An authenticated Policy Arena write request failed."""
+
+
 class PolicyArenaClient:
-    def __init__(self, url: str):
+    def __init__(
+        self,
+        url: str,
+        api_key: str | None = None,
+        api_url: str | None = None,
+        timeout_seconds: float = 30.0,
+    ):
         self.client = ConvexClient(url)
+        self.api_key = api_key or os.environ.get("POLICY_ARENA_API_KEY")
+        self.api_url = api_url or self._default_api_url(url)
+        self.timeout_seconds = timeout_seconds
+
+    @staticmethod
+    def _default_api_url(url: str) -> str:
+        suffix = ".convex.cloud"
+        if not url.endswith(suffix):
+            raise ValueError(
+                "api_url is required when the Convex URL does not end in .convex.cloud"
+            )
+        return f"{url.removesuffix(suffix)}.convex.site/api/v1"
+
+    def _write(
+        self,
+        path: str,
+        args: dict,
+        idempotency_key: str | None = None,
+    ):
+        if self.api_key is None:
+            raise PolicyArenaAPIError(
+                "POLICY_ARENA_API_KEY is required for Policy Arena writes"
+            )
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        if idempotency_key is not None:
+            headers["Idempotency-Key"] = idempotency_key
+
+        request = Request(
+            f"{self.api_url}/{path}",
+            data=json.dumps(convex_to_json(args)).encode(),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=self.timeout_seconds) as response:
+                payload = json.loads(response.read())
+        except HTTPError as error:
+            payload = json.loads(error.read())
+            raise PolicyArenaAPIError(
+                f"Policy Arena write failed with HTTP {error.code}: {payload['error']}"
+            ) from error
+
+        if payload["ok"] is not True:
+            raise PolicyArenaAPIError(payload["error"])
+        return json_to_convex(payload["value"])
 
     def submit_eval_session(
         self,
@@ -16,6 +80,7 @@ class PolicyArenaClient:
         rounds: list[RoundInput],
         notes: str | None = None,
         session_mode: str | None = None,
+        idempotency_key: str | None = None,
     ) -> str:
         """Submit evaluation results. Policies are auto-registered."""
         args = {
@@ -27,7 +92,11 @@ class PolicyArenaClient:
             args["notes"] = notes
         if session_mode is not None:
             args["session_mode"] = session_mode
-        return self.client.mutation("evalSessions:submit", args)
+        return self._write(
+            "eval-sessions/submit",
+            args,
+            idempotency_key=idempotency_key or str(uuid.uuid4()),
+        )
 
     def submit_rollout_session(
         self,
@@ -35,6 +104,7 @@ class PolicyArenaClient:
         policy: PolicyInput,
         episodes: list[tuple[int, bool, int | None]],
         notes: str | None = None,
+        idempotency_key: str | None = None,
     ) -> str:
         """Submit a rollout session (single policy, no ELO changes).
 
@@ -64,6 +134,7 @@ class PolicyArenaClient:
             rounds=rounds,
             notes=notes,
             session_mode="rollout",
+            idempotency_key=idempotency_key,
         )
 
     def get_pair_counts(self, environment: str | None = None) -> dict[str, dict[str, int]]:
@@ -172,8 +243,8 @@ class PolicyArenaClient:
         rounds: list[RoundInput],
     ) -> str:
         """Append rounds to an existing eval session and update ELO."""
-        return self.client.mutation(
-            "evalSessions:addRounds",
+        return self._write(
+            "eval-sessions/add-rounds",
             {
                 "id": session_id,
                 "policies": [p.to_dict() for p in policies],
@@ -190,20 +261,46 @@ class PolicyArenaClient:
 
     def delete_session(self, session_id: str) -> dict:
         """Delete an eval session and recompute ELO for all policies."""
-        return self.client.mutation(
-            "evalSessions:deleteSession", {"id": session_id}
-        )
+        return self._write("admin/delete-session", {"id": session_id})
 
     def remove_policy_from_session(self, session_id: str, model_id: str) -> dict:
         """Remove a policy from an eval session and recompute ELO."""
-        return self.client.mutation(
-            "evalSessions:removePolicyFromSession",
+        return self._write(
+            "admin/remove-policy-from-session",
             {"id": session_id, "model_id": model_id},
         )
 
     def register_dataset(self, dataset: DatasetInput) -> str:
         """Register a dataset in the arena for browsing."""
-        return self.client.mutation("datasets:register", dataset.to_dict())
+        return self._write("datasets/register", dataset.to_dict())
+
+    def update_dataset_stats(
+        self,
+        repo_id: str,
+        num_episodes: int,
+        total_duration_seconds: float,
+        num_success: int | None = None,
+        num_failure: int | None = None,
+        num_human_frames: int | None = None,
+        num_policy_frames: int | None = None,
+        num_autonomous_success: int | None = None,
+    ):
+        """Update derived dataset statistics through the ingest API."""
+        args = {
+            "repo_id": repo_id,
+            "num_episodes": num_episodes,
+            "total_duration_seconds": total_duration_seconds,
+        }
+        for key, value in {
+            "num_success": num_success,
+            "num_failure": num_failure,
+            "num_human_frames": num_human_frames,
+            "num_policy_frames": num_policy_frames,
+            "num_autonomous_success": num_autonomous_success,
+        }.items():
+            if value is not None:
+                args[key] = value
+        return self._write("datasets/update-stats", args)
 
     def list_datasets(
         self,
@@ -233,17 +330,57 @@ class PolicyArenaClient:
         self, repo_id: str, task: str, environment: str
     ) -> str:
         """Re-categorize a dataset to a different task/environment."""
-        return self.client.mutation(
-            "datasets:updateTask",
+        return self._write(
+            "curation/update-dataset-task",
             {"repo_id": repo_id, "task": task, "environment": environment},
         )
 
     def update_policy_environment(self, model_id: str, environment: str) -> str:
         """Re-categorize a policy to a different environment."""
-        return self.client.mutation(
-            "policies:updateEnvironment",
+        return self._write(
+            "curation/update-policy-environment",
             {"model_id": model_id, "environment": environment},
         )
+
+    def set_policy_links(
+        self,
+        model_id: str,
+        model_url: str | None = None,
+        training_url: str | None = None,
+    ):
+        """Update the model and training links for a policy."""
+        args = {"model_id": model_id}
+        if model_url is not None:
+            args["model_url"] = model_url
+        if training_url is not None:
+            args["training_url"] = training_url
+        return self._write("curation/set-policy-links", args)
+
+    def set_session_excluded(
+        self,
+        session_id: str,
+        excluded: bool,
+        reason: str | None = None,
+    ):
+        """Include or exclude a session from derived metrics."""
+        args = {"id": session_id, "excluded": excluded}
+        if reason is not None:
+            args["exclusion_reason"] = reason
+        return self._write("curation/set-excluded", args)
+
+    def update_session_notes(self, session_id: str, notes: str):
+        """Update an evaluation session's notes."""
+        return self._write(
+            "curation/update-notes", {"id": session_id, "notes": notes}
+        )
+
+    def delete_policy(self, model_id: str):
+        """Delete a policy that has no remaining round results."""
+        return self._write("admin/delete-policy", {"model_id": model_id})
+
+    def delete_dataset(self, repo_id: str):
+        """Delete a dataset registry entry."""
+        return self._write("admin/delete-dataset", {"repo_id": repo_id})
 
     def get_leaderboard(self) -> list[dict]:
         """Get current leaderboard."""

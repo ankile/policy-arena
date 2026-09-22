@@ -14,11 +14,13 @@ A leaderboard web app for comparing robot policies via ELO ratings derived from 
 **NEVER use `npx convex deploy`** — that pushes to the prod deployment (`ideal-pig-506`) which we do NOT use.
 
 Instead, to push schema/function changes:
+
 ```bash
 npx convex dev --once    # pushes to dev (grandiose-rook-292) once, no watcher
 ```
 
 After pushing Convex changes, redeploy the frontend:
+
 ```bash
 npx vercel --prod
 ```
@@ -62,6 +64,9 @@ npx vercel --prod
 - `client.py` — Main client for submitting eval results, managing eval/rollout sessions, getting opponent recommendations, and registering datasets
 - `types.py` — Shared type definitions
 - `get_datasets.py` — Dataset listing utility
+
+Authenticated machine writes, scopes, and credential rotation are documented
+in [`docs/machine-api.md`](docs/machine-api.md).
 
 ### Scripts (`scripts/`)
 

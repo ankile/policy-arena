@@ -1,6 +1,5 @@
 import { asyncBufferFromUrl, parquetReadObjects, toJson } from "hyparquet";
 
-const DEFAULT_DATASET_ID = "ankile/dp-franka-pick-cube-2026-02-12";
 const DATASETS_SERVER = "https://datasets-server.huggingface.co";
 
 const FPS = 15;
@@ -22,12 +21,6 @@ export interface DatasetSourceStats {
   episodesWithHumanFrames: Set<number>;
 }
 
-export interface DatasetInfo {
-  episodes: EpisodeMetadata[];
-  cameraKeys: string[];
-  sourceStats: DatasetSourceStats | null;
-}
-
 function hfBase(datasetId: string): string {
   return `https://huggingface.co/datasets/${datasetId}/resolve/main`;
 }
@@ -35,7 +28,7 @@ function hfBase(datasetId: string): string {
 export function getVideoUrl(
   cameraKey: string,
   fileIndex: number,
-  datasetId: string = DEFAULT_DATASET_ID
+  datasetId: string
 ): string {
   return `${hfBase(datasetId)}/videos/${cameraKey}/chunk-000/file-${String(fileIndex).padStart(3, "0")}.mp4`;
 }
@@ -78,7 +71,7 @@ async function tryReadParquet(
 // ── Module-level cache for parquet metadata ──
 const parquetCache = new Map<
   string,
-  { episodes: Omit<EpisodeMetadata, "success">[]; cameraKeys: string[] }
+  { episodes: EpisodeMetadata[]; cameraKeys: string[] }
 >();
 
 /**
@@ -89,7 +82,7 @@ const parquetCache = new Map<
 export async function fetchEpisodeSubset(
   datasetId: string,
   neededIndices: Set<number>
-): Promise<{ episodes: Omit<EpisodeMetadata, "success">[]; cameraKeys: string[] }> {
+): Promise<{ episodes: EpisodeMetadata[]; cameraKeys: string[] }> {
   // Return full cache hit
   const cached = parquetCache.get(datasetId);
   if (cached) return cached;
@@ -111,6 +104,7 @@ export async function fetchEpisodeSubset(
       episodeIndex: row["episode_index"] as number,
       numFrames: row["length"] as number,
       duration: (row["length"] as number) / FPS,
+      success: (row["stats/success/max"] as number[])[0] === 1,
       videoFileIndex: videoColPrefix
         ? (row[`${videoColPrefix}/file_index`] as number)
         : 0,
@@ -168,31 +162,14 @@ export async function fetchEpisodeSubset(
 /** Get the module-level parquet cache (for initializing component state). */
 export function getParquetCache(): ReadonlyMap<
   string,
-  { episodes: Omit<EpisodeMetadata, "success">[]; cameraKeys: string[] }
+  { episodes: EpisodeMetadata[]; cameraKeys: string[] }
 > {
   return parquetCache;
 }
 
-export async function fetchDatasetInfo(
-  datasetId: string = DEFAULT_DATASET_ID
-): Promise<DatasetInfo> {
-  const [parquetResult, successMap, sourceStats] = await Promise.all([
-    fetchParquetMetadata(datasetId),
-    fetchSuccessStatus(datasetId).catch(() => new Map<number, boolean>()),
-    fetchSourceStats(datasetId).catch(() => null),
-  ]);
-
-  const episodes = parquetResult.episodes.map((ep) => ({
-    ...ep,
-    success: successMap.get(ep.episodeIndex) ?? false,
-  }));
-
-  return { episodes, cameraKeys: parquetResult.cameraKeys, sourceStats };
-}
-
 export async function fetchParquetMetadata(
   datasetId: string
-): Promise<{ episodes: Omit<EpisodeMetadata, "success">[]; cameraKeys: string[] }> {
+): Promise<{ episodes: EpisodeMetadata[]; cameraKeys: string[] }> {
   // Return from module-level cache if available
   const cached = parquetCache.get(datasetId);
   if (cached) return cached;
@@ -228,6 +205,7 @@ export async function fetchParquetMetadata(
     episodeIndex: row["episode_index"] as number,
     numFrames: row["length"] as number,
     duration: (row["length"] as number) / FPS,
+    success: (row["stats/success/max"] as number[])[0] === 1,
     videoFileIndex: videoColPrefix
       ? (row[`${videoColPrefix}/file_index`] as number)
       : 0,
@@ -248,20 +226,6 @@ export async function fetchParquetMetadata(
   parquetCache.set(datasetId, result);
 
   return result;
-}
-
-export async function fetchSuccessStatus(
-  datasetId: string
-): Promise<Map<number, boolean>> {
-  const url = `${DATASETS_SERVER}/filter?dataset=${datasetId}&config=default&split=train&where=frame_index=0&length=100`;
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`HF datasets server returned ${resp.status}`);
-  const data = await resp.json();
-  const map = new Map<number, boolean>();
-  for (const { row } of data.rows) {
-    map.set(row.episode_index, row.success === 1);
-  }
-  return map;
 }
 
 export async function fetchSourceStats(

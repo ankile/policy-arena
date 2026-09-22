@@ -1,4 +1,9 @@
-import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import {
+  internalMutation,
+  query,
+  type MutationCtx,
+  type QueryCtx,
+} from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 
@@ -51,7 +56,7 @@ async function computePolicyCountsFromRoundResults(
 
   const sessions = await ctx.db.query("evalSessions").order("asc").collect();
   for (const session of sessions) {
-    if (session.session_mode === "rollout") continue;
+    if (session.session_mode === "rollout" || session.excluded) continue;
 
     const results = await ctx.db
       .query("roundResults")
@@ -133,7 +138,7 @@ export const auditSessionDerivedData = query({
   },
 });
 
-export const repairSessionDerivedData = mutation({
+export const repairSessionDerivedData = internalMutation({
   args: { id: v.id("evalSessions") },
   handler: async (ctx, args) => {
     const session = await ctx.db.get(args.id);

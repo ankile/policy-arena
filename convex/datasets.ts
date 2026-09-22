@@ -1,7 +1,7 @@
-import { query, mutation } from "./_generated/server";
+import { internalMutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
-export const register = mutation({
+export const register = internalMutation({
   args: {
     repo_id: v.string(),
     name: v.string(),
@@ -36,7 +36,7 @@ export const register = mutation({
   },
 });
 
-export const updateStats = mutation({
+export const updateStats = internalMutation({
   args: {
     repo_id: v.string(),
     num_episodes: v.number(),
@@ -80,7 +80,7 @@ export const updateStats = mutation({
   },
 });
 
-export const deleteByRepo = mutation({
+export const deleteByRepo = internalMutation({
   args: { repo_id: v.string() },
   handler: async (ctx, args) => {
     const dataset = await ctx.db
@@ -103,7 +103,7 @@ export const getByRepo = query({
   },
 });
 
-export const updateTask = mutation({
+export const updateTask = internalMutation({
   args: {
     repo_id: v.string(),
     task: v.string(),

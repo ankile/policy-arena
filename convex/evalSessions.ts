@@ -1,9 +1,145 @@
-import { query, mutation } from "./_generated/server";
+import { internalMutation, query, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { computeEloUpdate } from "./elo";
 
-function uniqueRoundIndexes(rounds: Array<{ round_index: bigint }>): Set<number> {
+/**
+ * Reset every policy to its initial rating/record and replay all eval sessions
+ * chronologically to recompute ELO, win/loss/draw counts, and ELO history.
+ *
+ * Rollout sessions and excluded sessions are skipped — they contribute neither
+ * to ratings nor to head-to-head tallies.
+ *
+ * Returns the number of sessions that actually contributed to the replay.
+ */
+async function recomputeAllElo(ctx: MutationCtx): Promise<number> {
+  // 1. Wipe ELO history (rebuilt from scratch below)
+  const allEloHistory = await ctx.db.query("eloHistory").collect();
+  for (const e of allEloHistory) {
+    await ctx.db.delete(e._id);
+  }
+
+  // 2. Reset all policies to initial ELO and empty records
+  const allPolicies = await ctx.db.query("policies").collect();
+  for (const p of allPolicies) {
+    await ctx.db.patch(p._id, {
+      elo: 1500,
+      wins: BigInt(0),
+      losses: BigInt(0),
+      draws: BigInt(0),
+    });
+  }
+
+  // 3. Replay all contributing sessions chronologically
+  const allSessions = await ctx.db.query("evalSessions").order("asc").collect();
+  let replayed = 0;
+
+  for (const sess of allSessions) {
+    if (sess.session_mode === "rollout" || sess.excluded) continue;
+    replayed++;
+
+    const sessResults = await ctx.db
+      .query("roundResults")
+      .withIndex("by_session", (q) => q.eq("session_id", sess._id))
+      .collect();
+
+    // Group by round
+    const roundsMap = new Map<
+      number,
+      Array<{ policyId: Id<"policies">; success: boolean }>
+    >();
+    for (const r of sessResults) {
+      const roundIdx = Number(r.round_index);
+      if (!roundsMap.has(roundIdx)) roundsMap.set(roundIdx, []);
+      roundsMap.get(roundIdx)!.push({
+        policyId: r.policy_id,
+        success: r.success,
+      });
+    }
+
+    // Compute pairwise ELO updates
+    const eloDeltas = new Map<Id<"policies">, number>();
+    const winDeltas = new Map<Id<"policies">, bigint>();
+    const lossDeltas = new Map<Id<"policies">, bigint>();
+    const drawDeltas = new Map<Id<"policies">, bigint>();
+
+    for (const id of sess.policy_ids) {
+      eloDeltas.set(id, 0);
+      winDeltas.set(id, BigInt(0));
+      lossDeltas.set(id, BigInt(0));
+      drawDeltas.set(id, BigInt(0));
+    }
+
+    const sortedRounds = Array.from(roundsMap.entries()).sort(
+      ([a], [b]) => a - b,
+    );
+
+    for (const [, roundResults] of sortedRounds) {
+      for (let i = 0; i < roundResults.length; i++) {
+        for (let j = i + 1; j < roundResults.length; j++) {
+          const a = roundResults[i];
+          const b = roundResults[j];
+
+          const policyA = (await ctx.db.get(a.policyId))!;
+          const policyB = (await ctx.db.get(b.policyId))!;
+          const ratingA = policyA.elo + eloDeltas.get(a.policyId)!;
+          const ratingB = policyB.elo + eloDeltas.get(b.policyId)!;
+
+          let scoreA: number;
+          if (a.success && !b.success) {
+            scoreA = 1;
+            winDeltas.set(a.policyId, winDeltas.get(a.policyId)! + BigInt(1));
+            lossDeltas.set(b.policyId, lossDeltas.get(b.policyId)! + BigInt(1));
+          } else if (!a.success && b.success) {
+            scoreA = 0;
+            lossDeltas.set(a.policyId, lossDeltas.get(a.policyId)! + BigInt(1));
+            winDeltas.set(b.policyId, winDeltas.get(b.policyId)! + BigInt(1));
+          } else {
+            scoreA = 0.5;
+            drawDeltas.set(a.policyId, drawDeltas.get(a.policyId)! + BigInt(1));
+            drawDeltas.set(b.policyId, drawDeltas.get(b.policyId)! + BigInt(1));
+          }
+
+          const [newA, newB] = computeEloUpdate(ratingA, ratingB, scoreA);
+          eloDeltas.set(a.policyId, newA - policyA.elo);
+          eloDeltas.set(b.policyId, newB - policyB.elo);
+        }
+      }
+    }
+
+    // Apply ELO updates and write history
+    for (const id of sess.policy_ids) {
+      const policy = (await ctx.db.get(id))!;
+      const newElo = Math.round((policy.elo + eloDeltas.get(id)!) * 100) / 100;
+      await ctx.db.patch(id, {
+        elo: newElo,
+        wins: policy.wins + winDeltas.get(id)!,
+        losses: policy.losses + lossDeltas.get(id)!,
+        draws: policy.draws + drawDeltas.get(id)!,
+      });
+
+      await ctx.db.insert("eloHistory", {
+        policy_id: id,
+        elo: newElo,
+        session_id: sess._id,
+      });
+    }
+  }
+
+  return replayed;
+}
+
+export const recomputeAllRatings = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const sessionsReplayed = await recomputeAllElo(ctx);
+    return { sessionsReplayed };
+  },
+});
+
+function uniqueRoundIndexes(
+  rounds: Array<{ round_index: bigint }>,
+): Set<number> {
   const indexes = new Set<number>();
   for (const round of rounds) {
     const index = Number(round.round_index);
@@ -15,9 +151,11 @@ function uniqueRoundIndexes(rounds: Array<{ round_index: bigint }>): Set<number>
   return indexes;
 }
 
-export const submit = mutation({
+export const submit = internalMutation({
   args: {
     dataset_repo: v.string(),
+    submission_id: v.optional(v.string()),
+    submission_fingerprint: v.optional(v.string()),
     notes: v.optional(v.string()),
     session_mode: v.optional(v.string()),
     policies: v.array(
@@ -27,7 +165,7 @@ export const submit = mutation({
         model_url: v.optional(v.string()),
         training_url: v.optional(v.string()),
         environment: v.string(),
-      })
+      }),
     ),
     rounds: v.array(
       v.object({
@@ -38,20 +176,46 @@ export const submit = mutation({
             success: v.boolean(),
             episode_index: v.int64(),
             num_frames: v.optional(v.int64()),
-          })
+          }),
         ),
-      })
+      }),
     ),
   },
   handler: async (ctx, args) => {
+    if (
+      (args.submission_id === undefined) !==
+      (args.submission_fingerprint === undefined)
+    ) {
+      throw new Error(
+        "submission_id and submission_fingerprint must be provided together",
+      );
+    }
+
+    if (args.submission_id !== undefined) {
+      const existingSession = await ctx.db
+        .query("evalSessions")
+        .withIndex("by_submission_id", (q) =>
+          q.eq("submission_id", args.submission_id),
+        )
+        .unique();
+      if (existingSession) {
+        if (
+          existingSession.submission_fingerprint !== args.submission_fingerprint
+        ) {
+          throw new Error(
+            `Idempotency conflict for submission ${args.submission_id}`,
+          );
+        }
+        return existingSession._id;
+      }
+    }
+
     // 1. Register/upsert all policies
     const modelIdToPolicy = new Map<string, Id<"policies">>();
     for (const p of args.policies) {
       const existing = await ctx.db
         .query("policies")
-        .withIndex("by_model_id", (q) =>
-          q.eq("model_id", p.model_id)
-        )
+        .withIndex("by_model_id", (q) => q.eq("model_id", p.model_id))
         .unique();
 
       if (existing) {
@@ -79,7 +243,7 @@ export const submit = mutation({
     }
 
     const policyIds = args.policies.map(
-      (p) => modelIdToPolicy.get(p.model_id)!
+      (p) => modelIdToPolicy.get(p.model_id)!,
     );
 
     const roundIndexes = uniqueRoundIndexes(args.rounds);
@@ -89,6 +253,8 @@ export const submit = mutation({
       dataset_repo: args.dataset_repo,
       num_rounds: BigInt(roundIndexes.size),
       policy_ids: policyIds,
+      submission_id: args.submission_id,
+      submission_fingerprint: args.submission_fingerprint,
       notes: args.notes,
       session_mode: args.session_mode,
     });
@@ -145,7 +311,7 @@ export const submit = mutation({
               winDeltas.set(a.policyId, winDeltas.get(a.policyId)! + BigInt(1));
               lossDeltas.set(
                 b.policyId,
-                lossDeltas.get(b.policyId)! + BigInt(1)
+                lossDeltas.get(b.policyId)! + BigInt(1),
               );
               const [newA, newB] = computeEloUpdate(ratingA, ratingB, 1);
               eloDeltas.set(a.policyId, newA - policyA.elo);
@@ -153,7 +319,7 @@ export const submit = mutation({
             } else if (!a.success && b.success) {
               lossDeltas.set(
                 a.policyId,
-                lossDeltas.get(a.policyId)! + BigInt(1)
+                lossDeltas.get(a.policyId)! + BigInt(1),
               );
               winDeltas.set(b.policyId, winDeltas.get(b.policyId)! + BigInt(1));
               const [newA, newB] = computeEloUpdate(ratingA, ratingB, 0);
@@ -162,11 +328,11 @@ export const submit = mutation({
             } else {
               drawDeltas.set(
                 a.policyId,
-                drawDeltas.get(a.policyId)! + BigInt(1)
+                drawDeltas.get(a.policyId)! + BigInt(1),
               );
               drawDeltas.set(
                 b.policyId,
-                drawDeltas.get(b.policyId)! + BigInt(1)
+                drawDeltas.get(b.policyId)! + BigInt(1),
               );
             }
           }
@@ -199,10 +365,7 @@ export const submit = mutation({
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const sessions = await ctx.db
-      .query("evalSessions")
-      .order("desc")
-      .collect();
+    const sessions = await ctx.db.query("evalSessions").order("desc").collect();
 
     return Promise.all(
       sessions.map(async (session) => {
@@ -210,7 +373,7 @@ export const list = query({
           session.policy_ids.map(async (id) => {
             const policy = await ctx.db.get(id);
             return policy?.name ?? "Unknown";
-          })
+          }),
         );
         const dataset = await ctx.db
           .query("datasets")
@@ -222,7 +385,7 @@ export const list = query({
           task: dataset?.task ?? null,
           derivedDatasetRepos: dataset?.derived_repo_ids ?? [],
         };
-      })
+      }),
     );
   },
 });
@@ -265,7 +428,7 @@ export const getDetail = query({
       session.policy_ids.map(async (id) => {
         const policy = await ctx.db.get(id);
         return policy!;
-      })
+      }),
     );
 
     // Sort each round's results to match session.policy_ids order
@@ -274,7 +437,7 @@ export const getDetail = query({
       roundResults.sort(
         (a, b) =>
           policyIdOrder.indexOf(a.policy_id) -
-          policyIdOrder.indexOf(b.policy_id)
+          policyIdOrder.indexOf(b.policy_id),
       );
     }
 
@@ -288,7 +451,7 @@ export const getDetail = query({
   },
 });
 
-export const deleteSession = mutation({
+export const deleteSession = internalMutation({
   args: { id: v.id("evalSessions") },
   handler: async (ctx, args) => {
     const session = await ctx.db.get(args.id);
@@ -303,148 +466,17 @@ export const deleteSession = mutation({
       await ctx.db.delete(r._id);
     }
 
-    // 2. Delete ALL eloHistory entries (will be recomputed)
-    const allEloHistory = await ctx.db.query("eloHistory").collect();
-    for (const e of allEloHistory) {
-      await ctx.db.delete(e._id);
-    }
-
-    // 3. Delete the session
+    // 2. Delete the session
     await ctx.db.delete(args.id);
 
-    // 4. Reset ALL policies to initial ELO
-    const allPolicies = await ctx.db.query("policies").collect();
-    for (const p of allPolicies) {
-      await ctx.db.patch(p._id, {
-        elo: 1500,
-        wins: BigInt(0),
-        losses: BigInt(0),
-        draws: BigInt(0),
-      });
-    }
+    // 3. Reset and replay all remaining sessions to recompute ELO
+    const sessionsReplayed = await recomputeAllElo(ctx);
 
-    // 5. Replay all remaining sessions chronologically to recompute ELO
-    const remainingSessions = await ctx.db
-      .query("evalSessions")
-      .order("asc")
-      .collect();
-
-    for (const sess of remainingSessions) {
-      // Skip ELO computation for rollout sessions
-      if (sess.session_mode === "rollout") continue;
-
-      const sessResults = await ctx.db
-        .query("roundResults")
-        .withIndex("by_session", (q) => q.eq("session_id", sess._id))
-        .collect();
-
-      // Group by round
-      const roundsMap = new Map<
-        number,
-        Array<{ policyId: Id<"policies">; success: boolean }>
-      >();
-      for (const r of sessResults) {
-        const roundIdx = Number(r.round_index);
-        if (!roundsMap.has(roundIdx)) roundsMap.set(roundIdx, []);
-        roundsMap.get(roundIdx)!.push({
-          policyId: r.policy_id,
-          success: r.success,
-        });
-      }
-
-      // Compute pairwise ELO updates
-      const eloDeltas = new Map<Id<"policies">, number>();
-      const winDeltas = new Map<Id<"policies">, bigint>();
-      const lossDeltas = new Map<Id<"policies">, bigint>();
-      const drawDeltas = new Map<Id<"policies">, bigint>();
-
-      for (const id of sess.policy_ids) {
-        eloDeltas.set(id, 0);
-        winDeltas.set(id, BigInt(0));
-        lossDeltas.set(id, BigInt(0));
-        drawDeltas.set(id, BigInt(0));
-      }
-
-      const sortedRounds = Array.from(roundsMap.entries()).sort(
-        ([a], [b]) => a - b
-      );
-
-      for (const [, roundResults] of sortedRounds) {
-        for (let i = 0; i < roundResults.length; i++) {
-          for (let j = i + 1; j < roundResults.length; j++) {
-            const a = roundResults[i];
-            const b = roundResults[j];
-
-            const policyA = (await ctx.db.get(a.policyId))!;
-            const policyB = (await ctx.db.get(b.policyId))!;
-            const ratingA = policyA.elo + eloDeltas.get(a.policyId)!;
-            const ratingB = policyB.elo + eloDeltas.get(b.policyId)!;
-
-            let scoreA: number;
-            if (a.success && !b.success) {
-              scoreA = 1;
-              winDeltas.set(
-                a.policyId,
-                winDeltas.get(a.policyId)! + BigInt(1)
-              );
-              lossDeltas.set(
-                b.policyId,
-                lossDeltas.get(b.policyId)! + BigInt(1)
-              );
-            } else if (!a.success && b.success) {
-              scoreA = 0;
-              lossDeltas.set(
-                a.policyId,
-                lossDeltas.get(a.policyId)! + BigInt(1)
-              );
-              winDeltas.set(
-                b.policyId,
-                winDeltas.get(b.policyId)! + BigInt(1)
-              );
-            } else {
-              scoreA = 0.5;
-              drawDeltas.set(
-                a.policyId,
-                drawDeltas.get(a.policyId)! + BigInt(1)
-              );
-              drawDeltas.set(
-                b.policyId,
-                drawDeltas.get(b.policyId)! + BigInt(1)
-              );
-            }
-
-            const [newA, newB] = computeEloUpdate(ratingA, ratingB, scoreA);
-            eloDeltas.set(a.policyId, newA - policyA.elo);
-            eloDeltas.set(b.policyId, newB - policyB.elo);
-          }
-        }
-      }
-
-      // Apply ELO updates and write history
-      for (const id of sess.policy_ids) {
-        const policy = (await ctx.db.get(id))!;
-        const newElo =
-          Math.round((policy.elo + eloDeltas.get(id)!) * 100) / 100;
-        await ctx.db.patch(id, {
-          elo: newElo,
-          wins: policy.wins + winDeltas.get(id)!,
-          losses: policy.losses + lossDeltas.get(id)!,
-          draws: policy.draws + drawDeltas.get(id)!,
-        });
-
-        await ctx.db.insert("eloHistory", {
-          policy_id: id,
-          elo: newElo,
-          session_id: sess._id,
-        });
-      }
-    }
-
-    return { deleted: args.id, sessionsReplayed: remainingSessions.length };
+    return { deleted: args.id, sessionsReplayed };
   },
 });
 
-export const removePolicyFromSession = mutation({
+export const removePolicyFromSession = internalMutation({
   args: {
     id: v.id("evalSessions"),
     model_id: v.string(),
@@ -478,138 +510,13 @@ export const removePolicyFromSession = mutation({
     }
 
     // 3. Remove policy from session's policy_ids
-    const updatedPolicyIds = session.policy_ids.filter((id) => id !== policy._id);
+    const updatedPolicyIds = session.policy_ids.filter(
+      (id) => id !== policy._id,
+    );
     await ctx.db.patch(args.id, { policy_ids: updatedPolicyIds });
 
-    // 4. Delete ALL eloHistory entries (will be recomputed)
-    const allEloHistory = await ctx.db.query("eloHistory").collect();
-    for (const e of allEloHistory) {
-      await ctx.db.delete(e._id);
-    }
-
-    // 5. Reset ALL policies to initial ELO
-    const allPolicies = await ctx.db.query("policies").collect();
-    for (const p of allPolicies) {
-      await ctx.db.patch(p._id, {
-        elo: 1500,
-        wins: BigInt(0),
-        losses: BigInt(0),
-        draws: BigInt(0),
-      });
-    }
-
-    // 6. Replay all sessions chronologically to recompute ELO
-    const allSessions = await ctx.db
-      .query("evalSessions")
-      .order("asc")
-      .collect();
-
-    for (const sess of allSessions) {
-      if (sess.session_mode === "rollout") continue;
-
-      const sessResults = await ctx.db
-        .query("roundResults")
-        .withIndex("by_session", (q) => q.eq("session_id", sess._id))
-        .collect();
-
-      const roundsMap = new Map<
-        number,
-        Array<{ policyId: Id<"policies">; success: boolean }>
-      >();
-      for (const r of sessResults) {
-        const roundIdx = Number(r.round_index);
-        if (!roundsMap.has(roundIdx)) roundsMap.set(roundIdx, []);
-        roundsMap.get(roundIdx)!.push({
-          policyId: r.policy_id,
-          success: r.success,
-        });
-      }
-
-      const eloDeltas = new Map<Id<"policies">, number>();
-      const winDeltas = new Map<Id<"policies">, bigint>();
-      const lossDeltas = new Map<Id<"policies">, bigint>();
-      const drawDeltas = new Map<Id<"policies">, bigint>();
-
-      for (const id of sess.policy_ids) {
-        eloDeltas.set(id, 0);
-        winDeltas.set(id, BigInt(0));
-        lossDeltas.set(id, BigInt(0));
-        drawDeltas.set(id, BigInt(0));
-      }
-
-      const sortedRounds = Array.from(roundsMap.entries()).sort(
-        ([a], [b]) => a - b
-      );
-
-      for (const [, roundResults] of sortedRounds) {
-        for (let i = 0; i < roundResults.length; i++) {
-          for (let j = i + 1; j < roundResults.length; j++) {
-            const a = roundResults[i];
-            const b = roundResults[j];
-
-            const policyA = (await ctx.db.get(a.policyId))!;
-            const policyB = (await ctx.db.get(b.policyId))!;
-            const ratingA = policyA.elo + eloDeltas.get(a.policyId)!;
-            const ratingB = policyB.elo + eloDeltas.get(b.policyId)!;
-
-            let scoreA: number;
-            if (a.success && !b.success) {
-              scoreA = 1;
-              winDeltas.set(
-                a.policyId,
-                winDeltas.get(a.policyId)! + BigInt(1)
-              );
-              lossDeltas.set(
-                b.policyId,
-                lossDeltas.get(b.policyId)! + BigInt(1)
-              );
-            } else if (!a.success && b.success) {
-              scoreA = 0;
-              lossDeltas.set(
-                a.policyId,
-                lossDeltas.get(a.policyId)! + BigInt(1)
-              );
-              winDeltas.set(
-                b.policyId,
-                winDeltas.get(b.policyId)! + BigInt(1)
-              );
-            } else {
-              scoreA = 0.5;
-              drawDeltas.set(
-                a.policyId,
-                drawDeltas.get(a.policyId)! + BigInt(1)
-              );
-              drawDeltas.set(
-                b.policyId,
-                drawDeltas.get(b.policyId)! + BigInt(1)
-              );
-            }
-
-            const [newA, newB] = computeEloUpdate(ratingA, ratingB, scoreA);
-            eloDeltas.set(a.policyId, newA - policyA.elo);
-            eloDeltas.set(b.policyId, newB - policyB.elo);
-          }
-        }
-      }
-
-      for (const id of sess.policy_ids) {
-        const pol = (await ctx.db.get(id))!;
-        const newElo =
-          Math.round((pol.elo + eloDeltas.get(id)!) * 100) / 100;
-        await ctx.db.patch(id, {
-          elo: newElo,
-          wins: pol.wins + winDeltas.get(id)!,
-          losses: pol.losses + lossDeltas.get(id)!,
-          draws: pol.draws + drawDeltas.get(id)!,
-        });
-
-        await ctx.db.insert("eloHistory", {
-          policy_id: id,
-          elo: newElo,
-          session_id: sess._id,
-        });
-      }
-    }
+    // 4. Reset and replay all sessions to recompute ELO
+    await recomputeAllElo(ctx);
 
     return {
       session_id: args.id,
@@ -621,7 +528,7 @@ export const removePolicyFromSession = mutation({
   },
 });
 
-export const addRounds = mutation({
+export const addRounds = internalMutation({
   args: {
     id: v.id("evalSessions"),
     policies: v.array(
@@ -631,7 +538,7 @@ export const addRounds = mutation({
         model_url: v.optional(v.string()),
         training_url: v.optional(v.string()),
         environment: v.string(),
-      })
+      }),
     ),
     rounds: v.array(
       v.object({
@@ -642,9 +549,9 @@ export const addRounds = mutation({
             success: v.boolean(),
             episode_index: v.int64(),
             num_frames: v.optional(v.int64()),
-          })
+          }),
         ),
-      })
+      }),
     ),
   },
   handler: async (ctx, args) => {
@@ -657,14 +564,14 @@ export const addRounds = mutation({
       .withIndex("by_session", (q) => q.eq("session_id", args.id))
       .collect();
     const existingRoundIndexes = new Set(
-      existingResults.map((r) => Number(r.round_index))
+      existingResults.map((r) => Number(r.round_index)),
     );
     const duplicateRoundIndexes = [...incomingRoundIndexes].filter((index) =>
-      existingRoundIndexes.has(index)
+      existingRoundIndexes.has(index),
     );
     if (duplicateRoundIndexes.length > 0) {
       throw new Error(
-        `Round index already exists in session ${args.id}: ${duplicateRoundIndexes.join(", ")}`
+        `Round index already exists in session ${args.id}: ${duplicateRoundIndexes.join(", ")}`,
       );
     }
 
@@ -673,9 +580,7 @@ export const addRounds = mutation({
     for (const p of args.policies) {
       const existing = await ctx.db
         .query("policies")
-        .withIndex("by_model_id", (q) =>
-          q.eq("model_id", p.model_id)
-        )
+        .withIndex("by_model_id", (q) => q.eq("model_id", p.model_id))
         .unique();
 
       if (existing) {
@@ -730,7 +635,7 @@ export const addRounds = mutation({
 
     // 4. Update session metadata
     const newNumRounds = BigInt(
-      existingRoundIndexes.size + incomingRoundIndexes.size
+      existingRoundIndexes.size + incomingRoundIndexes.size,
     );
     await ctx.db.patch(args.id, {
       num_rounds: newNumRounds,
@@ -774,7 +679,7 @@ export const addRounds = mutation({
               winDeltas.set(a.policyId, winDeltas.get(a.policyId)! + BigInt(1));
               lossDeltas.set(
                 b.policyId,
-                lossDeltas.get(b.policyId)! + BigInt(1)
+                lossDeltas.get(b.policyId)! + BigInt(1),
               );
               const [newA, newB] = computeEloUpdate(ratingA, ratingB, 1);
               eloDeltas.set(a.policyId, newA - policyA.elo);
@@ -782,7 +687,7 @@ export const addRounds = mutation({
             } else if (!a.success && b.success) {
               lossDeltas.set(
                 a.policyId,
-                lossDeltas.get(a.policyId)! + BigInt(1)
+                lossDeltas.get(a.policyId)! + BigInt(1),
               );
               winDeltas.set(b.policyId, winDeltas.get(b.policyId)! + BigInt(1));
               const [newA, newB] = computeEloUpdate(ratingA, ratingB, 0);
@@ -791,11 +696,11 @@ export const addRounds = mutation({
             } else {
               drawDeltas.set(
                 a.policyId,
-                drawDeltas.get(a.policyId)! + BigInt(1)
+                drawDeltas.get(a.policyId)! + BigInt(1),
               );
               drawDeltas.set(
                 b.policyId,
-                drawDeltas.get(b.policyId)! + BigInt(1)
+                drawDeltas.get(b.policyId)! + BigInt(1),
               );
             }
           }
@@ -804,8 +709,7 @@ export const addRounds = mutation({
 
       for (const [id, delta] of eloDeltas) {
         const policy = (await ctx.db.get(id))!;
-        const newElo =
-          Math.round((policy.elo + delta) * 100) / 100;
+        const newElo = Math.round((policy.elo + delta) * 100) / 100;
         await ctx.db.patch(id, {
           elo: newElo,
           wins: policy.wins + winDeltas.get(id)!,
@@ -835,7 +739,32 @@ export const addRounds = mutation({
   },
 });
 
-export const updateNotes = mutation({
+export const setExcluded = internalMutation({
+  args: {
+    id: v.id("evalSessions"),
+    excluded: v.boolean(),
+    exclusion_reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.id);
+    if (!session) throw new Error("Session not found");
+
+    await ctx.db.patch(args.id, {
+      excluded: args.excluded,
+      ...(args.exclusion_reason !== undefined
+        ? { exclusion_reason: args.exclusion_reason }
+        : {}),
+    });
+
+    // Recompute all metrics so the (now excluded/included) session is
+    // dropped from / restored to the ELO and head-to-head tallies.
+    const sessionsReplayed = await recomputeAllElo(ctx);
+
+    return { id: args.id, excluded: args.excluded, sessionsReplayed };
+  },
+});
+
+export const updateNotes = internalMutation({
   args: {
     id: v.id("evalSessions"),
     notes: v.string(),
@@ -854,15 +783,12 @@ export const getByDatasetRepo = query({
     session_mode: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const sessions = await ctx.db
-      .query("evalSessions")
-      .order("desc")
-      .collect();
+    const sessions = await ctx.db.query("evalSessions").order("desc").collect();
 
     const matches = sessions.filter(
       (s) =>
         s.dataset_repo === args.dataset_repo &&
-        (args.session_mode == null || s.session_mode === args.session_mode)
+        (args.session_mode == null || s.session_mode === args.session_mode),
     );
 
     return matches.length > 0 ? matches[0] : null;
@@ -885,7 +811,7 @@ export const getByPolicy = query({
       sessionIds.map(async (id) => {
         const session = await ctx.db.get(id);
         return session!;
-      })
+      }),
     );
 
     return sessions.sort((a, b) => b._creationTime - a._creationTime);

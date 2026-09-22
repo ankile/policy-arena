@@ -1,15 +1,25 @@
-import { query } from "./_generated/server";
+import { query, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
+
+async function excludedSessionIdSet(ctx: QueryCtx): Promise<Set<string>> {
+  const sessions = await ctx.db.query("evalSessions").collect();
+  return new Set(
+    sessions.filter((s) => s.excluded).map((s) => s._id as string)
+  );
+}
 
 export const getFailuresByPolicy = query({
   args: { policy_id: v.id("policies") },
   handler: async (ctx, args) => {
-    const results = await ctx.db
-      .query("roundResults")
-      .withIndex("by_policy", (q) => q.eq("policy_id", args.policy_id))
-      .order("desc")
-      .collect();
+    const excluded = await excludedSessionIdSet(ctx);
+    const results = (
+      await ctx.db
+        .query("roundResults")
+        .withIndex("by_policy", (q) => q.eq("policy_id", args.policy_id))
+        .order("desc")
+        .collect()
+    ).filter((r) => !excluded.has(r.session_id as string));
 
     const failures = results.filter((r) => !r.success).slice(0, 20);
 
@@ -33,10 +43,13 @@ export const getFailuresByPolicy = query({
 export const getSuccessRateHistory = query({
   args: { policy_id: v.id("policies") },
   handler: async (ctx, args) => {
-    const results = await ctx.db
-      .query("roundResults")
-      .withIndex("by_policy", (q) => q.eq("policy_id", args.policy_id))
-      .collect();
+    const excluded = await excludedSessionIdSet(ctx);
+    const results = (
+      await ctx.db
+        .query("roundResults")
+        .withIndex("by_policy", (q) => q.eq("policy_id", args.policy_id))
+        .collect()
+    ).filter((r) => !excluded.has(r.session_id as string));
 
     const bySession = new Map<
       string,
@@ -74,11 +87,16 @@ export const getSuccessRateHistory = query({
 export const getRecentByPolicy = query({
   args: { policy_id: v.id("policies") },
   handler: async (ctx, args) => {
-    const results = await ctx.db
-      .query("roundResults")
-      .withIndex("by_policy", (q) => q.eq("policy_id", args.policy_id))
-      .order("desc")
-      .take(20);
+    const excluded = await excludedSessionIdSet(ctx);
+    const results = (
+      await ctx.db
+        .query("roundResults")
+        .withIndex("by_policy", (q) => q.eq("policy_id", args.policy_id))
+        .order("desc")
+        .collect()
+    )
+      .filter((r) => !excluded.has(r.session_id as string))
+      .slice(0, 20);
 
     return Promise.all(
       results.map(async (r) => {

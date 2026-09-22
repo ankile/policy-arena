@@ -1,4 +1,4 @@
-import { query, mutation } from "./_generated/server";
+import { internalMutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 export const environments = query({
@@ -21,12 +21,23 @@ export const leaderboard = query({
       policies = await ctx.db.query("policies").collect();
     }
 
+    // Session IDs that are excluded from metrics — their round results must not
+    // count toward success rate / step averages.
+    const excludedSessionIds = new Set(
+      (await ctx.db.query("evalSessions").collect())
+        .filter((s) => s.excluded)
+        .map((s) => s._id as string)
+    );
+
     const enriched = await Promise.all(
       policies.map(async (policy) => {
-        const results = await ctx.db
+        const allResults = await ctx.db
           .query("roundResults")
           .withIndex("by_policy", (q) => q.eq("policy_id", policy._id))
           .collect();
+        const results = allResults.filter(
+          (r) => !excludedSessionIds.has(r.session_id as string)
+        );
 
         const total = results.length;
         const successes = results.filter((r) => r.success).length;
@@ -77,7 +88,7 @@ export const getByModelId = query({
   },
 });
 
-export const updateEnvironment = mutation({
+export const updateEnvironment = internalMutation({
   args: {
     model_id: v.string(),
     environment: v.string(),
@@ -95,7 +106,7 @@ export const updateEnvironment = mutation({
   },
 });
 
-export const deletePolicy = mutation({
+export const deletePolicy = internalMutation({
   args: { model_id: v.string() },
   handler: async (ctx, args) => {
     const policy = await ctx.db
@@ -130,7 +141,29 @@ export const deletePolicy = mutation({
   },
 });
 
-export const register = mutation({
+export const setLinks = internalMutation({
+  args: {
+    model_id: v.string(),
+    model_url: v.optional(v.string()),
+    training_url: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const policy = await ctx.db
+      .query("policies")
+      .withIndex("by_model_id", (q) => q.eq("model_id", args.model_id))
+      .unique();
+    if (!policy) throw new Error(`Policy not found: ${args.model_id}`);
+
+    const patch: { model_url?: string; training_url?: string } = {};
+    if (args.model_url !== undefined) patch.model_url = args.model_url;
+    if (args.training_url !== undefined) patch.training_url = args.training_url;
+    await ctx.db.patch(policy._id, patch);
+
+    return { id: policy._id, ...patch };
+  },
+});
+
+export const register = internalMutation({
   args: {
     name: v.string(),
     model_id: v.string(),

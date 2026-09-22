@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
   fetchEpisodeSubset,
-  fetchSuccessStatus,
   getVideoUrl,
   visibleCameraKeys,
   type EpisodeMetadata,
@@ -62,7 +61,7 @@ function VideoGrid({
   playing: boolean;
   onTogglePlay: () => void;
   cameraKeys: string[];
-  datasetId?: string;
+  datasetId: string;
 }) {
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
   const primaryRef = useRef<HTMLVideoElement | null>(null);
@@ -234,20 +233,13 @@ export default function EpisodeViewer({
     setPlaying(false);
 
     const resolvedId = datasetId ?? "ankile/dp-franka-pick-cube-2026-02-12";
-    Promise.all([
-      fetchEpisodeSubset(resolvedId, new Set()),
-      fetchSuccessStatus(resolvedId).catch(() => new Map<number, boolean>()),
-    ])
-      .then(([parquetInfo, successMap]) => {
-        const episodes = parquetInfo.episodes.map((ep) => ({
-          ...ep,
-          success: successMap.get(ep.episodeIndex) ?? false,
-        }));
-        setEpisodes(episodes);
+    fetchEpisodeSubset(resolvedId, new Set())
+      .then((parquetInfo) => {
+        setEpisodes(parquetInfo.episodes);
         setCameraKeys(visibleCameraKeys(parquetInfo.cameraKeys));
         // If an episodeIndex was provided, select it
         if (episodeIndex !== undefined) {
-          const idx = episodes.findIndex(
+          const idx = parquetInfo.episodes.findIndex(
             (e) => e.episodeIndex === episodeIndex
           );
           if (idx >= 0) setSelectedIndex(idx);
@@ -358,7 +350,7 @@ export default function EpisodeViewer({
               playing={playing}
               onTogglePlay={handleTogglePlay}
               cameraKeys={cameraKeys}
-              datasetId={datasetId}
+              datasetId={displayDatasetId}
             />
           </div>
         ) : (

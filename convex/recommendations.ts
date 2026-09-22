@@ -25,6 +25,13 @@ export const getPairCounts = query({
       policyIds.add(p._id as string);
     }
 
+    // Excluded sessions don't count toward head-to-head pairing tallies.
+    const excludedSessionIds = new Set(
+      (await ctx.db.query("evalSessions").collect())
+        .filter((s) => s.excluded)
+        .map((s) => s._id as string)
+    );
+
     // Collect all round results for these policies, grouped by (session_id, round_index)
     const roundGroups = new Map<string, string[]>(); // "session_id|round_index" -> [model_id, ...]
     for (const p of policies) {
@@ -33,6 +40,7 @@ export const getPairCounts = query({
         .withIndex("by_policy", (q) => q.eq("policy_id", p._id))
         .collect();
       for (const r of results) {
+        if (excludedSessionIds.has(r.session_id as string)) continue;
         const key = `${r.session_id}|${r.round_index}`;
         const modelId = idToModelId.get(r.policy_id as string);
         if (!modelId) continue;

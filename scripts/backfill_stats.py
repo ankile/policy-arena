@@ -10,7 +10,7 @@ Usage:
 """
 
 import requests
-from convex import ConvexClient
+from policy_arena import PolicyArenaClient
 
 ARENA_URL = "https://grandiose-rook-292.convex.cloud"
 DATASETS_SERVER = "https://datasets-server.huggingface.co"
@@ -96,8 +96,8 @@ def fetch_episode_count_and_duration(repo_id: str) -> dict:
 
 
 def main():
-    client = ConvexClient(ARENA_URL)
-    datasets = client.query("datasets:list", {})
+    client = PolicyArenaClient(ARENA_URL)
+    datasets = client.list_datasets()
 
     print(f"Found {len(datasets)} datasets to backfill.\n")
 
@@ -141,7 +141,7 @@ def main():
             else:
                 print("  No source column (teleop/rollout/eval dataset)")
 
-            client.mutation("datasets:updateStats", update_args)
+            client.update_dataset_stats(**update_args)
             print(f"  Updated!\n")
             success_count += 1
         except Exception as e:

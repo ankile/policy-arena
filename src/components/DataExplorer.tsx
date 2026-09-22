@@ -1,10 +1,9 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useSearchParam, useSearchParamNullable, useSearchParamNumber, clearSearchParams } from "../lib/useSearchParam";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import {
   fetchParquetMetadata,
-  fetchSuccessStatus,
   fetchSourceStats,
   getParquetCache,
   getVideoUrl,
@@ -25,8 +24,6 @@ type DatasetRoleFilter =
   | "eval_session"
   | "rollout";
 type TrainableFilter = "all" | "true" | "false";
-
-type EpisodeWithOptionalSuccess = Omit<EpisodeMetadata, "success"> & { success: boolean | null };
 
 const SOURCE_TYPE_FILTERS: { id: SourceTypeFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -186,7 +183,7 @@ function VideoGrid({
   cameraKeys,
   datasetId,
 }: {
-  episode: EpisodeWithOptionalSuccess;
+  episode: EpisodeMetadata;
   playing: boolean;
   onTogglePlay: () => void;
   cameraKeys: string[];
@@ -336,7 +333,7 @@ function EpisodeCard({
   selected,
   onClick,
 }: {
-  episode: EpisodeWithOptionalSuccess;
+  episode: EpisodeMetadata;
   selected: boolean;
   onClick: () => void;
 }) {
@@ -353,21 +350,15 @@ function EpisodeCard({
         <span className="font-mono text-sm font-medium text-ink">
           Ep {episode.episodeIndex}
         </span>
-        {episode.success === null ? (
-          <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide bg-warm-100 text-ink-muted animate-pulse">
-            ...
-          </span>
-        ) : (
-          <span
-            className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide ${
-              episode.success
-                ? "bg-teal-light text-teal"
-                : "bg-coral-light text-coral"
-            }`}
-          >
-            {episode.success ? "Success" : "Fail"}
-          </span>
-        )}
+        <span
+          className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide ${
+            episode.success
+              ? "bg-teal-light text-teal"
+              : "bg-coral-light text-coral"
+          }`}
+        >
+          {episode.success ? "Success" : "Fail"}
+        </span>
       </div>
       <div className="text-xs text-ink-muted font-mono">
         {formatDuration(episode.duration)} &middot; {episode.numFrames}f
@@ -403,27 +394,14 @@ function DatasetDetail({
   const [selectedIndex, setSelectedIndex] = useSearchParamNumber("episode");
   const [playing, setPlaying] = useState(false);
   const [episodeFilter, setEpisodeFilter] = useSearchParam("outcome", "all");
-  const updateStats = useMutation(api.datasets.updateStats);
 
   // -- Staged state --
-  const [baseEpisodes, setBaseEpisodes] = useState<Omit<EpisodeMetadata, "success">[]>([]);
+  const [episodes, setEpisodes] = useState<EpisodeMetadata[]>([]);
   const [cameraKeys, setCameraKeys] = useState<string[]>([]);
-  const [successMap, setSuccessMap] = useState<Map<number, boolean> | null>(null);
   const [sourceStats, setSourceStats] = useState<DatasetSourceStats | null>(null);
   const [episodesLoading, setEpisodesLoading] = useState(true);
-  const [successLoading, setSuccessLoading] = useState(true);
   const [sourceStatsLoading, setSourceStatsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Derive episodes with optional success
-  const episodes: EpisodeWithOptionalSuccess[] = useMemo(
-    () =>
-      baseEpisodes.map((ep) => ({
-        ...ep,
-        success: successMap ? (successMap.get(ep.episodeIndex) ?? false) : null,
-      })),
-    [baseEpisodes, successMap]
-  );
 
   // Initialize from cache on mount / dataset switch
   const prevRepoId = useRef(repoId);
@@ -438,33 +416,31 @@ function DatasetDetail({
     // Pre-populate from cache
     const cached = getParquetCache().get(repoId);
     if (cached) {
-      setBaseEpisodes(cached.episodes);
+      setEpisodes(cached.episodes);
       const visibleCams = visibleCameraKeys(cached.cameraKeys);
       const leftCams = visibleCams.filter((k) => k.includes("left"));
       setCameraKeys(sortCameraKeys(leftCams.length > 0 ? leftCams : visibleCams));
       setEpisodesLoading(false);
     } else {
-      setBaseEpisodes([]);
+      setEpisodes([]);
       setCameraKeys([]);
       setEpisodesLoading(true);
     }
-    setSuccessMap(null);
-    setSuccessLoading(true);
     setSourceStats(null);
     setSourceStatsLoading(true);
     setError(null);
   }, [repoId]);
 
-  // Effect 1: Parquet fetch
+  // Effect 1: Parquet fetch (includes success per episode from stats/success/max)
   useEffect(() => {
     let cancelled = false;
     // Skip fetch if already populated from cache
-    if (getParquetCache().has(repoId) && baseEpisodes.length > 0) return;
+    if (getParquetCache().has(repoId) && episodes.length > 0) return;
 
     fetchParquetMetadata(repoId)
       .then((result) => {
         if (cancelled) return;
-        setBaseEpisodes(result.episodes);
+        setEpisodes(result.episodes);
         const visibleCams = visibleCameraKeys(result.cameraKeys);
         const leftCams = visibleCams.filter((k) => k.includes("left"));
         setCameraKeys(sortCameraKeys(leftCams.length > 0 ? leftCams : visibleCams));
@@ -479,32 +455,7 @@ function DatasetDetail({
     return () => { cancelled = true; };
   }, [repoId]);
 
-  // Effect 2: Success status (retry once on transient HF server errors)
-  useEffect(() => {
-    let cancelled = false;
-    const attempt = (retriesLeft: number) => {
-      fetchSuccessStatus(repoId)
-        .then((map) => {
-          if (cancelled) return;
-          setSuccessMap(map);
-          setSuccessLoading(false);
-        })
-        .catch(() => {
-          if (cancelled) return;
-          if (retriesLeft > 0) {
-            setTimeout(() => attempt(retriesLeft - 1), 1500);
-          } else {
-            setSuccessMap(new Map());
-            setSuccessLoading(false);
-          }
-        });
-    };
-    attempt(1);
-
-    return () => { cancelled = true; };
-  }, [repoId]);
-
-  // Effect 3: Source stats
+  // Effect 2: Source stats
   useEffect(() => {
     let cancelled = false;
     fetchSourceStats(repoId)
@@ -522,42 +473,6 @@ function DatasetDetail({
     return () => { cancelled = true; };
   }, [repoId]);
 
-  // Effect 4: Sync stats to Convex once all data is ready
-  const statsSynced = useRef(false);
-  useEffect(() => {
-    // Reset sync flag on dataset switch
-    statsSynced.current = false;
-  }, [repoId]);
-  useEffect(() => {
-    if (episodesLoading || successLoading || sourceStatsLoading) return;
-    if (statsSynced.current) return;
-    if (baseEpisodes.length === 0) return;
-    statsSynced.current = true;
-
-    const totalDuration = baseEpisodes.reduce((sum, ep) => sum + ep.duration, 0);
-    const numSuccess = baseEpisodes.filter((e) => successMap?.get(e.episodeIndex) === true).length;
-    const numFailure = baseEpisodes.length - numSuccess;
-
-    const statsUpdate: Parameters<typeof updateStats>[0] = {
-      repo_id: repoId,
-      num_episodes: baseEpisodes.length,
-      total_duration_seconds: totalDuration,
-      num_success: numSuccess,
-      num_failure: numFailure,
-    };
-
-    if (sourceStats) {
-      statsUpdate.num_human_frames = sourceStats.humanFrames;
-      statsUpdate.num_policy_frames = sourceStats.policyFrames;
-      const autonomousSuccess = baseEpisodes.filter(
-        (e) => successMap?.get(e.episodeIndex) === true && !sourceStats.episodesWithHumanFrames.has(e.episodeIndex)
-      ).length;
-      statsUpdate.num_autonomous_success = autonomousSuccess;
-    }
-
-    updateStats(statsUpdate);
-  }, [episodesLoading, successLoading, sourceStatsLoading, baseEpisodes, successMap, sourceStats, repoId, updateStats]);
-
   const handleTogglePlay = useCallback(() => {
     setPlaying((p) => !p);
   }, []);
@@ -572,10 +487,10 @@ function DatasetDetail({
   const selectedEpisode =
     selectedIndex !== null ? episodes[selectedIndex] : null;
 
-  const successCount = successMap ? [...successMap.values()].filter(Boolean).length : null;
+  const successCount = episodesLoading ? null : episodes.filter((e) => e.success).length;
 
   // Only show full-page spinner on cache miss with no data
-  if (episodesLoading && baseEpisodes.length === 0) {
+  if (episodesLoading && episodes.length === 0) {
     return (
       <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8">
         <button
@@ -592,7 +507,7 @@ function DatasetDetail({
     );
   }
 
-  if (error && baseEpisodes.length === 0) {
+  if (error && episodes.length === 0) {
     return (
       <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8">
         <button
@@ -711,8 +626,8 @@ function DatasetDetail({
         {(() => {
           const total = episodes.length;
           const successPct = successCount != null && total > 0 ? Math.round((successCount / total) * 100) : null;
-          const autonomousCount = sourceStats && successMap
-            ? baseEpisodes.filter((e) => successMap.get(e.episodeIndex) === true && !sourceStats.episodesWithHumanFrames.has(e.episodeIndex)).length
+          const autonomousCount = sourceStats
+            ? episodes.filter((e) => e.success && !sourceStats.episodesWithHumanFrames.has(e.episodeIndex)).length
             : null;
           const autonomousPct = autonomousCount != null && total > 0
             ? Math.round((autonomousCount / total) * 100)
@@ -729,7 +644,7 @@ function DatasetDetail({
               label: "Success Rate",
               value: successCount != null ? `${successCount}/${total} (${successPct}%)` : "...",
               color: successCount != null ? "text-teal" : undefined,
-              loading: successLoading,
+              loading: episodesLoading,
             },
           ];
           if (autonomousCount != null) {
@@ -789,7 +704,7 @@ function DatasetDetail({
             ] as const
           ).map((filter) => {
             const isActive = episodeFilter === filter.id;
-            const isDisabled = filter.id !== "all" && successLoading;
+            const isDisabled = filter.id !== "all" && episodesLoading;
             return (
               <button
                 key={filter.id}
@@ -843,21 +758,15 @@ function DatasetDetail({
               <span className="font-display text-lg text-ink">
                 Episode {selectedEpisode.episodeIndex}
               </span>
-              {selectedEpisode.success === null ? (
-                <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-warm-100 text-ink-muted animate-pulse">
-                  ...
-                </span>
-              ) : (
-                <span
-                  className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                    selectedEpisode.success
-                      ? "bg-teal-light text-teal"
-                      : "bg-coral-light text-coral"
-                  }`}
-                >
-                  {selectedEpisode.success ? "Success" : "Failure"}
-                </span>
-              )}
+              <span
+                className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                  selectedEpisode.success
+                    ? "bg-teal-light text-teal"
+                    : "bg-coral-light text-coral"
+                }`}
+              >
+                {selectedEpisode.success ? "Success" : "Failure"}
+              </span>
               <span className="text-xs text-ink-muted font-mono">
                 {selectedEpisode.numFrames} frames &middot;{" "}
                 {formatDuration(selectedEpisode.duration)} &middot; 15 FPS
