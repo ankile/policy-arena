@@ -48,8 +48,9 @@ describe("production security headers", () => {
     const csp = requiredHeader("Content-Security-Policy");
     expect(csp).toContain("https://fonts.googleapis.com");
     expect(csp).toContain("https://fonts.gstatic.com");
-    expect(csp).toContain("https://grandiose-rook-292.convex.cloud");
-    expect(csp).toContain("wss://grandiose-rook-292.convex.cloud");
+    expect(csp).toContain("https://watchful-swordfish-385.convex.cloud");
+    expect(csp).toContain("wss://watchful-swordfish-385.convex.cloud");
+    expect(csp).not.toContain("grandiose-rook-292");
     expect(csp).toContain("https://huggingface.co");
     expect(csp).not.toContain("https://*.convex.cloud");
     expect(csp).not.toContain("https://*.amazonaws.com");

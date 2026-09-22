@@ -1,8 +1,17 @@
 import Huggingface from "@auth/core/providers/huggingface";
+import { Anonymous } from "@convex-dev/auth/providers/Anonymous";
 import { convexAuth } from "@convex-dev/auth/server";
+import { sandboxEnabled } from "./sandbox";
 
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
   providers: [
+    ...(sandboxEnabled() ? [Anonymous({
+      profile: () => ({
+        isAnonymous: true,
+        name: "Sandbox reviewer",
+        username: `sandbox-${crypto.randomUUID()}`,
+      }),
+    })] : []),
     Huggingface({
       // "openid profile" only — the allowlist keys on the OIDC sub, and
       // omitting "email" means the OAuth app does not need the email scope.

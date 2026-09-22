@@ -2,7 +2,7 @@ import { query, mutation } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { requireEditorOrService } from "./access";
+import { requireReviewerOrService } from "./access";
 import {
   canonicalizeStageLabel,
   validateStageLabel,
@@ -78,7 +78,7 @@ export const save = mutation({
     saved_at_override: v.optional(v.float64()),
   },
   handler: async (ctx, args) => {
-    const principal = await requireEditorOrService(ctx, args.serviceToken);
+    const principal = await requireReviewerOrService(ctx, args.serviceToken);
     if (!(STATUSES as readonly string[]).includes(args.status)) {
       throw new Error(`Invalid stage review status: ${args.status}`);
     }

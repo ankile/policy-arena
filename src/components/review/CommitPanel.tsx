@@ -22,6 +22,7 @@ export function CommitPanel({
   numEpisodes: number;
 }) {
   const jobs = useQuery(api.applyJobs.forRepo, { dataset_repo: repoId });
+  const sandbox = useQuery(api.users.reviewSandbox);
   const worker = useQuery(api.applyJobs.workerStatus, {});
   const enqueue = useMutation(api.applyJobs.enqueue);
   const cancelJob = useMutation(api.applyJobs.cancel);
@@ -63,6 +64,15 @@ export function CommitPanel({
     failed: "bg-coral-light text-coral",
     cancelled: "bg-warm-100 text-ink-muted",
   };
+
+  if (sandbox) {
+    return (
+      <div className="border-t border-warm-200 bg-warm-50 px-6 py-4 text-sm text-ink-muted">
+        {numConfirmed} confirmed · {numSkipped} skipped · {numEpisodes} episodes.
+        Reviews are saved in the test database. Publishing to Hugging Face is disabled.
+      </div>
+    );
+  }
 
   return (
     <div className="border-t border-warm-200 bg-warm-50 px-6 py-4">

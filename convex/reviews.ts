@@ -1,7 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { requireEditorOrService } from "./access";
+import { requireReviewerOrService } from "./access";
 
 const OUTCOMES = ["success", "failure", "timeout"] as const;
 const STATUSES = ["confirmed", "skipped", "cleared"] as const;
@@ -33,7 +33,7 @@ export const save = mutation({
     reviewer_override: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const principal = await requireEditorOrService(ctx, args.serviceToken);
+    const principal = await requireReviewerOrService(ctx, args.serviceToken);
     if (!(STATUSES as readonly string[]).includes(args.status)) {
       throw new Error(`Invalid review status: ${args.status}`);
     }

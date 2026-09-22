@@ -2,6 +2,7 @@ import { query, mutation, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { requireEditorOrService } from "./access";
+import { sandboxEnabled } from "./sandbox";
 
 /**
  * Apply jobs bridge web-captured outcome reviews to HuggingFace. Since
@@ -23,6 +24,9 @@ export const enqueue = mutation({
     dry_run: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    if (sandboxEnabled()) {
+      throw new Error("Sandbox reviews stay in the test database; Hugging Face publishing is disabled");
+    }
     const principal = await requireEditorOrService(ctx, args.serviceToken);
     const existing = await ctx.db
       .query("applyJobs")

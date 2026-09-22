@@ -1,10 +1,14 @@
 import { useAuthActions } from "@convex-dev/auth/react";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../convex/_generated/api";
 
 export default function AuthControls() {
   const { signIn, signOut } = useAuthActions();
   const viewer = useQuery(api.users.viewer);
+  const sandbox = useQuery(api.users.reviewSandbox);
+
+  if (sandbox) return <SandboxIdentity />;
 
   if (viewer === undefined) return null;
 
@@ -45,6 +49,33 @@ export default function AuthControls() {
       >
         Sign out
       </button>
+    </div>
+  );
+}
+
+function SandboxIdentity() {
+  const { signIn } = useAuthActions();
+  const { isAuthenticated, isLoading } = useConvexAuth();
+  const started = useRef(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (isLoading || isAuthenticated || started.current) return;
+    started.current = true;
+    void signIn("anonymous").catch((err: unknown) => {
+      setError(err instanceof Error ? err.message : String(err));
+    });
+  }, [isLoading, isAuthenticated, signIn]);
+
+  return (
+    <div className="text-sm text-ink-muted max-w-md" role="status">
+      <strong className="text-teal">Labeling sandbox</strong>
+      <span className="block">
+        {error
+          ? `Could not start your test session: ${error}. Reload to retry.`
+          : isAuthenticated
+            ? "Edits are saved in the test database. Live labels are unchanged."
+            : "Starting your test session…"}
+      </span>
     </div>
   );
 }

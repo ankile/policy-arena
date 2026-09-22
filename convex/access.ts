@@ -1,6 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { sandboxEnabled } from "./sandbox";
 
 declare const process: {
   env: Record<string, string | undefined>;
@@ -108,7 +109,21 @@ export async function requireEditorOrService(
 export async function viewerIsEditor(ctx: QueryCtx): Promise<boolean> {
   const userId = await getAuthUserId(ctx);
   if (userId === null) return false;
+  if (sandboxEnabled() && (await ctx.db.get(userId))?.isAnonymous) return true;
   const sub = await viewerSub(ctx, userId);
   if (!sub) return false;
   return editorSubAllowlist().includes(sub);
+}
+
+/** Anonymous identities may save reviews only in the isolated sandbox. */
+export async function requireReviewerOrService(
+  ctx: QueryCtx | MutationCtx,
+  serviceToken: string | undefined
+): Promise<string> {
+  if (serviceToken === undefined && sandboxEnabled()) {
+    const userId = await getAuthUserId(ctx);
+    const user = userId === null ? null : await ctx.db.get(userId);
+    if (user?.isAnonymous && user.username) return user.username;
+  }
+  return requireEditorOrService(ctx, serviceToken);
 }

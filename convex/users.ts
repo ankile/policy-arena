@@ -1,6 +1,12 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { query } from "./_generated/server";
 import { viewerIsEditor } from "./access";
+import { sandboxEnabled } from "./sandbox";
+
+export const reviewSandbox = query({
+  args: {},
+  handler: () => sandboxEnabled(),
+});
 
 /** Current signed-in user (or null) plus whether they may edit. */
 export const viewer = query({

@@ -38,6 +38,7 @@ import type * as ratings from "../ratings.js";
 import type * as recommendations from "../recommendations.js";
 import type * as reviews from "../reviews.js";
 import type * as roundResults from "../roundResults.js";
+import type * as sandbox from "../sandbox.js";
 import type * as seed from "../seed.js";
 import type * as stageConsistency from "../stageConsistency.js";
 import type * as stageCoverage from "../stageCoverage.js";
@@ -86,6 +87,7 @@ declare const fullApi: ApiFromModules<{
   recommendations: typeof recommendations;
   reviews: typeof reviews;
   roundResults: typeof roundResults;
+  sandbox: typeof sandbox;
   seed: typeof seed;
   stageConsistency: typeof stageConsistency;
   stageCoverage: typeof stageCoverage;
