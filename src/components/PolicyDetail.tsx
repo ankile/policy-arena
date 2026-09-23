@@ -6,7 +6,7 @@ import type { Id } from "../../convex/_generated/dataModel";
 import RolloutSection from "./RolloutSection";
 import { StatusBadge, StatusSelect } from "./StatusBadge";
 import { PolicyTagBadges, PolicyTagEditor } from "./PolicyTags";
-import { ratingTrajectory, visibleSessions } from "../lib/arenaRatings";
+import { computeArenaStats, ratingTrajectory, visibleSessions } from "../lib/arenaRatings";
 import { useSearchParam, useSearchParamNullable } from "../lib/useSearchParam";
 
 function CollapsibleSection({
@@ -86,24 +86,33 @@ export default function PolicyDetail({
   // over the same session set the current lens rates on.
   const trajectory = useMemo(
     () =>
-      sessionOutcomes
+      sessionOutcomes && !published?.seeds
         ? ratingTrajectory(
-            visibleSessions(sessionOutcomes, showAll),
+            visibleSessions(sessionOutcomes, showAll).filter(s => !published || s.perPolicy.some(p => p.policy_id === policyId) || s.task === policy?.environment),
             policyId as string
           )
         : [],
-    [sessionOutcomes, showAll, policyId]
+    [sessionOutcomes, showAll, policyId, published, policy?.environment]
   );
 
   const [rolloutsParam, setRolloutsParam] = useSearchParamNullable("rollouts");
   const rolloutsOpen = rolloutsParam !== null;
   const [failuresOpen, setFailuresOpen] = useState(false);
 
+  const simStats = published?.seeds && sessionOutcomes ? computeArenaStats(sessionOutcomes, true) : null;
+  const simWdl = simStats?.wdl.get(policyId);
+  const simSuccess = simStats?.success.get(policyId);
   if (!policy) return null;
 
   return (
     <div className="px-6 py-5 bg-warm-50/30">
       {published && <div className="mb-5 text-sm text-ink"><h3 className="font-medium">Published {metric === "task_progress" ? "task progress" : "success rate"}: {(100 * published.rate).toFixed(1)}%</h3><p className="text-ink-muted">Interval {(100 * published.lo).toFixed(1)}–{(100 * published.hi).toFixed(1)}%. {published.seeds ? "Student-t 95% across five seeds." : "One standard error, matching the paper."}</p><p className="mt-2">{published.provenance}</p>{published.seeds && <ul className="mt-2 space-y-1">{published.seeds.map(s => <li key={s.seed}>Seed {s.seed}: {(100 * s.rate).toFixed(1)}% {s.dataUrl && <a className="text-teal hover:underline" href={s.dataUrl}>Per-state evidence ↗</a>}</li>)}</ul>}</div>}
+      {simWdl && simSuccess && <p className="mb-5 text-sm text-ink-muted">
+        {simSuccess.successes.toLocaleString()} successes in {simSuccess.rollouts.toLocaleString()} evaluations.
+        {" "}{simWdl.wins.toLocaleString()} wins / {simWdl.draws.toLocaleString()} draws / {simWdl.losses.toLocaleString()} losses against all selected policies on the same grid and training seed.
+        {" "}R0 aliases reuse the archived baseline outcomes. These comparisons are descriptive; the five-seed confidence interval above remains the reported uncertainty.
+        {" "}<a className="text-teal hover:underline" href="/data/sim-statistics.json">Computed statistics and source checksums ↗</a>
+      </p>}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Left: info */}
         <div>

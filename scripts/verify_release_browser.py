@@ -37,10 +37,12 @@ with sync_playwright() as p:
     page.on("request", lambda r: requests.append({"url": r.url, "method": r.method}))
 
     def go(params):
+        print("Open", params, flush=True)
         page.goto(base + "?" + urlencode(params), wait_until="domcontentloaded")
         page.get_by_role("heading", name="Policy Arena", exact=True).wait_for()
 
     def shot(name):
+        print("Screenshot", name, flush=True)
         page.screenshot(path=str(out / (name + ".png")), animations="disabled")
 
     def wait_videos(count, exact=False):
@@ -116,6 +118,54 @@ with sync_playwright() as p:
     assert page.get_by_text("Per-state evidence ↗", exact=True).count() == 5
     shot("simulation")
     checks.append("Five simulation seeds and artifact links")
+    summaries = json.loads(subprocess.check_output(["curl", "-fLsS", base + "data/sim-statistics.json"]))
+    for task in (t for t in release["tasks"] if t["domain"] == "sim"):
+        go({"env": task["id"]})
+        page.get_by_test_id("policy-rating").first.wait_for()
+        rows = page.locator("[data-policy-id]")
+        assert rows.count() == len(task["policies"])
+        for point in task["policies"]:
+            row = page.locator('[data-policy-id="' + point["id"] + '"]')
+            session = next(s for s in summaries["sessions"] if any(p["policy_id"] == point["id"] for p in s["perPolicy"]))
+            stats = next(p for p in session["perPolicy"] if p["policy_id"] == point["id"])
+            wins = losses = draws = 0
+            for pair in session["pairs"]:
+                if point["id"] not in (pair["a"], pair["b"]):
+                    continue
+                wins += pair["winsA"] if pair["a"] == point["id"] else pair["winsB"]
+                losses += pair["winsB"] if pair["a"] == point["id"] else pair["winsA"]
+                draws += pair["draws"]
+            assert row.get_by_test_id("policy-rating").inner_text().isdigit()
+            assert row.get_by_test_id("policy-wdl").get_attribute("title") == f"{wins:,} wins / {draws:,} draws / {losses:,} losses"
+            assert row.get_by_test_id("policy-winrate").inner_text() == f"{int(100 * wins / (wins + losses) + .5)}%"
+            assert row.get_by_test_id("policy-steps").inner_text() == str(int(stats["successFramesSum"] / stats["successFramesCount"] + .5))
+        page.wait_for_timeout(1500)
+        rows.first.scroll_into_view_if_needed()
+        page.wait_for_timeout(1000)
+        shot("computed-" + task["id"])
+    checks.append("All 64 simulation rows show computed ratings, exact W/D/L, win rates and successful episode steps")
+    go({"tab": "pairings", "env": task["id"], "policyA": point["id"]})
+    page.get_by_role("heading", name="Fixed-grid comparisons", exact=True).wait_for()
+    assert page.locator("tbody tr").count() > 0
+    shot("simulation-pairings")
+    narrow = next(t for t in release["tasks"] if t["id"] == "sq_d0")
+    a = next(p for p in narrow["policies"] if p["round"] == "R0")
+    b = next(p for p in narrow["policies"] if p["round"] == "R1")
+    go({"tab": "pairings", "env": "sq_d0", "policyA": a["id"], "policyB": b["id"]})
+    page.get_by_text("No matched grid:", exact=False).wait_for()
+    checks.append("Simulation pair comparisons and rejection of mismatched Square-Narrow grids")
+    page.goto(base + "overview.html?task=square_d2", wait_until="domcontentloaded")
+    page.get_by_role("heading", name="See what the policies learned.").wait_for()
+    page.get_by_role("tab", name="Compare", exact=True).click()
+    wait_videos(3, exact=True)
+    page.get_by_role("tab", name="Datasets", exact=True).click()
+    page.get_by_role("heading", name="Data for " + square["title"]).wait_for()
+    page.get_by_role("tab", name="Results", exact=True).click()
+    page.wait_for_timeout(1000)
+    shot("overview")
+    page.get_by_role("link", name="Policy Arena", exact=True).click()
+    page.get_by_role("heading", name="Policy Arena", exact=True).wait_for()
+    checks.append("Additional release overview with results, videos, datasets and link back to Arena")
     go({"tab": "coverage"})
     page.get_by_text("Stage annotation coverage at release export", exact=False).wait_for()
     shot("coverage")

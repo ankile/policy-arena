@@ -77,20 +77,36 @@ export default defineConfig([
 The public build mounts the same `src/App.tsx` and browsing components as the
 internal Arena. `src/lib/arenaClient.ts` is the data boundary: the regular build
 uses Convex, while `vite.release.config.ts` substitutes the frozen read-only
-provider in `src/release/client.ts`. Do not introduce a second release app.
+provider in `src/release/client.ts`. The optional `/overview` page is a separate
+entry for the task-card results overview; the primary Arena stays shared.
 
 The release disables authentication, editing, task status management and the
 Labeling Lab. Leaderboard filters, policy drilldowns, evaluation sessions,
 joined sessions, pairings, episode playback and dataset browsing remain shared.
 The release's policy-detail panel also links simulation seed evidence. Simulation
-policies have no invented paired games. Routing headlines report task progress;
+comparisons match task, grid manifest, training seed and state ID. Square-Narrow
+R0 is isolated from R1–R3 because their initial-state grids differ. Ratings are
+fit separately per task/grid with the shared Bradley–Terry fitter. W/D/L sums
+comparisons against all selected policies on that grid, including other rounds;
+win rate excludes draws. Average steps uses successful episodes only. Archived
+R0 aliases remain labeled and are not treated as independent seed evidence.
+Routing headlines report task progress;
 paired Arena ratings continue to use full success. All dataset reads are pinned.
 
-Prepare an export directory containing the verified `release.json`, `ui.json`,
+Prepare an export directory containing the verified `release.json`, `ui.json`, `sim-statistics.json`,
 and catalog/provenance files listed in `scripts/package_release.ts`. The UI
 snapshot contains only selected session dates, dataset identities and scoped
 per-repository annotation coverage. It excludes operator identities, mutable
 result overrides, task-wide aggregates and draft review contents.
+
+From the parent research repository, generate statistics from the pinned HF
+bundles. Cached point files must match the published SHA before use.
+
+```sh
+uv run python -m sir.tools.mulligan_arena_sim_stats --release RELEASE_JSON --output EXPORT_DIR/sim-statistics.json
+```
+
+Then from the Arena repository:
 
 ```sh
 bun scripts/export_release_ui.ts RELEASE_JSON OUTPUT_UI_JSON CONVEX_URL

@@ -9,6 +9,7 @@ export type SessionOutcome = {
   creation_time: number;
   session_mode: string;
   task: string | null;
+  rating_group?: string;
   effective_status: string;
   pairs: PairOutcome[];
   perPolicy: Array<{
@@ -40,9 +41,12 @@ export function visibleSessions(
 }
 
 /** Ratings + W/D/L + success stats over exactly the given sessions. */
-export function computeArenaStats(sessions: SessionOutcome[]): PolicyArenaStats {
+export function computeArenaStats(sessions: SessionOutcome[], separateGroups = false): PolicyArenaStats {
   const merged = mergePairOutcomes(sessions.map((s) => s.pairs));
-  const ratings = fitBradleyTerry(merged);
+  const ratings = separateGroups
+    ? new Map([...new Set(sessions.map(s => s.rating_group ?? s.task))].flatMap(group =>
+        [...fitBradleyTerry(mergePairOutcomes(sessions.filter(s => (s.rating_group ?? s.task) === group).map(s => s.pairs)))]))
+    : fitBradleyTerry(merged);
 
   const wdl = new Map<string, { wins: number; draws: number; losses: number }>();
   const ensureWdl = (id: string) => {

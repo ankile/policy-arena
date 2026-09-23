@@ -145,3 +145,11 @@ describe("original Arena release adapter", () => {
     );
   });
 });
+
+test("simulation cannot silently omit computed statistics", () => {
+  const simRelease = {...release, tasks: [{...release.tasks[0], domain: "sim" as const}]};
+  expect(() => createReleaseAdapter(simRelease, ui)).toThrow("simulation statistics");
+  expect(() => createReleaseAdapter(simRelease, ui, {
+    schemaVersion: 1, selectionSha256: "frozen", sessions: [], evidence: [],
+  })).toThrow("Incomplete simulation statistics");
+});

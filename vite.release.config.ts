@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 export default defineConfig({
   plugins: [react(), tailwindcss(), {
     name: 'release-entry',
-    transformIndexHtml: {order: 'pre', handler: () => readFileSync(resolve('release.html'), 'utf8')},
+    transformIndexHtml: {order: 'pre', handler: (html, ctx) => ctx.path === '/index.html' ? readFileSync(resolve('release.html'), 'utf8') : html},
   }],
   resolve: {alias: [
     {find: /.*\/lib\/arenaClient$/, replacement: resolve('src/release/client.ts')},
@@ -15,5 +15,5 @@ export default defineConfig({
     {find: './components/AuthControls', replacement: resolve('src/release/ReleaseLinks.tsx')},
   ]},
   publicDir: false,
-  build: {outDir: process.env.MULLIGAN_RELEASE_OUTPUT || '/tmp/mulligan-arena-build', emptyOutDir: true},
+  build: {rollupOptions: {input: {index: resolve('index.html'), overview: resolve('overview.html')}}, outDir: process.env.MULLIGAN_RELEASE_OUTPUT || '/tmp/mulligan-arena-build', emptyOutDir: true},
 });

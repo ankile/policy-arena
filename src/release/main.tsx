@@ -16,8 +16,8 @@ async function load(path: string) {
   if (!r.ok) throw new Error(`${path} returned ${r.status}`);
   return r.json();
 }
-Promise.all([load("/data/release.json"), load("/data/ui.json")])
-  .then(([raw, ui]) => {
+Promise.all([load("/data/release.json"), load("/data/ui.json"), load("/data/sim-statistics.json")])
+  .then(([raw, ui, sim]) => {
     const data = validateRelease(raw);
     configureReleaseDatasets(
       new Map(
@@ -81,7 +81,7 @@ Promise.all([load("/data/release.json"), load("/data/ui.json")])
     }
     root.render(
       <StrictMode>
-        <ReleaseProvider data={data} ui={ui as UISnapshot}>
+        <ReleaseProvider data={data} ui={ui as UISnapshot} sim={sim}>
           <App release={data} />
         </ReleaseProvider>
       </StrictMode>,

@@ -50,7 +50,7 @@ function RankBadge({ rank }: { rank: number }) {
 function WinRateBar({ wins, losses }: { wins: number; losses: number }) {
   const rate = winRate(wins, losses);
   return (
-    <div className="flex items-center gap-3">
+    <div data-testid="policy-winrate" className="flex items-center gap-3">
       <div className="w-20 h-1.5 rounded-full bg-warm-100 overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-700 ease-out"
@@ -110,9 +110,9 @@ function App({ release }: { release?: Release }) {
   const arenaStats = useMemo(
     () =>
       sessionOutcomes
-        ? computeArenaStats(visibleSessions(sessionOutcomes, showAll))
+        ? computeArenaStats(visibleSessions(sessionOutcomes, showAll), !!release)
         : null,
-    [sessionOutcomes, showAll],
+    [sessionOutcomes, showAll, release],
   );
 
 
@@ -310,7 +310,7 @@ function App({ release }: { release?: Release }) {
                 </select>
               </label>
               {(roundFilter || methodFilter || tagFilter) && <button onClick={() => clearSearchParams("round", "method", "tag")} className="text-xs text-teal py-2 cursor-pointer">Clear tag filters</button>}
-              <p className="w-full text-xs text-ink-muted">{release ? "Frozen mainline release. Ratings use paired full-success outcomes; disconnected evaluation blocks are not a cross-round ranking. Routing reports task progress; simulation reports five-seed means." : "Tag filters select policies. Ratings use all comparisons in the current Mainline or All view."}</p>
+              <p className="w-full text-xs text-ink-muted">{release ? "Frozen mainline release. Ratings compare full success within each task and matching evaluation grid. Separate groups are not a common ranking. Square-Narrow R0 uses a different grid from R1–R3. W/D/L compares all selected opponents on the same grid, including other rounds; win rate excludes draws. Avg steps counts successful episodes only. Routing reports task progress; simulation reports five-seed means. Filters select rows, not opponents." : "Tag filters select policies. Ratings use all comparisons in the current Mainline or All view."}</p>
             </div>
 
             {/* Stats summary */}
@@ -333,7 +333,7 @@ function App({ release }: { release?: Release }) {
                     .reduce(
                       (a, p) => { const wdl = arenaStats?.wdl.get(p._id); return a + (wdl ? wdl.wins + wdl.losses + wdl.draws : 0); },
                       0
-                    ) / 2).toString(),
+                    ) / 2).toLocaleString(),
                 },
               ].map((stat) => (
                 <div
@@ -368,7 +368,7 @@ function App({ release }: { release?: Release }) {
                 style={{ animation: "fade-up 0.6s ease-out 0.3s both" }}
               >
                 {/* Table header */}
-                <div className="min-w-[950px] grid grid-cols-[56px_1fr_80px_130px_140px_100px_90px] px-6 py-3.5 border-b border-warm-100 bg-warm-50">
+                <div className="min-w-[950px] grid grid-cols-[56px_1fr_80px_170px_140px_100px_90px] px-6 py-3.5 border-b border-warm-100 bg-warm-50">
                   <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
                     #
                   </span>
@@ -409,7 +409,8 @@ function App({ release }: { release?: Release }) {
                   (policy, i) => (
                     <div key={policy._id}>
                       <div
-                        className={`min-w-[950px] grid grid-cols-[56px_1fr_80px_130px_140px_100px_90px] items-center px-6 py-4 transition-colors duration-150 hover:bg-warm-50 cursor-pointer ${
+                        data-policy-id={policy._id}
+                        className={`min-w-[950px] grid grid-cols-[56px_1fr_80px_170px_140px_100px_90px] items-center px-6 py-4 transition-colors duration-150 hover:bg-warm-50 cursor-pointer ${
                           i < sortedPolicies.length - 1 &&
                           expandedPolicy !== (policy._id as string)
                             ? "border-b border-warm-100"
@@ -467,30 +468,30 @@ function App({ release }: { release?: Release }) {
                         </div>
 
                         {/* Rating */}
-                        <div className="font-mono text-sm font-medium text-ink">
+                        <div data-testid="policy-rating" className="font-mono text-sm font-medium text-ink">
                           {policy.rating != null ? Math.round(policy.rating) : "—"}
                         </div>
 
                         {/* W / D / L */}
-                        <div className="font-mono text-sm text-ink-muted">
-                          {policy.published?.seeds ? "—" : <><span className="text-emerald-bar">
-                            {policy.wdl.wins}
+                        <div data-testid="policy-wdl" title={`${policy.wdl.wins.toLocaleString()} wins / ${policy.wdl.draws.toLocaleString()} draws / ${policy.wdl.losses.toLocaleString()} losses`} className="font-mono text-xs text-ink-muted whitespace-nowrap">
+                          <span className="text-emerald-bar">
+                            {new Intl.NumberFormat("en", {notation: "compact", maximumFractionDigits: 1}).format(policy.wdl.wins)}
                           </span>
                           <span className="text-warm-300 mx-1">/</span>
                           <span className="text-ink-muted">
-                            {policy.wdl.draws}
+                            {new Intl.NumberFormat("en", {notation: "compact", maximumFractionDigits: 1}).format(policy.wdl.draws)}
                           </span>
                           <span className="text-warm-300 mx-1">/</span>
                           <span className="text-rose-bar">
-                            {policy.wdl.losses}
-                          </span></>}
+                            {new Intl.NumberFormat("en", {notation: "compact", maximumFractionDigits: 1}).format(policy.wdl.losses)}
+                          </span>
                         </div>
 
                         {/* Win Rate */}
-                        {policy.published?.seeds ? <span className="text-ink-muted">—</span> : <WinRateBar
+                        <WinRateBar
                           wins={policy.wdl.wins}
                           losses={policy.wdl.losses}
-                        />}
+                        />
 
                         {/* Success Rate */}
                         <div
@@ -510,7 +511,7 @@ function App({ release }: { release?: Release }) {
                         </div>
 
                         {/* Avg Steps */}
-                        <div className="font-mono text-sm text-ink-muted">
+                        <div data-testid="policy-steps" title="Mean control steps in successful episodes" className="font-mono text-sm text-ink-muted">
                           {policy.avgSuccessSteps != null
                             ? policy.avgSuccessSteps
                             : "—"}
@@ -533,7 +534,7 @@ function App({ release }: { release?: Release }) {
 
         {activeTab === "sessions" && <EvalSessions />}
 
-        {activeTab === "pairings" && <Pairings />}
+        {activeTab === "pairings" && <Pairings gridOutcomes={release ? sessionOutcomes?.filter(s => s.session_mode === "fixed_grid") : undefined} />}
 
         {activeTab === "explorer" && <DataExplorer readOnly={Boolean(release)} />}
         {activeTab === "coverage" && <CoverageDashboard readOnly={Boolean(release)} />}

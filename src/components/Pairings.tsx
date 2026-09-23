@@ -1,3 +1,4 @@
+import type { SessionOutcome } from "../lib/arenaRatings";
 import { useState, useEffect } from "react";
 import { useQuery } from "../lib/arenaClient";
 import { api } from "../../convex/_generated/api";
@@ -42,7 +43,7 @@ function SessionModeTag({ mode }: { mode: string }) {
   );
 }
 
-export default function Pairings() {
+export default function Pairings({ gridOutcomes = [] }: { gridOutcomes?: SessionOutcome[] }) {
   const [selectedEnv, setSelectedEnv] = useSearchParam("env", "all");
   const [policyA, setPolicyARaw] = useSearchParam("policyA", "all");
   const [policyB, setPolicyBRaw] = useSearchParam("policyB", "all");
@@ -83,6 +84,10 @@ export default function Pairings() {
         }
       : "skip"
   );
+
+  const grid = gridOutcomes.find(s => s.perPolicy.some(p => p.policy_id === policyA));
+  const gridPairs = grid?.pairs.filter(p => (p.a === policyA || p.b === policyA) &&
+    (policyB === "all" || p.a === policyB || p.b === policyB));
 
   // Cache dataset info by repo
   type DsCacheEntry =
@@ -199,6 +204,25 @@ export default function Pairings() {
       {policyA === "all" ? (
         <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8 text-center text-ink-muted">
           Select a policy to view its head-to-head rounds.
+        </div>
+      ) : grid ? (
+        <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-6 overflow-x-auto">
+          <h2 className="font-display text-xl mb-2">Fixed-grid comparisons</h2>
+          <p className="text-sm text-ink-muted mb-4">Binary success at matching initial states and training seeds, pooled over five seeds. Counts are from Policy A's perspective. Reused R0 baselines are aliases; these counts do not represent independent training runs. Simulation evaluation videos were not recorded.</p>
+          {gridPairs?.length ? <table className="w-full text-sm text-left">
+            <thead><tr><th className="pb-3">Opponent</th><th>Wins</th><th>Draws</th><th>Losses</th><th>Matched evaluations</th></tr></thead>
+            <tbody>{gridPairs.map(p => {
+              const opponent = p.a === policyA ? p.b : p.a;
+              return <tr key={opponent} className="border-t border-warm-100">
+                <td className="py-3 pr-4">{policyNames?.find(n => n._id === opponent)?.name}</td>
+                <td>{(p.a === policyA ? p.winsA : p.winsB).toLocaleString()}</td>
+                <td>{p.draws.toLocaleString()}</td>
+                <td>{(p.a === policyA ? p.winsB : p.winsA).toLocaleString()}</td>
+                <td>{(p.winsA + p.winsB + p.draws).toLocaleString()}</td>
+              </tr>;
+            })}</tbody>
+          </table> : <p>No matched grid: these policies were evaluated on different initial-state grids or tasks.</p>}
+          <a className="inline-block mt-4 text-sm text-teal" href="/data/sim-statistics.json">Computed statistics and source checksums ↗</a>
         </div>
       ) : rounds === undefined ? (
         <div className="bg-white rounded-2xl border border-warm-200 shadow-sm p-8">

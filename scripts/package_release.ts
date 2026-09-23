@@ -10,7 +10,8 @@ if (!source || flags.some(f => f !== '--preview')) throw new Error('Usage: bun s
 const data = validateRelease(JSON.parse(readFileSync(source, 'utf8')));
 const sourceDir = resolve(source, '..');
 const ui = JSON.parse(readFileSync(join(sourceDir, 'ui.json'), 'utf8'));
-createReleaseAdapter(data, ui);
+const sim = JSON.parse(readFileSync(join(sourceDir, "sim-statistics.json"), "utf8"));
+createReleaseAdapter(data, ui, sim);
 if (!flags.includes('--preview') && data.state !== 'public_verified') throw new Error('Production release requires public verification receipts');
 const target = process.env.MULLIGAN_RELEASE_OUTPUT || '/tmp/mulligan-arena-build';
 if (resolve(target) === resolve('dist')) throw new Error('Release must use a separate build directory');
@@ -19,7 +20,7 @@ if (result.status !== 0) throw new Error('Release build failed');
 mkdirSync(join(target, 'data'), {recursive:true});
 copyFileSync(source, join(target, 'data/release.json'));
 copyFileSync(join(sourceDir, 'ui.json'), join(target, 'data/ui.json'));
-for (const name of ['catalog.html','catalog.js','manifest.json','mapping.csv','training-recipes.json','evaluation-bundles.json','episode-lineage-audit.json','README.md','out-of-scope.csv','plan.html']) {
+for (const name of ['sim-statistics.json','catalog.html','catalog.js','manifest.json','mapping.csv','training-recipes.json','evaluation-bundles.json','episode-lineage-audit.json','README.md','out-of-scope.csv','plan.html']) {
   copyFileSync(join(sourceDir, name), join(target, 'data', name));
 }
 copyFileSync('public/favicon.svg', join(target, 'favicon.svg'));

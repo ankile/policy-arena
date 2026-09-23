@@ -1,4 +1,5 @@
 import { pairOutcomesFromRounds } from "../../convex/bradleyTerry";
+import type { SessionOutcome } from "../lib/arenaRatings";
 import type { Release } from "./types";
 
 export type UISnapshot = {
@@ -22,7 +23,47 @@ export type UISnapshot = {
     }[];
   }[];
 };
-export function createReleaseAdapter(data: Release, ui: UISnapshot) {
+export type SimStatistics = {
+  schemaVersion: number;
+  selectionSha256: string;
+  sessions: SessionOutcome[];
+  evidence: {policyId: string; seeds: {seed: number; url: string; sha256: string; gridManifestHash: string; episodes: number; successes: number; successSteps: number}[]}[];
+};
+export function createReleaseAdapter(data: Release, ui: UISnapshot, sim?: SimStatistics) {
+  const simulation = data.tasks.filter(t => t.domain === "sim").flatMap(t => t.policies);
+  if (simulation.length && (!sim || sim.schemaVersion !== 1 || sim.selectionSha256 !== data.selectionSha256))
+    throw new Error("Missing or mismatched simulation statistics");
+  if (sim) {
+    const rows = sim.sessions.flatMap(s => s.perPolicy);
+    if (rows.length !== simulation.length || new Set(rows.map(r => r.policy_id)).size !== rows.length)
+      throw new Error("Incomplete simulation statistics");
+    for (const p of simulation) {
+      const row = rows.find(r => r.policy_id === p.id);
+      const evidence = sim.evidence.find(r => r.policyId === p.id);
+      if (!row || !evidence || evidence.seeds.length !== 5 || !p.seeds ||
+          !evidence.seeds.every(s => p.seeds!.some(e => e.seed === s.seed && e.dataUrl === s.url)) ||
+          row.rollouts <= 0 || row.successFramesCount !== row.successes ||
+          new Set(evidence.seeds.map(s => s.seed)).size !== 5 ||
+          row.rollouts !== evidence.seeds.reduce((n, s) => n + s.episodes, 0) ||
+          row.successes !== evidence.seeds.reduce((n, s) => n + s.successes, 0) ||
+          row.successFramesSum !== evidence.seeds.reduce((n, s) => n + s.successSteps, 0) ||
+          Math.abs(row.successes / row.rollouts - p.rate) > 0.00000051)
+        throw new Error(`Invalid simulation statistics: ${p.id}`);
+    }
+    for (const s of sim.sessions) {
+      const ids = s.perPolicy.map(p => p.policy_id);
+      const pairIds = s.pairs.map(p => [p.a, p.b].sort().join("/"));
+      if (!s.rating_group || new Set(pairIds).size !== pairIds.length ||
+          s.pairs.length !== ids.length * (ids.length - 1) / 2 ||
+          s.perPolicy.some(p => !sim.evidence.find(e => e.policyId === p.policy_id)?.seeds.every(e =>
+            s.rating_group === `${s.task}/${e.gridManifestHash}`)) ||
+          s.pairs.some(p => !ids.includes(p.a) || !ids.includes(p.b) || p.a === p.b ||
+            [p.winsA, p.winsB, p.draws].some(n => !Number.isSafeInteger(n) || n < 0) ||
+            p.winsA + p.winsB + p.draws !== s.perPolicy[0].rollouts ||
+            p.winsA - p.winsB !== s.perPolicy.find(r => r.policy_id === p.a)!.successes - s.perPolicy.find(r => r.policy_id === p.b)!.successes))
+        throw new Error("Invalid grid comparisons");
+    }
+  }
   if (ui.selectionSha256 !== data.selectionSha256)
     throw new Error("UI snapshot selection mismatch");
   const policies = data.tasks.flatMap((t) =>
@@ -110,7 +151,7 @@ export function createReleaseAdapter(data: Release, ui: UISnapshot) {
       }),
     )
     .sort((a, b) => b._creationTime - a._creationTime);
-  const outcomes = sessions.map((s) => ({
+  const outcomes: SessionOutcome[] = sessions.map((s) => ({
     session_id: s._id,
     creation_time: s._creationTime,
     session_mode: s.session_mode,
@@ -135,6 +176,7 @@ export function createReleaseAdapter(data: Release, ui: UISnapshot) {
       };
     }),
   }));
+  outcomes.push(...(sim?.sessions ?? []));
   const results = sessions.flatMap((s) =>
     s.rounds.flatMap((r) =>
       r.results.map((p) => ({
