@@ -1,7 +1,7 @@
 import type { TrajectoryEventLink } from "../../../convex/trajectoryEventLinks";
 import { useMemo, useState } from "react";
 import { TimeControls } from "./ReviewTimeControls";
-import { TrajectoryLabelForm } from "./TrajectoryLabelForm";
+import { TrajectoryStageEditor } from "./TrajectoryStageEditor";
 import type { ExportedStageSpec, StageLabelRow, Violation } from "../../../convex/stageConsistency";
 
 // ---------------------------------------------------------------------------
@@ -38,10 +38,15 @@ export interface StageLabelFormProps {
   onPendingInputChange?: (id: string, pending: boolean) => void;
   /** Do not reorder index-keyed event editors while local timestamp text is unfinished. */
   hasPendingInput?: boolean;
+  /** Optional video-centered presentation; selection is UI-only. */
+  compactEvents?: boolean;
+  selectedEventKey?: string | null;
+  onSelectEvent?: (key: string | null) => void;
+  manualAnnotation?: boolean;
 }
 
 export function StageLabelForm(props: StageLabelFormProps) {
-  return props.spec.trajectory ? <TrajectoryLabelForm {...props} /> : <LegacyStageLabelForm {...props} />;
+  return props.spec.trajectory ? <TrajectoryStageEditor {...props} /> : <LegacyStageLabelForm {...props} />;
 }
 
 function LegacyStageLabelForm({

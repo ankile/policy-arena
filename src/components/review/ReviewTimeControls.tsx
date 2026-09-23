@@ -131,7 +131,7 @@ export function TimeControls({
             : `${markTitle} (frame ${frame})`
         }
       >
-        ◉ mark
+        {comfortable ? "Move to current frame" : "◉ mark"}
       </button>
       <button
         disabled={t === null}
