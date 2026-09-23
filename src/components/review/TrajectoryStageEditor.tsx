@@ -5,12 +5,17 @@ import { patchStageMark, relinkStagePredecessors, stageContext, stageTitle } fro
 
 const button = "rounded-lg border border-warm-200 px-3 py-2 text-sm text-teal cursor-pointer disabled:opacity-40";
 const input = "w-full rounded-lg border border-warm-200 bg-white px-3 py-2 text-sm";
+const endStateTitle = (id: string) => id.charAt(0).toUpperCase() + id.slice(1).replaceAll("_", " ");
 
 /** Human-facing projection: stages, binary result and physical end state only. */
 export function TrajectoryStageEditor(props: StageLabelFormProps & { video?: ReactNode; timeline?: ReactNode; episodeDurationS?: number | null }) {
   const { spec, row } = props;
   const task = spec.trajectory!.task_definition;
   const finalState = task.finalStates.find((item) => item.id === row.final_state);
+  const endStates = row.task_success === true
+    ? task.finalStates.filter((item) => task.successDefinition.successfulFinalStateIds.includes(item.id))
+    : task.finalStates;
+  const incompatibleEnd = !!finalState && !endStates.some((item) => item.id === finalState.id);
   const outcomeIssues = props.violations.filter((issue) => issue.fields.some((field) => field === "task_success" || field === "final_state"));
   const [choice, setChoice] = useState<string | null>(null);
   const [attemptOverride, setAttemptOverride] = useState<number | undefined>();
@@ -120,11 +125,17 @@ export function TrajectoryStageEditor(props: StageLabelFormProps & { video?: Rea
         <ul className="list-disc pl-5 mt-2 space-y-1">{task.successCriteria.map((text) => <li key={text}>{text}</li>)}</ul>
       </details>
       <label className="block text-sm font-medium">How did the episode end?
-        <select className={`${input} mt-2`} aria-label="End state" aria-describedby="episode-end-description" value={finalState?.id ?? ""} disabled={blocked}
+        <select className={`${input} mt-2`} aria-label="End state" aria-describedby="episode-end-description episode-end-options" aria-invalid={incompatibleEnd || undefined} value={finalState?.id ?? ""} disabled={blocked}
           onChange={(e) => remember({ ...row, final_state: e.target.value }, props.selectedEventKey ?? null, "End state updated.")}>
-          <option value="">Choose the end state…</option>{task.finalStates.map((item) => <option key={item.id} value={item.id}>{item.id.charAt(0).toUpperCase() + item.id.slice(1).replaceAll("_", " ")}</option>)}
+          <option value="">Choose the end state…</option>
+          {incompatibleEnd && <option value={finalState.id} disabled>{endStateTitle(finalState.id)} — not valid for Success</option>}
+          {endStates.map((item) => <option key={item.id} value={item.id}>{endStateTitle(item.id)}</option>)}
         </select>
       </label>
+      <p id="episode-end-options" className="text-sm text-ink-muted">{row.task_success === true
+        ? incompatibleEnd ? "The current end state conflicts with Success. Choose a successful ending or change the result."
+          : "Showing successful end states only."
+        : "All end states are available while the result is failed or undecided."}</p>
       <p id="episode-end-description" className="text-sm text-ink-muted">{finalState?.description ?? "Describe the physical state at the end of the task, before any reset movement."}</p>
       {outcomeIssues.length > 0 && <div className="rounded-lg bg-gold-light p-3 text-sm" aria-label="Result checklist">{outcomeIssues.map((issue, index) => <p key={index}>{issue.message}</p>)}</div>}
       <div className="border-t border-warm-200" />

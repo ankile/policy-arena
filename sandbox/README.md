@@ -35,7 +35,11 @@ Open <http://127.0.0.1:5174/sandbox/stage-review.html>. Node users can run
    editor is shown for the structured trajectory tasks.
 5. In the separate **Episode review** panel, choose **Success** or **Failure**
    and select **How did the episode end?** The task-specific end states use
-   readable names and show the selected state's definition. **Watch ending**
+   readable names and show the selected state's definition.
+   Selecting **Success** narrows the menu to the task's successful end states,
+   including supported cutoff endings. A conflicting existing value remains
+   visible and flagged until explicitly corrected; filtering never changes labels.
+   Failed or undecided results keep all end states available. **Watch ending**
    jumps to the last policy frame, before reset footage; **What counts as
    success?** explains the task's criteria. If undecided, select **Not sure yet**
    and save as uncertain. These edits do not auto-fill stages or hidden fields.

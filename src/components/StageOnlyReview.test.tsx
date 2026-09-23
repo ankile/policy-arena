@@ -303,9 +303,10 @@ for (const task of fixtures.synthetic.tasks) {
     const { view, state: saved, props, selected } = await setup(task.source_name, "valid_success");
     const states = task.spec.trajectory.task_definition.finalStates;
     const finalSelect = view.getByRole("combobox", { name: "End state" });
-    expect([...finalSelect.querySelectorAll("option")].filter((option) => option.value).map((option) => option.value)).toEqual(states.map((item) => item.id));
+    expect([...finalSelect.querySelectorAll("option")].filter((option) => option.value).map((option) => option.value)).toEqual(states.filter((item) => task.spec.trajectory.task_definition.successDefinition.successfulFinalStateIds.includes(item.id)).map((item) => item.id));
     expect((view.getByRole("radio", { name: "Success", exact: true }) as HTMLInputElement).checked).toBe(true);
     fireEvent.click(view.getByRole("radio", { name: "Failure", exact: true }));
+    expect([...finalSelect.querySelectorAll("option")].filter((option) => option.value).map((option) => option.value)).toEqual(states.map((item) => item.id));
     fireEvent.change(finalSelect, { target: { value: states[0].id } });
     expect(view.getByText(states[0].description)).toBeDefined();
     fireEvent.click(view.getByRole("button", { name: "Undo last edit" }));
@@ -327,6 +328,31 @@ for (const task of fixtures.synthetic.tasks) {
     expect((reloaded.getByRole("combobox", { name: "End state" }) as HTMLSelectElement).value).toBe(states[0].id);
   });
 }
+
+for (const task of fixtures.synthetic.tasks) test(`${task.source_name}: success filters end states without overwriting a conflicting selection`, () => {
+  const schema = task.spec as ExportedStageSpec;
+  const definition = schema.trajectory!.task_definition;
+  const initial = { ...blankTrajectoryReview(schema.trajectory!, "test/repo", 0), task_success: false, final_state: definition.finalStates[0].id };
+  const view = render(<Fixture schema={schema} initial={initial} />);
+  const select = view.getByRole("combobox", { name: "End state" }) as HTMLSelectElement;
+  const choices = () => [...select.options].filter((option) => option.value && !option.disabled).map((option) => option.value);
+  const successful = definition.finalStates.filter((item) => definition.successDefinition.successfulFinalStateIds.includes(item.id)).map((item) => item.id);
+  fireEvent.click(view.getByRole("radio", { name: "Success", exact: true }));
+  expect(choices()).toEqual(successful);
+  expect(select.value).toBe(initial.final_state);
+  expect(select.selectedOptions[0].disabled).toBe(true);
+  expect(select.getAttribute("aria-invalid")).toBe("true");
+  expect(state(view).row).toEqual({ ...initial, task_success: true });
+  fireEvent.change(select, { target: { value: successful[0] } });
+  expect(select.getAttribute("aria-invalid")).toBeNull();
+  expect(state(view).row).toEqual({ ...initial, task_success: true, final_state: successful[0] });
+  fireEvent.click(view.getByRole("button", { name: "Undo last edit" }));
+  expect(select.value).toBe(initial.final_state);
+  expect(choices()).toEqual(successful);
+  fireEvent.click(view.getByRole("radio", { name: "Not sure yet" }));
+  expect(choices()).toEqual(definition.finalStates.map((item) => item.id));
+  expect(state(view).row).toEqual({ ...initial, task_success: null });
+});
 
 test("watch ending seeks to the last policy frame; undecided outcomes stay explicit", () => {
   const view = render(<Fixture />);
