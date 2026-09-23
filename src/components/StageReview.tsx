@@ -35,6 +35,8 @@ import { ReviewViewer, type ViewerControls } from "./review/ReviewViewer";
 import { StageLabelForm } from "./review/StageLabelForm";
 import { TrajectoryStageEditor } from "./review/TrajectoryStageEditor";
 import { TrajectoryStageRail } from "./review/TrajectoryStageRail";
+import { stageContext, stageTitle } from "../lib/stageTimeline";
+import type { TimelineMarker } from "../lib/timelineMarkers";
 import {
   cameraRoleForVideoKey,
   clamp,
@@ -1134,6 +1136,21 @@ export default function StageReview({
   }
   useWindowKeydown(handleKey);
 
+  const timelineMarkers = useMemo<TimelineMarker[] | undefined>(() => {
+    if (!spec?.trajectory || !pending || !currentEpisode) return undefined;
+    try {
+      const context = stageContext(spec.trajectory, pending, (frame + 0.5) / spec.fps);
+      const active = context.inAttempt.filter((mark) => mark.stage?.id === context.current?.id && mark.time !== null && mark.time <= (frame + 0.5) / spec.fps).at(-1);
+      return context.sorted.filter((mark) => mark.stage && mark.time !== null && mark.time >= 0 &&
+        (episodeDurationS === null || mark.time <= episodeDurationS)).map((mark) => ({
+        id: `transition:${mark.index}`, frame: mark.time! * spec.fps, label: `S${mark.stage!.index}`,
+        title: `${stageTitle(mark.stage!)} at ${mark.time!.toFixed(2)} s${Number(pending.attempt_count) > 1 ? ` · attempt ${Number.isSafeInteger(mark.event.attempt_index) ? mark.event.attempt_index : "unset"}` : ""}`,
+        active: active?.index === mark.index && (episodeDurationS === null || frame / spec.fps <= episodeDurationS),
+        selected: selectedEventKey === `transition:${mark.index}`,
+      }));
+    } catch { return []; } // Preserve malformed source data in the editor; do not invent progress.
+  }, [spec, pending, currentEpisode, frame, episodeDurationS, selectedEventKey]);
+
   // Stage timeline markers: the policy-phase end (episodes keep recording
   // through the physical reset; times beyond it are invalid) + set event times.
   const renderTimelineOverlays = useCallback(
@@ -1155,7 +1172,7 @@ export default function StageReview({
               title={`policy phase ends at frame ${policyEnd} (reset tail beyond)`}
             />
           )}
-          {spec.time_fields.map((tf) => {
+          {!spec.trajectory && spec.time_fields.map((tf) => {
             const t = pending && typeof pending[tf] === "number" ? (pending[tf] as number) : null;
             if (t === null) return null;
             const dotFrame = Math.min(
@@ -1252,7 +1269,9 @@ export default function StageReview({
     <ReviewViewer datasetId={repoId} episode={currentEpisode} cameraKeys={cameraKeys} primaryKey={primaryKey}
       fps={spec.fps} frame={frame} onFrame={setFrame} lastValidFrame={null} controlsRef={controlsRef}
       cropByCameraKey={cropByCameraKey} storedFrameHW={storedFrameHW} onDrift={setViewerDrift}
-      onUnverifiable={setUnverifiable} renderTimelineOverlays={renderTimelineOverlays} />
+      onUnverifiable={setUnverifiable} renderTimelineOverlays={renderTimelineOverlays}
+      timelineMarkers={timelineMarkers} timelineMarkersDisabled={formDisabled || pendingInputCount > 0}
+      onTimelineMarkerSelect={setSelectedEventKey} />
   ));
 
   return (

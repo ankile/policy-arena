@@ -186,9 +186,13 @@ test("removal and chronological repair preserve hidden pipeline records and supp
   expect(state(view).row).toEqual(initial);
 });
 
-async function setup(source = "routing_d1_v1", caseName = "real_routing_d1_valid") {
+async function setup(source = "routing_d1_v1", caseName = "real_routing_d1_valid", withVideo = false) {
   window.history.replaceState(null, "", "/?episode=0&prediction=A");
   const fixture = createStageReviewFixture(); const contract = configureTrajectoryFixture(fixture, source, caseName);
+  if (withVideo) fixture.props.dataSource.fetchReviewEpisodes = async () => [0, 1].map((episodeIndex) => ({
+    episodeIndex, rawLength: 450, dataPath: "test.parquet",
+    perCamera: { side: { fileIndex: 0, fromTimestamp: 0, toTimestamp: 30 } },
+  }));
   const view = render(<StageReview {...fixture.props} />); await act(async () => {});
   return { ...fixture, ...contract, view };
 }
@@ -208,6 +212,31 @@ for (const task of ["marker_d2", "square_d2", "routing_d1"]) {
 }
 
 for (const task of fixtures.synthetic.tasks) {
+  test(`${task.source_name}: progress-bar stage marks seek, follow edits and undo, and guard unfinished input`, async () => {
+    const { view, selected, state: saved } = await setup(task.source_name, "valid_success", true);
+    const bar = view.getByRole("group", { name: "Video progress bar" });
+    const buttons = () => [...bar.querySelectorAll("button")];
+    const events = selected.review_label!.stage_transitions;
+    expect(buttons().map((button) => button.textContent)).toEqual(events.map((event) => `S${event.to_stage_index}`));
+    expect(bar.textContent).not.toMatch(/action|failure/i);
+    const video = view.container.querySelector("video");
+    fireEvent.click(buttons()[0]);
+    const input = view.getByRole("group", { name: "Transition 1 time" }).querySelector("input")!;
+    expect(input.value).toBe(String(events[0].time_s));
+    expect(buttons()[0].getAttribute("aria-current")).toBe("step");
+    expect(buttons()[0].getAttribute("aria-pressed")).toBe("true");
+    expect(view.container.textContent).toContain(`frame ${Math.round(events[0].time_s! * task.spec.fps)} /`);
+    expect(saved.saves).toHaveLength(0);
+    fireEvent.change(input, { target: { value: "-" } });
+    expect(buttons().every((button) => button.disabled)).toBe(true);
+    fireEvent.change(input, { target: { value: "0.1234567" } });
+    expect(buttons()[0].title).toContain("0.12 s");
+    expect(buttons().every((button) => !button.disabled)).toBe(true);
+    fireEvent.click(view.getByRole("button", { name: "Undo stage edit" }));
+    expect(buttons()[0].title).toContain(`${events[0].time_s!.toFixed(2)} s`);
+    expect(view.container.querySelector("video") === video).toBe(true);
+  });
+
   test(`${task.source_name}: a precise stage correction survives save and reload without modifying pipeline fields`, async () => {
     const { view, state: saved, props, selected } = await setup(task.source_name, "valid_success");
     fireEvent.click(view.getByRole("button", { name: "Inspect stage mark 1" }));

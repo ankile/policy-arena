@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { getVideoUrl, type ReviewEpisode } from "../../lib/hf-api";
 import { Timeline } from "./Timeline";
+import type { TimelineMarker } from "../../lib/timelineMarkers";
 import { cameraLabel, clamp, type CropBox } from "./format";
 
 // ---------------------------------------------------------------------------
@@ -40,6 +41,9 @@ export function ReviewViewer({
   onUnverifiable,
   renderVideoOverlay,
   renderTimelineOverlays,
+  timelineMarkers,
+  timelineMarkersDisabled,
+  onTimelineMarkerSelect,
 }: {
   datasetId: string;
   episode: ReviewEpisode;
@@ -67,6 +71,9 @@ export function ReviewViewer({
   renderVideoOverlay?: (frame: number) => ReactNode;
   /** Domain markers on the timeline strip (receives the pct positioner). */
   renderTimelineOverlays?: (pct: (value: number) => string) => ReactNode;
+  timelineMarkers?: TimelineMarker[];
+  timelineMarkersDisabled?: boolean;
+  onTimelineMarkerSelect?: (id: string) => void;
 }) {
   const videoRefs = useRef(new Map<string, HTMLVideoElement>());
   const seekTokenRef = useRef(0);
@@ -381,6 +388,9 @@ export function ReviewViewer({
           onFrame(next);
         }}
         renderOverlays={renderTimelineOverlays}
+        markers={timelineMarkers}
+        markersDisabled={timelineMarkersDisabled}
+        onMarkerSelect={onTimelineMarkerSelect}
       />
 
       <div className="flex flex-wrap items-center gap-2 mt-3">

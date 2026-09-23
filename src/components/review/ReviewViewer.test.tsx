@@ -3,6 +3,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { createRef, useState } from "react";
 import { ReviewViewer, type ViewerControls } from "./ReviewViewer";
 import type { ReviewEpisode } from "../../lib/hf-api";
+import type { TimelineMarker } from "../../lib/timelineMarkers";
 
 GlobalRegistrator.register({ url: "http://localhost/" });
 const { act, cleanup, fireEvent, render } = await import("@testing-library/react");
@@ -22,11 +23,11 @@ beforeEach(() => {
 afterEach(() => { cleanup(); restore.forEach((fn) => fn()); callbacks.clear(); });
 afterAll(() => GlobalRegistrator.unregister());
 
-function Fixture({ fps, controls }: { fps: number; controls: ReturnType<typeof createRef<ViewerControls>> }) {
+function Fixture({ fps, controls, markers }: { fps: number; controls: ReturnType<typeof createRef<ViewerControls>>; markers?: TimelineMarker[] }) {
   const [frame, setFrame] = useState(0);
   return <ReviewViewer datasetId="test/repo" episode={episode} cameraKeys={cameras} primaryKey="side" fps={fps}
     frame={frame} onFrame={setFrame} lastValidFrame={200} controlsRef={controls}
-    cropByCameraKey={null} storedFrameHW={null} onDrift={() => {}} />;
+    cropByCameraKey={null} storedFrameHW={null} onDrift={() => {}} timelineMarkers={markers} />;
 }
 
 for (const fps of [15, 30]) test(`live playback and frame step use the video clock at ${fps} FPS with camera offsets`, () => {
@@ -58,5 +59,18 @@ test("speed and camera enlargement preserve the video elements", () => {
   videos.forEach((video) => expect(video.playbackRate).toBe(0.5));
   fireEvent.click(view.getByRole("button", { name: /Enlarge.*wrist.*camera/ }));
   expect(view.getByRole("button", { name: /Restore.*wrist.*camera/ })).toBeTruthy();
+  expect(Array.from(view.container.querySelectorAll("video"))).toEqual(videos);
+});
+
+test("stage markers stay visible during playback and clicking one pauses and seeks both cameras", () => {
+  const view = render(<Fixture fps={15} controls={createRef<ViewerControls>()}
+    markers={[{ id: "transition:0", frame: 37.5, label: "S2", title: "S2 at 2.50 s" }]} />);
+  const videos = Array.from(view.container.querySelectorAll("video"));
+  fireEvent.click(view.getByRole("button", { name: /^Play/ }));
+  fireEvent.click(view.getByRole("button", { name: "Go to S2 at 2.50 s" }));
+  expect(view.getByRole("button", { name: /^Play/ })).toBeTruthy();
+  expect(view.container.textContent).toContain("frame 38 / 299");
+  expect(videos[0].currentTime).toBeCloseTo(20 + 38.5 / 15);
+  expect(videos[1].currentTime).toBeCloseTo(40 + 38.5 / 15);
   expect(Array.from(view.container.querySelectorAll("video"))).toEqual(videos);
 });

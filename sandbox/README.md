@@ -18,6 +18,11 @@ Open <http://127.0.0.1:5174/sandbox/stage-review.html>. Node users can run
    a dataset without legacy predictions to try annotation from scratch.
 2. Play or scrub the synchronized cameras. Use **−1 frame / +1 frame**,
    slower playback, or **Enlarge** on the camera with the clearest evidence.
+   Recorded stages appear as **S1, S2, …** on the progress bar. Click a marker
+   to pause, seek, and edit it; hover for the full stage name, time, and attempt.
+   The current recorded stage is filled teal, the selected mark is outlined,
+   and nearby labels stagger into separate rows. Markers update after edits
+   and remain visible during playback; unrecorded stages are not invented.
 3. Directly below the video scrubber, choose the **Stage reached** and click
    **Mark S… here** to pause and capture the
    current frame. **Move S… to this frame** corrects an existing mark instead
