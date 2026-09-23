@@ -83,6 +83,26 @@ Legacy non-trajectory taxonomies retain their existing editor and protocol.
 
 ## Checks
 
+The 2026-09-22 cross-task smoke check used the real episode 0 from each
+playground link, in the in-app browser:
+
+| Setup | Stage ladder | Checked in the live playground |
+| --- | --- | --- |
+| Routing R8 predictions | S0–S10 | Three cameras, stage seek, frame step, capture/retime, undo, local draft save |
+| Marker R5 predictions | S0–S7 | Two cameras, second-attempt timestamp correction, undo, local draft save |
+| Square nut R5 predictions | S0–S7 | Two cameras, stage seek, frame step, capture/retime, undo, local draft save |
+| Routing manual / no predictions | S0–S10 | Three cameras, validated policy duration, new mark, undo to empty timeline, draft save and reload |
+
+Smoke-test edits were undone before saving. Four browser-local drafts have
+explicit UI-test notes; they are not accuracy judgments or shared reviews.
+No shared mutations, model calls, or deployments were performed.
+
+Automated regressions additionally cover every stage through each task's
+maximum (including Routing S8–S10), precise timestamp save/reload, source-free
+duration gating, and backend confirmation with stage-only coverage. Both
+Marker v3 and v4 are covered alongside Square v3 and Routing v1. These checks
+verify editing and persistence, not the accuracy of the model predictions.
+
 ```sh
 bun test
 bun run lint

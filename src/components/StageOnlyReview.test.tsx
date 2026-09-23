@@ -16,23 +16,57 @@ afterEach(async () => { await act(async () => cleanup()); });
 afterAll(() => GlobalRegistrator.unregister());
 const spec = fixtures.synthetic.tasks.find((t) => t.source_name === "routing_d1_v1")!.spec as ExportedStageSpec;
 const real = () => structuredClone(fixtures.real_campaign_cases.find((c) => c.name === "real_routing_d1_valid")!.review_label) as StageLabelRow;
-function Fixture({ initial = blankTrajectoryReview(spec.trajectory!, "test/repo", 0), snap = () => 30 }: { initial?: StageLabelRow; snap?: () => number | null }) {
+function Fixture({ schema = spec, initial = blankTrajectoryReview(schema.trajectory!, "test/repo", 0), snap = () => 30 }: { schema?: ExportedStageSpec; initial?: StageLabelRow; snap?: () => number | null }) {
   const [row, setRow] = useState(initial);
   const [selected, setSelected] = useState<string | null>(null);
   const [seek, setSeek] = useState<number | null>(null);
   const [notes, setNotes] = useState("");
   const [pending, setPending] = useState(false);
   const pendingChange = useCallback((_: string, value: boolean) => setPending(value), []);
-  const props = { spec, row, frame: 0, disabled: false, markDisabled: false, markFrame: snap,
+  const props = { spec: schema, row, frame: 0, disabled: false, markDisabled: false, markFrame: snap,
     onEdit: setRow, onSeekTime: setSeek, selectedEventKey: selected, onSelectEvent: setSelected,
     humanNotes: notes, onHumanNotesChange: setNotes, onPendingInputChange: pendingChange, hasPendingInput: pending,
-    violations: validateStageOnlyReview(spec.trajectory!, row, 30) };
+    violations: validateStageOnlyReview(schema.trajectory!, row, 30) };
   return <><TrajectoryStageEditor {...props}
     video={<div data-testid="review-player"><video data-testid="review-video" /><input type="range" aria-label="Video position" /></div>}
     timeline={<TrajectoryStageRail {...props} />}
   /><output data-testid="state">{JSON.stringify({ row, seek, selected })}</output></>;
 }
 const state = (view: ReturnType<typeof render>) => JSON.parse(view.getByTestId("state").textContent!);
+
+for (const task of fixtures.synthetic.tasks) {
+  test(`${task.source_name}: every task-defined stage can be captured, retimed and undone`, () => {
+    const schema = task.spec as ExportedStageSpec;
+    const stages = schema.trajectory!.task_definition.stages.filter((stage) => stage.index > 0);
+    let frame = 0;
+    const view = render(<Fixture schema={schema} snap={() => frame} />);
+    const original = state(view).row;
+    const controls = view.getByRole("region", { name: "Stage marking controls" });
+    const stageSelect = view.getByRole("combobox", { name: "Stage reached" });
+    expect([...stageSelect.querySelectorAll("option")].filter((option) => option.value).map((option) => option.value)).toEqual(stages.map((stage) => stage.id));
+    for (const [index, stage] of stages.entries()) {
+      if (index > 0) fireEvent.click(view.getByRole("button", { name: "Next stage", exact: true }));
+      fireEvent.change(stageSelect, { target: { value: stage.id } });
+      frame = stage.index * schema.fps;
+      const markButton = view.getByRole("button", { name: `Mark S${stage.index} here`, exact: true });
+      expect(controls.contains(markButton)).toBe(true);
+      fireEvent.click(markButton);
+      expect(state(view).row.stage_transitions.at(-1)).toMatchObject({ to_stage_id: stage.id, to_stage_index: stage.index, time_s: stage.index, attempt_index: 1 });
+    }
+    const complete = state(view).row;
+    expect(complete.stage_transitions).toHaveLength(stages.length);
+    expect(complete.max_stage).toBe(stages.at(-1)!.index);
+    expect(complete.max_stage_id).toBe(stages.at(-1)!.id);
+    expect(validateStageOnlyReview(schema.trajectory!, complete, 30)).toEqual([]);
+    for (const key of Object.keys(original).filter((key) => !["stage_transitions", "max_stage", "max_stage_id"].includes(key))) expect(complete[key]).toEqual(original[key]);
+    frame++;
+    fireEvent.click(view.getByRole("button", { name: "Move to current frame", exact: true }));
+    expect(state(view).row.stage_transitions.at(-1).time_s).toBe(frame / schema.fps);
+    expect(state(view).row.stage_transitions).toHaveLength(stages.length);
+    fireEvent.click(view.getByRole("button", { name: "Undo stage edit" }));
+    expect(state(view).row).toEqual(complete);
+  });
+}
 
 test("stage capture and retiming stay directly below the player, ahead of the timeline and separate from notes", () => {
   const view = render(<Fixture />);
@@ -173,6 +207,28 @@ for (const task of ["marker_d2", "square_d2", "routing_d1"]) {
   });
 }
 
+for (const task of fixtures.synthetic.tasks) {
+  test(`${task.source_name}: a precise stage correction survives save and reload without modifying pipeline fields`, async () => {
+    const { view, state: saved, props, selected } = await setup(task.source_name, "valid_success");
+    fireEvent.click(view.getByRole("button", { name: "Inspect stage mark 1" }));
+    const timeInput = view.getByRole("group", { name: "Transition 1 time" }).querySelector("input")!;
+    fireEvent.change(timeInput, { target: { value: "0.1234567" } });
+    await act(async () => fireEvent.click(view.getByRole("button", { name: "Save draft", exact: true })));
+    const review = saved.saves[0];
+    expect(review.status).toBe("draft");
+    expect(review.review_protocol).toBe("stages-v1");
+    expect(review.taxonomy_version).toBe(task.spec.taxonomy_version);
+    expect(review.prediction_id).toBe("A-prediction-0");
+    expect(review.label!.stage_transitions[0].time_s).toBe(0.1234567);
+    for (const key of Object.keys(selected.review_label!).filter((key) => key !== "stage_transitions")) expect(review.label![key]).toEqual(selected.review_label![key as keyof typeof selected.review_label]);
+    view.unmount();
+    const reloaded = render(<StageReview {...props} />); await act(async () => {});
+    fireEvent.click(reloaded.getByRole("button", { name: "Inspect stage mark 1" }));
+    expect(reloaded.getByRole("group", { name: "Transition 1 time" }).querySelector("input")!.value).toBe("0.1234567");
+    expect(reloaded.getByRole("region", { name: "Stage labeling" }).textContent).not.toMatch(/action|failure mode|final state/i);
+  });
+}
+
 test("timestamp precision, navigation guards and source attribution survive the simpler UI", async () => {
   const { view, state: saved, selected } = await setup();
   fireEvent.click(view.getByRole("button", { name: "Inspect stage mark 1" }));
@@ -191,9 +247,9 @@ test("timestamp precision, navigation guards and source attribution survive the 
   expect(saved.saves[0].prediction_id).toBe("A-prediction-0");
 });
 
-test("source-free annotation still waits for the verified policy duration before labeling", async () => {
+for (const task of fixtures.synthetic.tasks) test(`${task.source_name}: source-free annotation waits for verified policy duration without inventing stages`, async () => {
   window.history.replaceState(null, "", "/?episode=0&prediction=A");
-  const fixture = createStageReviewFixture(); configureTrajectoryFixture(fixture);
+  const fixture = createStageReviewFixture(); configureTrajectoryFixture(fixture, task.source_name);
   fixture.state.missingPredictionEpisodes.add(0); fixture.state.runs = fixture.state.runs.map((r) => ({ ...r, expected_count: 1 }));
   let release: (() => void) | undefined;
   fixture.state.fetchSignals = () => new Promise((resolve) => { release = () => resolve({ detectedOutcome: "failure", validLength: 120, lastValidFrame: 119, doneOnsetFrame: null, rewardSpikeFrames: [] }); });
@@ -205,5 +261,8 @@ test("source-free annotation still waits for the verified policy duration before
   await act(async () => fireEvent.keyDown(window, { key: "u" }));
   expect(fixture.state.saves[0].episode_duration_s).toBe(8);
   expect(fixture.state.saves[0].label!.task_success).toBeNull();
+  expect(fixture.state.saves[0].label!.stage_transitions).toEqual([]);
+  expect(fixture.state.saves[0].label!.max_stage).toBeNull();
+  expect(fixture.state.saves[0].taxonomy_version).toBe(task.spec.taxonomy_version);
   expect(fixture.state.saves[0].review_protocol).toBe("stages-v1");
 });

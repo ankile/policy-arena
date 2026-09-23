@@ -46,6 +46,29 @@ function args() {
 }
 
 describe("structured review coverage", () => {
+  for (const task of fixtures.synthetic.tasks) test(`${task.source_name}: stage-only confirmation round-trips the task's full ladder`, async () => {
+    await t.mutation(api.stageTaskSpecs.upsert, { ...service, task: task.spec.task,
+      taxonomy_version: task.spec.taxonomy_version, taxonomy_hash: task.spec.taxonomy_hash,
+      live: true, spec: task.spec, source: "test-only" });
+    const example = task.cases.find((row) => row.name === "valid_success")!;
+    const label = structuredClone(example.review_label!);
+    label.trajectory_identity.sample_id = `${repo}#episode=0`;
+    // Human stage review does not attest or reconcile these pipeline fields.
+    label.task_success = false;
+    label.failure_mode = "other";
+    const input = { ...args(), task: task.spec.task, taxonomy_version: task.spec.taxonomy_version,
+      label, episode_duration_s: example.duration_s, review_protocol: "stages-v1" as const };
+    const id = await t.mutation(api.stageReviews.save, input);
+    const saved = await t.run((ctx) => ctx.db.get(id));
+    expect(saved!.label).toEqual(label);
+    expect(saved!.label!.max_stage).toBe(task.spec.ladder.max_stage);
+    expect(saved!.review_coverage!.reviewed_fields).toEqual([...STAGE_REVIEW_FIELDS]);
+    const invalid = structuredClone(label);
+    invalid.stage_transitions[0].time_s = example.duration_s + 1;
+    await expect(t.mutation(api.stageReviews.save, { ...input, label: invalid })).rejects.toThrow("before reset footage");
+    expect((await t.run((ctx) => ctx.db.get(id)))!.label).toEqual(label);
+  });
+
   test("stage-only confirmation preserves conflicting model fields without attesting them", async () => {
     const input = args();
     input.label.key_action_observations[0].first_time_s = 999;
