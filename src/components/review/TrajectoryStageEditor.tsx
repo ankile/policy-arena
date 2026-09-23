@@ -6,10 +6,12 @@ import { patchStageMark, relinkStagePredecessors, stageContext, stageTitle } fro
 const button = "rounded-lg border border-warm-200 px-3 py-2 text-sm text-teal cursor-pointer disabled:opacity-40";
 const input = "w-full rounded-lg border border-warm-200 bg-white px-3 py-2 text-sm";
 
-/** Human-facing projection: only stage judgments are editable or attested. */
-export function TrajectoryStageEditor(props: StageLabelFormProps & { video?: ReactNode; timeline?: ReactNode }) {
+/** Human-facing projection: stages, binary result and physical end state only. */
+export function TrajectoryStageEditor(props: StageLabelFormProps & { video?: ReactNode; timeline?: ReactNode; episodeDurationS?: number | null }) {
   const { spec, row } = props;
   const task = spec.trajectory!.task_definition;
+  const finalState = task.finalStates.find((item) => item.id === row.final_state);
+  const outcomeIssues = props.violations.filter((issue) => issue.fields.some((field) => field === "task_success" || field === "final_state"));
   const [choice, setChoice] = useState<string | null>(null);
   const [attemptOverride, setAttemptOverride] = useState<number | undefined>();
   const [notice, setNotice] = useState("");
@@ -92,15 +94,40 @@ export function TrajectoryStageEditor(props: StageLabelFormProps & { video?: Rea
     {(notice || undo?.after === JSON.stringify(row)) && <div className="flex flex-wrap items-center gap-3">
       {notice && <p role="status" className="text-sm text-teal">{notice}</p>}
       {undo?.after === JSON.stringify(row) && <button className={button} disabled={blocked} onClick={() => {
-        props.onEdit(undo.before); props.onSelectEvent?.(null); setAttemptOverride(undo.attempt); setChoice(null); setUndo(null); setNotice("Last stage edit undone.");
-      }}>Undo stage edit</button>}
+        props.onEdit(undo.before); props.onSelectEvent?.(null); setAttemptOverride(undo.attempt); setChoice(null); setUndo(null); setNotice("Last label edit undone.");
+      }}>Undo last edit</button>}
     </div>}
     </div>
     {props.timeline}
     </div>
     <aside className="min-w-0 rounded-xl border border-warm-200 bg-warm-50 p-4 space-y-4" aria-label="Episode review settings">
-    <h3 className="text-base font-medium">Episode review</h3>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <h3 className="text-base font-medium">Episode review</h3>
+      {props.episodeDurationS != null && props.episodeDurationS > 0 && <button className="text-sm text-teal underline cursor-pointer disabled:opacity-40"
+        disabled={blocked} onClick={() => props.onSeekTime(Math.max(0, (Math.ceil(props.episodeDurationS! * spec.fps) - 1) / spec.fps))}>Watch ending</button>}
+    </div>
     <div className="space-y-3">
+      <fieldset disabled={blocked} className="space-y-2">
+        <legend className="text-sm font-medium mb-2">Did the task succeed?</legend>
+        <div className="grid grid-cols-2 gap-2">{[true, false].map((value) => <label key={String(value)} className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm cursor-pointer ${row.task_success === value ? "border-teal bg-teal/10 text-teal" : "border-warm-200 bg-white"}`}>
+          <input type="radio" name="episode-result" checked={row.task_success === value} onChange={() => remember({ ...row, task_success: value }, props.selectedEventKey ?? null, `Result set to ${value ? "success" : "failure"}.`)} />
+          {value ? "Success" : "Failure"}
+        </label>)}</div>
+        <label className="flex items-center gap-2 text-sm text-ink-muted cursor-pointer"><input type="radio" name="episode-result" checked={typeof row.task_success !== "boolean"}
+          onChange={() => remember({ ...row, task_success: null }, props.selectedEventKey ?? null, "Result left undecided. Save as uncertain if needed.")} />Not sure yet</label>
+      </fieldset>
+      <details className="text-sm"><summary className="cursor-pointer text-teal">What counts as success?</summary>
+        <ul className="list-disc pl-5 mt-2 space-y-1">{task.successCriteria.map((text) => <li key={text}>{text}</li>)}</ul>
+      </details>
+      <label className="block text-sm font-medium">How did the episode end?
+        <select className={`${input} mt-2`} aria-label="End state" aria-describedby="episode-end-description" value={finalState?.id ?? ""} disabled={blocked}
+          onChange={(e) => remember({ ...row, final_state: e.target.value }, props.selectedEventKey ?? null, "End state updated.")}>
+          <option value="">Choose the end state…</option>{task.finalStates.map((item) => <option key={item.id} value={item.id}>{item.id.charAt(0).toUpperCase() + item.id.slice(1).replaceAll("_", " ")}</option>)}
+        </select>
+      </label>
+      <p id="episode-end-description" className="text-sm text-ink-muted">{finalState?.description ?? "Describe the physical state at the end of the task, before any reset movement."}</p>
+      {outcomeIssues.length > 0 && <div className="rounded-lg bg-gold-light p-3 text-sm" aria-label="Result checklist">{outcomeIssues.map((issue, index) => <p key={index}>{issue.message}</p>)}</div>}
+      <div className="border-t border-warm-200" />
       {selected && <details><summary className="text-sm text-teal cursor-pointer">Attempt for this mark · {Number.isFinite(attempt) ? attempt : "unset"}</summary>
         <label className="block text-sm mt-2">Attempt<input aria-label={`Transition ${selected.index + 1} attempt`} className={`${input} mt-1`} type="number" min="1" max={Number(row.attempt_count)} value={Number.isFinite(attempt) ? attempt : ""} disabled={blocked} onChange={(e) => {
           const events = context!.marks.map((m) => m.index === selected.index ? { ...m.event, attempt_index: e.target.value === "" ? null : Number(e.target.value) } : m.event);
@@ -126,9 +153,9 @@ export function TrajectoryStageEditor(props: StageLabelFormProps & { video?: Rea
       </div></details>
       <label className="block text-sm">Your review notes<textarea aria-label="Your review notes" className={`${input} mt-1`} rows={2} value={props.humanNotes ?? ""} disabled={props.disabled || !props.onHumanNotesChange} onChange={(e) => props.onHumanNotesChange?.(e.target.value)} placeholder="Optional uncertainty or observations" /></label>
     </div>
-    {props.violations.length > 0 && <details className="rounded-lg bg-gold-light p-3"><summary className="text-sm cursor-pointer">Stage checklist · {props.violations.length} items</summary>
+    {props.violations.length > 0 && <details className="rounded-lg bg-gold-light p-3"><summary className="text-sm cursor-pointer">Review checklist · {props.violations.length} items</summary>
       {props.violations.map((v, i) => <p key={i} className="text-sm mt-2">{v.message}</p>)}</details>}
-    <p className="text-xs text-ink-muted">Confirmation covers stage labels and timestamps only. Other prediction fields are preserved, not reviewed.</p>
+    <p className="text-sm text-ink-muted">Confirming verifies the stages, task result and end state shown here. Other prediction fields are kept, not reviewed. If unsure, save as uncertain.</p>
     </aside>
   </section>;
 }

@@ -6,6 +6,7 @@ import { TrajectoryStageEditor } from "./review/TrajectoryStageEditor";
 import { TrajectoryStageRail } from "./review/TrajectoryStageRail";
 import { blankTrajectoryReview } from "../../convex/trajectoryReview";
 import { validateStageOnlyReview } from "../../convex/stageOnlyReview";
+import { validateStageOutcomeReview } from "../../convex/stageOutcomeReview";
 import type { StageLabelRow, ExportedStageSpec } from "../../convex/stageConsistency";
 import { createStageReviewFixture, configureTrajectoryFixture } from "../../tests/browser/stageReviewFixture";
 import fixtures from "../../tests/fixtures/trajectory-review-fixtures.json";
@@ -26,8 +27,8 @@ function Fixture({ schema = spec, initial = blankTrajectoryReview(schema.traject
   const props = { spec: schema, row, frame: 0, disabled: false, markDisabled: false, markFrame: snap,
     onEdit: setRow, onSeekTime: setSeek, selectedEventKey: selected, onSelectEvent: setSelected,
     humanNotes: notes, onHumanNotesChange: setNotes, onPendingInputChange: pendingChange, hasPendingInput: pending,
-    violations: validateStageOnlyReview(schema.trajectory!, row, 30) };
-  return <><TrajectoryStageEditor {...props}
+    violations: validateStageOutcomeReview(schema.trajectory!, row, 30) };
+  return <><TrajectoryStageEditor {...props} episodeDurationS={12}
     video={<div data-testid="review-player"><video data-testid="review-video" /><input type="range" aria-label="Video position" /></div>}
     timeline={<TrajectoryStageRail {...props} />}
   /><output data-testid="state">{JSON.stringify({ row, seek, selected })}</output></>;
@@ -63,7 +64,7 @@ for (const task of fixtures.synthetic.tasks) {
     fireEvent.click(view.getByRole("button", { name: "Move to current frame", exact: true }));
     expect(state(view).row.stage_transitions.at(-1).time_s).toBe(frame / schema.fps);
     expect(state(view).row.stage_transitions).toHaveLength(stages.length);
-    fireEvent.click(view.getByRole("button", { name: "Undo stage edit" }));
+    fireEvent.click(view.getByRole("button", { name: "Undo last edit" }));
     expect(state(view).row).toEqual(complete);
   });
 }
@@ -95,7 +96,7 @@ test("stage-only controls mark the paused frame, advance the maximum, and undo w
   expect(next.stage_transitions[0].time_s).toBe(2);
   expect(next.max_stage).toBe(1);
   for (const key of Object.keys(before).filter((key) => !["stage_transitions", "max_stage", "max_stage_id"].includes(key))) expect(next[key]).toEqual(before[key]);
-  fireEvent.click(view.getByRole("button", { name: "Undo stage edit" }));
+  fireEvent.click(view.getByRole("button", { name: "Undo last edit" }));
   expect(state(view).row).toEqual(before);
 });
 
@@ -175,14 +176,14 @@ test("removal and chronological repair preserve hidden pipeline records and supp
   fireEvent.click(view.getByRole("button", { name: "Order stage marks by time" }));
   expect(state(view).row.stage_transitions.map((e: StageLabelRow) => e.time_s)).toEqual(real().stage_transitions.map((e: StageLabelRow) => e.time_s));
   expect(state(view).row.key_action_observations).toEqual(initial.key_action_observations);
-  fireEvent.click(view.getByRole("button", { name: "Undo stage edit" }));
+  fireEvent.click(view.getByRole("button", { name: "Undo last edit" }));
   expect(state(view).row).toEqual(initial);
   fireEvent.click(view.getByRole("button", { name: "Inspect stage mark 1" }));
   fireEvent.click(view.getByRole("button", { name: "Remove this mark" }));
   expect(state(view).row.stage_transitions).toHaveLength(initial.stage_transitions.length - 1);
   expect(state(view).row.key_action_observations).toEqual(initial.key_action_observations);
   expect(state(view).row.failure_events).toEqual(initial.failure_events);
-  fireEvent.click(view.getByRole("button", { name: "Undo stage edit" }));
+  fireEvent.click(view.getByRole("button", { name: "Undo last edit" }));
   expect(state(view).row).toEqual(initial);
 });
 
@@ -197,15 +198,16 @@ async function setup(source = "routing_d1_v1", caseName = "real_routing_d1_valid
   return { ...fixture, ...contract, view };
 }
 for (const task of ["marker_d2", "square_d2", "routing_d1"]) {
-  test(`${task}: stage-only review preserves the entire model payload and scopes its saved attestation`, async () => {
+  test(`${task}: stage and outcome review preserves the model payload and scopes its saved attestation`, async () => {
     const { view, state: saved, selected } = await setup(`${task}_${task === "routing_d1" ? "v1" : "v3"}`, `real_${task}_valid`);
-    expect(Boolean(view.queryByRole("combobox", { name: "Task success" }))).toBe(false);
-    expect(view.getByRole("region", { name: "Stage labeling" }).textContent).not.toMatch(/action|failure mode|final state/i);
+    expect(view.getByRole("radio", { name: "Success", exact: true })).toBeDefined();
+    expect(view.getByRole("combobox", { name: "End state" })).toBeDefined();
+    expect(view.getByRole("region", { name: "Stage labeling" }).textContent).not.toMatch(/action|failure mode/i);
     expect(saved.saves).toHaveLength(0);
     fireEvent.change(view.getByRole("textbox", { name: "Your review notes" }), { target: { value: "Only stages reviewed." } });
     await act(async () => fireEvent.keyDown(window, { key: "u" }));
     expect(saved.saves[0].label).toEqual(selected.review_label);
-    expect(saved.saves[0].review_protocol).toBe("stages-v1");
+    expect(saved.saves[0].review_protocol).toBe("stages-outcome-v1");
     expect(saved.saves[0].notes).toBe("Only stages reviewed.");
     expect(saved.saves[0].prediction_id).toBe("A-prediction-0");
   });
@@ -232,7 +234,7 @@ for (const task of fixtures.synthetic.tasks) {
     fireEvent.change(input, { target: { value: "0.1234567" } });
     expect(buttons()[0].title).toContain("0.12 s");
     expect(buttons().every((button) => !button.disabled)).toBe(true);
-    fireEvent.click(view.getByRole("button", { name: "Undo stage edit" }));
+    fireEvent.click(view.getByRole("button", { name: "Undo last edit" }));
     expect(buttons()[0].title).toContain(`${events[0].time_s!.toFixed(2)} s`);
     expect(view.container.querySelector("video") === video).toBe(true);
   });
@@ -245,7 +247,7 @@ for (const task of fixtures.synthetic.tasks) {
     await act(async () => fireEvent.click(view.getByRole("button", { name: "Save draft", exact: true })));
     const review = saved.saves[0];
     expect(review.status).toBe("draft");
-    expect(review.review_protocol).toBe("stages-v1");
+    expect(review.review_protocol).toBe("stages-outcome-v1");
     expect(review.taxonomy_version).toBe(task.spec.taxonomy_version);
     expect(review.prediction_id).toBe("A-prediction-0");
     expect(review.label!.stage_transitions[0].time_s).toBe(0.1234567);
@@ -254,7 +256,7 @@ for (const task of fixtures.synthetic.tasks) {
     const reloaded = render(<StageReview {...props} />); await act(async () => {});
     fireEvent.click(reloaded.getByRole("button", { name: "Inspect stage mark 1" }));
     expect(reloaded.getByRole("group", { name: "Transition 1 time" }).querySelector("input")!.value).toBe("0.1234567");
-    expect(reloaded.getByRole("region", { name: "Stage labeling" }).textContent).not.toMatch(/action|failure mode|final state/i);
+    expect(reloaded.getByRole("region", { name: "Stage labeling" }).textContent).not.toMatch(/action|failure mode/i);
   });
 }
 
@@ -293,5 +295,48 @@ for (const task of fixtures.synthetic.tasks) test(`${task.source_name}: source-f
   expect(fixture.state.saves[0].label!.stage_transitions).toEqual([]);
   expect(fixture.state.saves[0].label!.max_stage).toBeNull();
   expect(fixture.state.saves[0].taxonomy_version).toBe(task.spec.taxonomy_version);
-  expect(fixture.state.saves[0].review_protocol).toBe("stages-v1");
+  expect(fixture.state.saves[0].review_protocol).toBe("stages-outcome-v1");
+});
+
+for (const task of fixtures.synthetic.tasks) {
+  test(`${task.source_name}: result and end state are editable, undoable and saved without altering hidden fields`, async () => {
+    const { view, state: saved, props, selected } = await setup(task.source_name, "valid_success");
+    const states = task.spec.trajectory.task_definition.finalStates;
+    const finalSelect = view.getByRole("combobox", { name: "End state" });
+    expect([...finalSelect.querySelectorAll("option")].filter((option) => option.value).map((option) => option.value)).toEqual(states.map((item) => item.id));
+    expect((view.getByRole("radio", { name: "Success", exact: true }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(view.getByRole("radio", { name: "Failure", exact: true }));
+    fireEvent.change(finalSelect, { target: { value: states[0].id } });
+    expect(view.getByText(states[0].description)).toBeDefined();
+    fireEvent.click(view.getByRole("button", { name: "Undo last edit" }));
+    expect((finalSelect as HTMLSelectElement).value).toBe(selected.review_label!.final_state);
+    expect((view.getByRole("radio", { name: "Failure", exact: true }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.change(finalSelect, { target: { value: states[0].id } });
+    await act(async () => fireEvent.click(view.getByRole("button", { name: "Save draft", exact: true })));
+    const review = saved.saves[0];
+    expect(review.review_protocol).toBe("stages-outcome-v1");
+    expect(review.label!.task_success).toBe(false);
+    expect(review.label!.final_state).toBe(states[0].id);
+    expect(Object.keys(review.label!)).toEqual(Object.keys(selected.review_label!));
+    for (const key of Object.keys(selected.review_label!).filter((key) => !["task_success", "final_state"].includes(key))) {
+      expect(review.label![key]).toEqual(selected.review_label![key as keyof typeof selected.review_label]);
+    }
+    view.unmount();
+    const reloaded = render(<StageReview {...props} />); await act(async () => {});
+    expect((reloaded.getByRole("radio", { name: "Failure", exact: true }) as HTMLInputElement).checked).toBe(true);
+    expect((reloaded.getByRole("combobox", { name: "End state" }) as HTMLSelectElement).value).toBe(states[0].id);
+  });
+}
+
+test("watch ending seeks to the last policy frame; undecided outcomes stay explicit", () => {
+  const view = render(<Fixture />);
+  fireEvent.click(view.getByRole("button", { name: "Watch ending" }));
+  expect(state(view).seek).toBe(12 - 1 / spec.fps);
+  expect((view.getByRole("radio", { name: "Not sure yet" }) as HTMLInputElement).checked).toBe(true);
+  expect(view.getByText("Choose Success or Failure, or save as uncertain if you cannot decide.", { selector: "div[aria-label='Result checklist'] p" })).toBeDefined();
+  fireEvent.click(view.getByRole("radio", { name: "Success", exact: true }));
+  expect(state(view).row.task_success).toBe(true);
+  fireEvent.click(view.getByRole("radio", { name: "Not sure yet" }));
+  expect(state(view).row.task_success).toBeNull();
+  expect(state(view).row.final_state).toBe("");
 });

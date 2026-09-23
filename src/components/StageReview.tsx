@@ -2,7 +2,7 @@ import { type TrajectoryEventLink } from "../../convex/trajectoryEventLinks";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../convex/_generated/api";
 import { blankTrajectoryReview } from "../../convex/trajectoryReview";
-import type { Id } from "../../convex/_generated/dataModel";
+import type { Doc, Id } from "../../convex/_generated/dataModel";
 import {
   validateStageLabel,
   type ExportedStageSpec,
@@ -25,7 +25,7 @@ import {
   type PredictionAttribution,
 } from "../lib/stagePredictionReview";
 import { useStageReviewDraft } from "../lib/useStageReviewDraft";
-import { validateStageOnlyReview } from "../../convex/stageOnlyReview";
+import { validateStageOutcomeReview } from "../../convex/stageOutcomeReview";
 import { stageReviewDataSource, type StageReviewDataSource } from "../lib/stageReviewDataSource";
 import { useSearchParam, useSearchParamNumber, useSearchParamNavigationGuard, setSearchParams } from "../lib/useSearchParam";
 import { EvidencePanel, type StagePrefillView } from "./review/EvidencePanel";
@@ -68,6 +68,7 @@ interface StageReviewRecord {
   status: string;
   label: StageLabelRow | null;
   humanNotes?: string;
+  reviewCoverage?: Doc<"stageReviews">["review_coverage"];
   eventLinks?: TrajectoryEventLink[];
   reviewer: string;
   savedAt: number;
@@ -112,7 +113,7 @@ const HELP_KEYS: [string, string][] = [
   ["space", "play / pause"],
   ["0–9", "set the furthest stage (does not mark a time)"],
   ["- / =", "decrement / increment the stage (covers S10)"],
-  ["c", "confirm stage review + next episode"],
+  ["c", "confirm stages, result and end state + next episode"],
   ["u", "uncertain: reviewed but not gold-eligible + advance"],
   ["e", "toggle the model-evidence rail"],
   ["n", "next episode (drafts unsaved edits)"],
@@ -433,6 +434,7 @@ export default function StageReview({
         status: row.status,
         label: (row.label as StageLabelRow | undefined) ?? null,
         humanNotes: row.notes,
+        reviewCoverage: row.review_coverage,
         eventLinks: row.event_links,
         reviewer: row.reviewer,
         savedAt: row.saved_at,
@@ -467,6 +469,7 @@ export default function StageReview({
           status: row.status,
           label: (row.label as StageLabelRow | undefined) ?? null,
           humanNotes: row.notes,
+          reviewCoverage: row.review_coverage,
           eventLinks: row.event_links,
           reviewer: row.reviewer,
           savedAt: row.saved_at,
@@ -780,7 +783,7 @@ export default function StageReview({
   const episodeDurationS = shownAttribution?.episode_duration_s ??
     (spec?.trajectory ? policyDurationS : spec && currentEpisode ? currentEpisode.rawLength / spec.fps : null);
   const violations = useMemo(
-    () => spec && pending ? (spec.trajectory ? validateStageOnlyReview(spec.trajectory, pending, episodeDurationS)
+    () => spec && pending ? (spec.trajectory ? validateStageOutcomeReview(spec.trajectory, pending, episodeDurationS)
       : validateStageLabel(spec, pending, episodeDurationS)) : [],
     [spec, pending, episodeDurationS]
   );
@@ -863,7 +866,7 @@ export default function StageReview({
           status,
           label: label ?? undefined,
           ...(spec.trajectory && status !== "cleared" ? {
-            review_protocol: "stages-v1" as const,
+            review_protocol: "stages-outcome-v1" as const,
             notes: draft.humanNotes ?? "",
             event_links: draft.eventLinks ?? [],
           } : {}),
@@ -1742,6 +1745,7 @@ export default function StageReview({
                     <p className="mt-1">Human labels can be scored against other predictions using compatible labeling definitions. The prediction shown during annotation is recorded for the audit.</p>
                   </details>
                   {inheritedSuccess && <p className="mt-1">Legacy form fields inherit the human success outcome. The original prediction remains in model evidence.</p>}
+                  {currentOwn?.reviewCoverage?.protocol === "stages-v1" && <p className="mt-2 text-sm text-ink">Your earlier review covered stages only. Check the task result and end state, then confirm this review to supervise them too.</p>}
                 </div>
               )}
 
@@ -1765,6 +1769,7 @@ export default function StageReview({
 
               {spec.trajectory && pending ? <TrajectoryStageEditor
                 key={sourceKey} spec={spec} row={pending}
+                episodeDurationS={episodeDurationS}
                 video={reviewVideo}
                 timeline={episodeDurationS !== null && <TrajectoryStageRail
                   spec={spec} row={pending} violations={violations} frame={frame} markFrame={markFrame}
@@ -1823,10 +1828,17 @@ export default function StageReview({
                       {other.label && spec && (
                         <span className="text-ink-muted">
                           {stageDisplay(other.label[spec.stage_field])} ·{" "}
-                          {blind && !spec.failure_modes.includes(String(other.label[spec.failure_mode_field]))
+                          {spec.trajectory ? <>
+                            {other.reviewCoverage?.reviewed_fields.includes("task_success")
+                              ? other.label.task_success === true ? "Success" : other.label.task_success === false ? "Failure" : "Result unset"
+                              : "Result not reviewed"} ·{" "}
+                            {other.reviewCoverage?.reviewed_fields.includes("final_state")
+                              ? spec.trajectory.task_definition.finalStates.find((state) => state.id === other.label?.final_state)?.description ?? "End state unset"
+                              : "End state not reviewed"}
+                          </> : <>{blind && !spec.failure_modes.includes(String(other.label[spec.failure_mode_field]))
                             ? "invalid failure value" : String(other.label[spec.failure_mode_field] ?? "—")} →{" "}
                           {blind && !spec.final_states.includes(String(other.label[spec.final_state_field]))
-                            ? "invalid final state" : String(other.label[spec.final_state_field] ?? "—")}
+                            ? "invalid final state" : String(other.label[spec.final_state_field] ?? "—")}</>}
                         </span>
                       )}
                       <div className="flex-1" />
@@ -1882,7 +1894,7 @@ export default function StageReview({
                       : "bg-teal text-white hover:bg-teal/90 cursor-pointer"
                   }`}
                 >
-                  {spec.trajectory ? "Confirm stages & next" : "confirm — fully annotated"}
+                  {spec.trajectory ? "Confirm review & next" : "confirm — fully annotated"}
                   <span className="ml-1.5 font-mono text-[10px] opacity-70">c</span>
                 </button>
               </div>

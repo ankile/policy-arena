@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { convexTest } from "convex-test";
 import { api } from "../convex/_generated/api";
 import schema from "../convex/schema";
-import { EXCLUDED_REVIEW_FIELDS, stageReviewCoverage, STRUCTURED_REVIEW_FIELDS, STAGE_REVIEW_FIELDS } from "../convex/stageReviewCoverage";
+import { EXCLUDED_REVIEW_FIELDS, stageReviewCoverage, STRUCTURED_REVIEW_FIELDS, STAGE_REVIEW_FIELDS, STAGE_OUTCOME_REVIEW_FIELDS } from "../convex/stageReviewCoverage";
 import { manifestDigest, predictionDigest } from "../convex/stagePredictionContract";
 import { trajectoryFromReview } from "../convex/trajectoryReview";
 import { validateStageLabel, type ExportedStageSpec } from "../convex/stageConsistency";
@@ -46,6 +46,37 @@ function args() {
 }
 
 describe("structured review coverage", () => {
+  for (const task of fixtures.synthetic.tasks) test(`${task.source_name}: backend confirms stages, result and end state without certifying hidden predictions`, async () => {
+    await t.mutation(api.stageTaskSpecs.upsert, { ...service, task: task.spec.task,
+      taxonomy_version: task.spec.taxonomy_version, taxonomy_hash: task.spec.taxonomy_hash,
+      live: true, spec: task.spec, source: "test-only" });
+    const example = task.cases.find((row) => row.name === "valid_success")!;
+    const label = structuredClone(example.review_label!);
+    label.trajectory_identity.sample_id = `${repo}#episode=0`;
+    label.failure_mode = "other";
+    label.key_action_observations[0].first_time_s = 999;
+    const input = { ...args(), task: task.spec.task, taxonomy_version: task.spec.taxonomy_version,
+      label, episode_duration_s: example.duration_s };
+    const oldId = await t.mutation(api.stageReviews.save, { ...input, review_protocol: "stages-v1" });
+    const id = await t.mutation(api.stageReviews.save, { ...input, review_protocol: "stages-outcome-v1" });
+    const saved = await t.run((ctx) => ctx.db.get(id));
+    expect(saved!.label).toEqual(label);
+    expect(saved!.review_coverage!.reviewed_fields).toEqual([...STAGE_OUTCOME_REVIEW_FIELDS]);
+    expect(saved!.review_coverage!.excluded_fields).toContain("failure_mode");
+    expect(saved!.review_coverage!.excluded_fields).toContain("key_action_observations.*.first_time_s");
+    expect((await t.run((ctx) => ctx.db.get(oldId)))!.review_coverage!.reviewed_fields).toEqual([...STAGE_REVIEW_FIELDS]);
+    for (const patch of [{ task_success: null }, { final_state: "" }, { task_success: false }]) {
+      await expect(t.mutation(api.stageReviews.save, { ...input, label: { ...label, ...patch }, review_protocol: "stages-outcome-v1" })).rejects.toThrow("internally inconsistent");
+    }
+    const unknown = { ...label, task_success: null, final_state: "" };
+    for (const status of ["draft", "uncertain"]) {
+      const draftId = await t.mutation(api.stageReviews.save, { ...input, reviewer_override: "pending-reviewer", status, label: unknown, review_protocol: "stages-outcome-v1" });
+      const draft = await t.run((ctx) => ctx.db.get(draftId));
+      expect(draft!.label).toEqual(unknown);
+      expect(draft!.review_coverage!.reviewed_fields).toEqual([]);
+    }
+  });
+
   for (const task of fixtures.synthetic.tasks) test(`${task.source_name}: stage-only confirmation round-trips the task's full ladder`, async () => {
     await t.mutation(api.stageTaskSpecs.upsert, { ...service, task: task.spec.task,
       taxonomy_version: task.spec.taxonomy_version, taxonomy_hash: task.spec.taxonomy_hash,

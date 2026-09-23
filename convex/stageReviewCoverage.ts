@@ -7,6 +7,8 @@ import { v } from "convex/values";
  * explicitly outside that attestation. Human notes live at review.notes.
  * stages-v1 attests only stage transitions, maximum stage and attempt count;
  * all other pipeline fields remain outside the human review.
+ * stages-outcome-v1 additionally attests task_success and final_state. It does
+ * not upgrade old stage-only reviews or attest hidden actions/failure details.
  * Missing coverage on historical rows means unknown coverage, never all fields.
  */
 export const STRUCTURED_REVIEW_FIELDS = [
@@ -33,7 +35,8 @@ export const EXCLUDED_REVIEW_FIELDS = [
 
 export const STAGE_REVIEW_FIELDS = STRUCTURED_REVIEW_FIELDS.filter((path) =>
   path === "max_stage" || path === "max_stage_id" || path === "attempt_count" || path.startsWith("stage_transitions."));
-export const reviewProtocolValidator = v.union(v.literal("structured-v1"), v.literal("stages-v1"));
+export const STAGE_OUTCOME_REVIEW_FIELDS = [...STAGE_REVIEW_FIELDS, "task_success", "final_state"] as const;
+export const reviewProtocolValidator = v.union(v.literal("structured-v1"), v.literal("stages-v1"), v.literal("stages-outcome-v1"));
 export const reviewCoverageValidator = v.object({
   protocol: reviewProtocolValidator,
   reviewed_fields: v.array(v.string()),
@@ -41,16 +44,28 @@ export const reviewCoverageValidator = v.object({
 });
 
 export function stageReviewCoverage(
-  protocol: "structured-v1" | "stages-v1" | undefined, status: string, trajectory: boolean,
+  protocol: "structured-v1" | "stages-v1" | "stages-outcome-v1" | undefined, status: string, trajectory: boolean,
 ) {
   if (protocol === undefined) return undefined;
   if (!trajectory) throw new Error(`${protocol} review protocol requires a trajectory schema`);
   if (status === "cleared") throw new Error("A cleared review must not carry a review protocol");
+  const fields: readonly string[] = protocol === "stages-v1" ? STAGE_REVIEW_FIELDS
+    : protocol === "stages-outcome-v1" ? STAGE_OUTCOME_REVIEW_FIELDS : STRUCTURED_REVIEW_FIELDS;
   return {
     protocol,
     reviewed_fields: status === "confirmed" || status === "corrected"
-      ? [...(protocol === "stages-v1" ? STAGE_REVIEW_FIELDS : STRUCTURED_REVIEW_FIELDS)] : [],
-    excluded_fields: [...EXCLUDED_REVIEW_FIELDS, ...(protocol === "stages-v1"
-      ? STRUCTURED_REVIEW_FIELDS.filter((path) => !STAGE_REVIEW_FIELDS.includes(path)) : [])],
+      ? [...fields] : [],
+    excluded_fields: [...EXCLUDED_REVIEW_FIELDS, ...STRUCTURED_REVIEW_FIELDS.filter((path) => !fields.includes(path))],
   };
+}
+
+/** Compare only summary judgments both humans actually attested. Unknown
+ * historical coverage and hidden retained model fields are not disagreements. */
+export function reviewedSummariesDisagree(
+  left: { label?: Record<string, unknown>; review_coverage?: { reviewed_fields: string[] } },
+  right: { label?: Record<string, unknown>; review_coverage?: { reviewed_fields: string[] } },
+) {
+  return ["max_stage", "max_stage_id", "final_state", "task_success", "failure_mode"].some((field) =>
+    left.review_coverage?.reviewed_fields.includes(field) && right.review_coverage?.reviewed_fields.includes(field) &&
+    left.label?.[field] !== right.label?.[field]);
 }

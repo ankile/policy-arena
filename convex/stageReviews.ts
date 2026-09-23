@@ -5,9 +5,10 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { canonicalDigest } from "./stagePredictionContract";
 import { blankTrajectoryReview } from "./trajectoryReview";
 import { requireEditorOrService } from "./access";
-import { reviewProtocolValidator, stageReviewCoverage } from "./stageReviewCoverage";
+import { reviewProtocolValidator, stageReviewCoverage, reviewedSummariesDisagree } from "./stageReviewCoverage";
 import { analyzeTrajectoryTimeline } from "./trajectoryTimeline";
 import { validateStageOnlyReview } from "./stageOnlyReview";
+import { validateStageOutcomeReview } from "./stageOutcomeReview";
 import { eventLinksValidator, validateTrajectoryEventLinks } from "./trajectoryEventLinks";
 import {
   canonicalizeStageLabel,
@@ -32,6 +33,8 @@ import {
  *    reviewer edited the prediction is not encoded here — it is derivable
  *    from the row's label vs the prefill generation it was shown
  *    (prefill_pushed_at) and from the HF ledger's vlm/human event chain.
+ *    stages-outcome-v1 covers stages plus task_success/final_state, but never
+ *    hidden model actions, failure details, source prose or confidence.
  *  - corrected:  LEGACY (gold-eligible, same as confirmed). The web UI no
  *    longer emits it (user decision 2026-08-20); it remains accepted for
  *    service replays of historical cv2 human_labels.csv batches.
@@ -224,10 +227,10 @@ export const save = mutation({
         throw new Error("trajectory identity must match the exact prediction source or source-free episode identity");
       }
       if ((COMMITTED as readonly string[]).includes(args.status)) {
-        const stagesOnly = args.review_protocol === "stages-v1" && spec.trajectory;
-        const linkErrors = stagesOnly ? [] : validateTrajectoryEventLinks(label, args.event_links ?? []);
+        const scopedReview = spec.trajectory && (args.review_protocol === "stages-v1" || args.review_protocol === "stages-outcome-v1");
+        const linkErrors = scopedReview ? [] : validateTrajectoryEventLinks(label, args.event_links ?? []);
         if (linkErrors.length > 0) throw new Error(linkErrors.join("; "));
-        const violations = stagesOnly ? validateStageOnlyReview(stagesOnly, label, resolvedDuration)
+        const violations = scopedReview ? (args.review_protocol === "stages-outcome-v1" ? validateStageOutcomeReview : validateStageOnlyReview)(spec.trajectory!, label, resolvedDuration)
           : validateStageLabel(spec, label, resolvedDuration);
         if (violations.length > 0) {
           throw new Error(
@@ -237,7 +240,7 @@ export const save = mutation({
         }
         // A review-only gate: immutable imported predictions and historical
         // saved labels remain untouched, including their original conflicts.
-        if (spec.trajectory && !stagesOnly) {
+        if (spec.trajectory && !scopedReview) {
           const timelineIssues = analyzeTrajectoryTimeline(spec.trajectory, label);
           if (timelineIssues.length > 0) {
             throw new Error("label timeline is inconsistent: " + timelineIssues.map((issue) => issue.message).join("; "));
@@ -398,8 +401,9 @@ export const historyForEpisode = query({
 
 /**
  * Episodes whose COMMITTED latest rows differ across reviewers on the core
- * triple (stage, failure mode, final state) under one taxonomy version — the
- * blinded-double-labeling disagreement queue.
+ * summary under one taxonomy version — the blinded-double-labeling disagreement
+ * queue. Structured rows compare only jointly reviewed fields, including the
+ * binary result; legacy rows retain their stage/failure/final-state triple.
  */
 export const disagreementsForRepo = query({
   args: {
@@ -449,8 +453,10 @@ export const disagreementsForRepo = query({
     const disagreements = [];
     for (const [episode, reviewRows] of byEpisode) {
       if (reviewRows.length < 2) continue;
-      const triples = new Set(reviewRows.map(triple));
-      if (triples.size > 1) {
+      const disagrees = spec.trajectory
+        ? reviewRows.some((left, index) => reviewRows.slice(index + 1).some((right) => reviewedSummariesDisagree(left, right)))
+        : new Set(reviewRows.map(triple)).size > 1;
+      if (disagrees) {
         disagreements.push({ episode_index: Number(episode), reviews: reviewRows });
       }
     }

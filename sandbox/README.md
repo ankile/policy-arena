@@ -31,15 +31,21 @@ Open <http://127.0.0.1:5174/sandbox/stage-review.html>. Node users can run
    Expand **What counts as this stage?** for its description and entry criteria.
 4. Click a named stage below the video to seek and adjust its time, change its
    stage, or remove it. **Next stage** returns to marking the next milestone.
-   **Undo stage edit** restores the exact previous label. No action or failure
+   **Undo last edit** restores the exact previous label. No action or failure
    editor is shown for the structured trajectory tasks.
-5. In the separate **Episode review** panel, check **Furthest stage reached in
-   the episode**. New marks advance it if
+5. In the separate **Episode review** panel, choose **Success** or **Failure**
+   and select **How did the episode end?** The task-specific end states use
+   readable names and show the selected state's definition. **Watch ending**
+   jumps to the last policy frame, before reset footage; **What counts as
+   success?** explains the task's criteria. If undecided, select **Not sure yet**
+   and save as uncertain. These edits do not auto-fill stages or hidden fields.
+   Also check **Furthest stage reached in the episode**. New marks advance it if
    needed; a later failure does not erase earlier progress. S0 needs no time.
    **Retries and timeline settings** lets you start or select another attempt
    and explicitly reorder stage records after a time correction.
-6. Add optional review notes, **Save draft**, or **Confirm stages & next**.
-   Confirmation checks only stage judgments and times; hidden pipeline fields
+6. Add optional review notes, **Save draft**, or **Confirm review & next**.
+   Confirmation checks stages/times, the binary task result, and end state;
+   hidden pipeline fields
    remain untouched and are not human-verified. **Export local saves**
    downloads your trial review history (Convex JSON encoding, including int64).
 
@@ -51,22 +57,29 @@ actions are invented. This does not change the model prediction schema.
 
 ## Review scope and rollout
 
-Structured task reviews now use `review_protocol: stages-v1`. Completed
+Structured task reviews now use `review_protocol: stages-outcome-v1`. Completed
 `review_coverage.reviewed_fields` covers the furthest stage, attempt count, and
-stage transitions only. Actions, failure modes/times, outcome, final state,
+stage transitions, plus `task_success` and `final_state` (the lossless review
+projection of canonical `final_state_id`). Actions, failure modes/times,
 source prose and confidence are retained but excluded. Drafts and uncertain
-reviews have no completed coverage. Existing `structured-v1` and historical
+reviews have no completed coverage. Existing `stages-v1`, `structured-v1` and historical
 reviews retain their previous semantics; nothing is migrated in place.
 
 The new validator checks stage identities, attempts, ordering, maximum stage,
-and policy-time bounds. It does not require a model action to agree with a
-human stage correction. A stage-only saved row is a scoped review, **not** a
+policy-time bounds, a boolean result, and a declared end state. It checks the
+reviewed result against the task-defined successful stages/end states, including
+the task's cutoff-success states, without consulting hidden action/failure fields.
+Later failures may retain a previously reached completed stage. Unresolved
+judgments can be saved as drafts/uncertain, not confirmed. The separate dataset
+outcome-review records are not overwritten by this review.
+It does not require a model action to agree with a human correction.
+A scoped saved row is **not** a
 fully validated model response. Consumers must honor coverage; the existing
 full-summary benchmark excludes these rows rather than scoring unreviewed
-outcome/failure fields as gold. A stage-only benchmark is future work.
+failure fields as gold. A coverage-aware partial benchmark is future work.
 
 The local playground needs no backend deployment. Before deploying the shared
-frontend, the backend must support the additive `stages-v1` protocol and its
+frontend, the backend must support the additive `stages-outcome-v1` protocol and its
 coverage validator. Follow the repo's documented single-deployment procedure;
 do not run `convex deploy`. This PR does not deploy the shared backend or UI.
 Legacy non-trajectory taxonomies retain their existing editor and protocol.
@@ -104,7 +117,8 @@ No shared mutations, model calls, or deployments were performed.
 
 Automated regressions additionally cover every stage through each task's
 maximum (including Routing S8–S10), precise timestamp save/reload, source-free
-duration gating, and backend confirmation with stage-only coverage. Both
+duration gating, outcome/end-state editing and persistence, and backend confirmation
+with explicit scoped coverage. Older stage-only coverage is retained and tested. Both
 Marker v3 and v4 are covered alongside Square v3 and Routing v1. These checks
 verify editing and persistence, not the accuracy of the model predictions.
 
