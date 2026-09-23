@@ -47,18 +47,43 @@ export interface EpisodeMetadata {
   numFrames: number;
   duration: number;
   success: boolean;
+  cameraTimings?: Record<string, {videoFileIndex:number;fromTimestamp:number;toTimestamp:number}>;
   videoFileIndex: number;
   fromTimestamp: number;
   toTimestamp: number;
 }
 
+/** Set once before mounting a frozen public release; unknown repositories fail closed. */
+let releasePins: ReadonlyMap<string, {revision:string;fps:number}> | null = null;
+export function configureReleaseDatasets(pins: ReadonlyMap<string, {revision:string;fps:number}>) {
+  if (parquetCache.size) throw new Error("Configure release pins before loading datasets");
+  releasePins = pins;
+}
+function datasetRevision(datasetId:string): string {
+  if (!releasePins) return 'main';
+  const pin=releasePins.get(datasetId);
+  if (!pin) throw new Error(`Dataset is outside the public release: ${datasetId}`);
+  return pin.revision;
+}
+export function datasetFps(datasetId:string):number {return releasePins?.get(datasetId)?.fps ?? FPS;}
+
+export function seedReleaseEpisodes(datasetId:string, entry: ParquetCacheEntry) {
+  datasetRevision(datasetId);
+  if (!releasePins) throw new Error('Release metadata requires pinned repositories');
+  parquetCache.set(datasetId,entry);
+}
+export function episodeForCamera<T extends EpisodeWithoutSuccess>(episode:T, camera:string):T {
+  const timing=episode.cameraTimings?.[camera];
+  return timing ? {...episode,...timing,duration:timing.toTimestamp-timing.fromTimestamp} : episode;
+}
+
 function hfBase(datasetId: string): string {
-  return `https://huggingface.co/datasets/${datasetId}/resolve/main`;
+  return `https://huggingface.co/datasets/${datasetId}/resolve/${datasetRevision(datasetId)}`;
 }
 
 async function listEpisodeMetadataFiles(datasetId: string): Promise<string[]> {
   const url =
-    `https://huggingface.co/api/datasets/${datasetId}/tree/main/meta/episodes` +
+    `https://huggingface.co/api/datasets/${datasetId}/tree/${datasetRevision(datasetId)}/meta/episodes` +
     "?recursive=true&expand=false&limit=1000";
   const response = await fetch(url);
   if (!response.ok) {
@@ -352,7 +377,8 @@ async function loadFrameSummaries(
 function parseEpisodeRows(
   rows: Record<string, unknown>[],
   videoColPrefix: string | null,
-  frameSummaries: Map<number, EpisodeFrameSummary>
+  frameSummaries: Map<number, EpisodeFrameSummary>,
+  fps = FPS
 ): { episodes: EpisodeWithoutSuccess[]; successMap: Map<number, boolean> } {
   const successMap = new Map<number, boolean>();
   const episodes = rows.map((row) => {
@@ -366,11 +392,11 @@ function parseEpisodeRows(
       : 0;
     const rawToTimestamp = videoColPrefix
       ? metadataScalar(row, `${videoColPrefix}/to_timestamp`)
-      : rawLength / FPS;
+      : rawLength / fps;
     const frameDuration =
       rawToTimestamp > rawFromTimestamp
         ? (rawToTimestamp - rawFromTimestamp) / rawLength
-        : 1 / FPS;
+        : 1 / fps;
     const toTimestamp = rawFromTimestamp + numFrames * frameDuration;
     const success = successFromEpisodeStats(row) ?? frameSummary?.success ?? null;
     if (success !== null) successMap.set(episodeIndex, success);
@@ -442,7 +468,7 @@ export async function fetchEpisodeSubset(
     cameraKeys.length > 0 ? `videos/${cameraKeys[0]}` : null;
 
   const firstFrameSummaries = await loadFrameSummaries(datasetId, firstRows);
-  const firstParsed = parseEpisodeRows(firstRows, videoColPrefix, firstFrameSummaries);
+  const firstParsed = parseEpisodeRows(firstRows, videoColPrefix, firstFrameSummaries, datasetFps(datasetId));
   const allEpisodes = firstParsed.episodes;
   const successMap = firstParsed.successMap;
   const found = new Set(allEpisodes.map((e) => e.episodeIndex));
@@ -468,7 +494,7 @@ export async function fetchEpisodeSubset(
 
       for (const rows of batchResults) {
         const frameSummaries = await loadFrameSummaries(datasetId, rows);
-        const parsed = parseEpisodeRows(rows, videoColPrefix, frameSummaries);
+        const parsed = parseEpisodeRows(rows, videoColPrefix, frameSummaries, datasetFps(datasetId));
         allEpisodes.push(...parsed.episodes);
         for (const [episodeIndex, success] of parsed.successMap) {
           successMap.set(episodeIndex, success);
@@ -552,7 +578,7 @@ async function loadParquetMetadata(
     cameraKeys.length > 0 ? `videos/${cameraKeys[0]}` : null;
 
   const frameSummaries = await loadFrameSummaries(datasetId, allRows);
-  const parsed = parseEpisodeRows(allRows, videoColPrefix, frameSummaries);
+  const parsed = parseEpisodeRows(allRows, videoColPrefix, frameSummaries, datasetFps(datasetId));
 
   const result = {
     episodes: parsed.episodes.sort((a, b) => a.episodeIndex - b.episodeIndex),

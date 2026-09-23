@@ -3,10 +3,14 @@ import { readFileSync, writeFileSync, mkdirSync, copyFileSync, readdirSync } fro
 import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { validateRelease } from '../src/release/types';
+import { createReleaseAdapter } from '../src/release/adapter';
 
 const [source, ...flags] = process.argv.slice(2);
 if (!source || flags.some(f => f !== '--preview')) throw new Error('Usage: bun scripts/package_release.ts RELEASE_JSON [--preview]');
 const data = validateRelease(JSON.parse(readFileSync(source, 'utf8')));
+const sourceDir = resolve(source, '..');
+const ui = JSON.parse(readFileSync(join(sourceDir, 'ui.json'), 'utf8'));
+createReleaseAdapter(data, ui);
 if (!flags.includes('--preview') && data.state !== 'public_verified') throw new Error('Production release requires public verification receipts');
 const target = process.env.MULLIGAN_RELEASE_OUTPUT || '/tmp/mulligan-arena-build';
 if (resolve(target) === resolve('dist')) throw new Error('Release must use a separate build directory');
@@ -14,6 +18,10 @@ const result = spawnSync('bun', ['run', 'build:release'], {stdio:'inherit'});
 if (result.status !== 0) throw new Error('Release build failed');
 mkdirSync(join(target, 'data'), {recursive:true});
 copyFileSync(source, join(target, 'data/release.json'));
+copyFileSync(join(sourceDir, 'ui.json'), join(target, 'data/ui.json'));
+for (const name of ['catalog.html','catalog.js','manifest.json','mapping.csv','training-recipes.json','evaluation-bundles.json','episode-lineage-audit.json','README.md','out-of-scope.csv','plan.html']) {
+  copyFileSync(join(sourceDir, name), join(target, 'data', name));
+}
 copyFileSync('public/favicon.svg', join(target, 'favicon.svg'));
 const headers = `/*
   Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://huggingface.co https://*.hf.co; media-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co https://*.xethub.hf.co; connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co https://*.xethub.hf.co; upgrade-insecure-requests

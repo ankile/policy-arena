@@ -1,4 +1,4 @@
-import { useQuery } from "convex/react";
+import { useQuery } from "../lib/arenaClient";
 import { api } from "../../convex/_generated/api";
 import type { EntityStatus } from "../../convex/statusShared";
 import { orderTaskChips } from "../lib/taskChips";

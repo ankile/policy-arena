@@ -71,3 +71,36 @@ export default defineConfig([
   },
 ])
 ```
+
+## Public Mulligan release
+
+The public build mounts the same `src/App.tsx` and browsing components as the
+internal Arena. `src/lib/arenaClient.ts` is the data boundary: the regular build
+uses Convex, while `vite.release.config.ts` substitutes the frozen read-only
+provider in `src/release/client.ts`. Do not introduce a second release app.
+
+The release disables authentication, editing, task status management and the
+Labeling Lab. Leaderboard filters, policy drilldowns, evaluation sessions,
+joined sessions, pairings, episode playback and dataset browsing remain shared.
+The release's policy-detail panel also links simulation seed evidence. Simulation
+policies have no invented paired games. Routing headlines report task progress;
+paired Arena ratings continue to use full success. All dataset reads are pinned.
+
+Prepare an export directory containing the verified `release.json`, `ui.json`,
+and catalog/provenance files listed in `scripts/package_release.ts`. The UI
+snapshot contains only selected session dates, dataset identities and scoped
+per-repository annotation coverage. It excludes operator identities, mutable
+result overrides, task-wide aggregates and draft review contents.
+
+```sh
+bun scripts/export_release_ui.ts RELEASE_JSON OUTPUT_UI_JSON CONVEX_URL
+bun scripts/verify_release_data.ts RELEASE_JSON UI_JSON
+bun run package:release RELEASE_JSON
+uv tool run --from playwright python scripts/verify_release_browser.py URL /tmp/arena-browser-check
+```
+
+The build fails on unverified release data, missing catalog assets, a mismatched
+UI snapshot or an internal backend URL. The browser check covers the original
+screens, selected result values, pinned videos, simulation evidence, mobile
+layout and absence of backend traffic and write requests. Outputs go under
+`/tmp/mulligan-arena-build` unless `MULLIGAN_RELEASE_OUTPUT` is set.

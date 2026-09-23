@@ -11,7 +11,7 @@
  * alone; coverage segments use a CVD-validated deep-green / warm-orange /
  * neutral trio.
  */
-import { useQuery } from "convex/react";
+import { useQuery } from "../lib/arenaClient";
 import { api } from "../../convex/_generated/api";
 import { useSearchParam } from "../lib/useSearchParam";
 
@@ -145,7 +145,7 @@ function StageHistBar({
   );
 }
 
-function TaskSection({ t }: { t: TaskCoverage }) {
+function TaskSection({ t, readOnly = false }: { t: TaskCoverage; readOnly?: boolean }) {
   const totals = t.repos.reduce(
     (acc, r) => ({
       episodes: acc.episodes + (r.num_episodes ?? 0),
@@ -178,7 +178,7 @@ function TaskSection({ t }: { t: TaskCoverage }) {
         <LegendSwatch color={VLM_COLOR} label="pipeline only" />
         <LegendSwatch color={UNLABELED_COLOR} label="unlabeled" />
       </div>
-      <table className="mb-6 w-full text-sm">
+      <table className="mb-6 w-full text-sm break-all">
         <thead>
           <tr className="text-left text-xs uppercase tracking-wide text-ink-muted">
             <th className="py-1 pr-3 font-medium">Dataset</th>
@@ -199,7 +199,7 @@ function TaskSection({ t }: { t: TaskCoverage }) {
               <tr key={r.repo} className="border-t border-warm-200/60">
                 <td className="py-1.5 pr-3">
                   <a
-                    href={stageReviewUrl(r.repo)}
+                    href={readOnly ? `?tab=explorer&dataset=${encodeURIComponent(r.repo)}` : stageReviewUrl(r.repo)}
                     className="font-mono text-xs text-teal hover:underline"
                     title={`${r.repo} — open stage review`}
                   >
@@ -253,6 +253,7 @@ function TaskSection({ t }: { t: TaskCoverage }) {
         </tbody>
       </table>
 
+      {!readOnly && <>
       {/* Stage distributions */}
       <div className="mb-6 grid gap-3">
         <StageHistBar
@@ -326,11 +327,12 @@ function TaskSection({ t }: { t: TaskCoverage }) {
           )}
         </div>
       </div>
+      </>}
     </div>
   );
 }
 
-function TaskSectionLoader({ task, includeAll }: { task: string; includeAll: boolean }) {
+function TaskSectionLoader({ task, includeAll, readOnly }: { task: string; includeAll: boolean; readOnly: boolean }) {
   const t = useTaskCoverage(task, includeAll);
   if (t === undefined) {
     return (
@@ -344,10 +346,10 @@ function TaskSectionLoader({ task, includeAll }: { task: string; includeAll: boo
       <div className="text-xs text-ink-muted">No arena stage data yet for {task}.</div>
     );
   }
-  return <TaskSection t={t} />;
+  return <TaskSection t={t} readOnly={readOnly} />;
 }
 
-export default function CoverageDashboard() {
+export default function CoverageDashboard({readOnly = false}: {readOnly?: boolean}) {
   // Same global mainline/all lens as the other tabs (header toggle owns it).
   const [showParam] = useSearchParam("show", "mainline");
   const showAll = showParam === "all";
@@ -362,7 +364,7 @@ export default function CoverageDashboard() {
   const tasks = allTasks.filter((t) => showAll || t.status === "mainline");
   return (
     <div className="grid gap-8" style={{ animation: "fade-up 0.6s ease-out both" }}>
-      <p className="text-sm text-ink-muted">
+      {readOnly ? <p className="text-sm text-ink-muted">Stage annotation coverage at release export, restricted to the released repositories. Machine stage labels and human stage reviews are separate from evaluation success labels.</p> : <p className="text-sm text-ink-muted">
         Live from the review database — every prefill push and review save shows up here
         immediately. Datasets link into the stage-review surface. Pre-arena history (legacy
         cv2 batches, unattributed pipeline runs) lives in the{" "}
@@ -375,12 +377,13 @@ export default function CoverageDashboard() {
           tracker coverage census
         </a>
         .
-      </p>
+      </p>}
       {tasks.map((t) => (
         <TaskSectionLoader
           key={`${t.task}@${t.taxonomy_version}`}
           task={t.task}
           includeAll={showAll}
+          readOnly={readOnly}
         />
       ))}
     </div>

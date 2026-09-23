@@ -1,12 +1,14 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useSearchParam, useSearchParamNullable, useSearchParamNumber, clearSearchParams } from "../lib/useSearchParam";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation } from "../lib/arenaClient";
 import { api } from "../../convex/_generated/api";
 import {
   fetchParquetMetadata,
   fetchSuccessStatus,
   getParquetCache,
   getVideoUrl,
+  datasetFps,
+  episodeForCamera,
   explorerCameraKeys,
   type EpisodeMetadata,
 } from "../lib/hf-api";
@@ -207,11 +209,11 @@ function VideoGrid({
 
   useEffect(() => {
     const videos = videoRefs.current.filter(Boolean) as HTMLVideoElement[];
-    for (const video of videos) {
+    videos.forEach((video,i) => {
       video.pause();
-      video.currentTime = episode.fromTimestamp;
-    }
-  }, [episode]);
+      video.currentTime = episodeForCamera(episode,cameraKeys[i]).fromTimestamp;
+    });
+  }, [episode, cameraKeys]);
 
   useEffect(() => {
     const primary = primaryRef.current;
@@ -221,17 +223,20 @@ function VideoGrid({
     if (playing) {
       for (const v of videos) v.play();
       const sync = () => {
+        const first = episodeForCamera(episode,cameraKeys[0]);
         const t = primary.currentTime;
+        const elapsed = t - first.fromTimestamp;
         for (let i = 1; i < videos.length; i++) {
-          if (Math.abs(videos[i].currentTime - t) > 0.1) {
-            videos[i].currentTime = t;
+          const target = elapsed + episodeForCamera(episode,cameraKeys[i]).fromTimestamp;
+          if (Math.abs(videos[i].currentTime - target) > 0.1) {
+            videos[i].currentTime = target;
           }
         }
-        if (t >= episode.toTimestamp - 0.05) {
-          for (const v of videos) {
+        if (t >= first.toTimestamp - 0.05) {
+          videos.forEach((v,i) => {
             v.pause();
-            v.currentTime = episode.fromTimestamp;
-          }
+            v.currentTime = episodeForCamera(episode,cameraKeys[i]).fromTimestamp;
+          });
           onTogglePlay();
           return;
         }
@@ -242,7 +247,7 @@ function VideoGrid({
       for (const v of videos) v.pause();
     }
     return () => cancelAnimationFrame(animFrameRef.current);
-  }, [playing, episode, onTogglePlay]);
+  }, [playing, episode, onTogglePlay, cameraKeys]);
 
   const gridCols = cameraKeys.length === 1 ? "grid-cols-1" : "grid-cols-2";
 
@@ -253,14 +258,14 @@ function VideoGrid({
           <div key={key} className="relative">
             <video
               ref={setVideoRef(i)}
-              src={getVideoUrl(key, episode.videoFileIndex, datasetId)}
+              src={getVideoUrl(key, episodeForCamera(episode,key).videoFileIndex, datasetId)}
               className="w-full rounded-lg bg-warm-100"
               muted
               playsInline
               preload="auto"
               onLoadedMetadata={(e) => {
                 (e.target as HTMLVideoElement).currentTime =
-                  episode.fromTimestamp;
+                  episodeForCamera(episode,key).fromTimestamp;
                 setVideoReady((prev) => ({ ...prev, [key]: true }));
               }}
             />
@@ -394,10 +399,11 @@ function resolveModelLink(dataset: { model_url?: string }): {
 
 function DatasetDetail({
   repoId,
-  onBack,
+  onBack, readOnly,
 }: {
   repoId: string;
   onBack: () => void;
+  readOnly: boolean;
 }) {
   const dataset = useQuery(api.datasets.getByRepo, { repo_id: repoId });
   const viewer = useQuery(api.users.viewer);
@@ -411,7 +417,8 @@ function DatasetDetail({
   const [playing, setPlaying] = useState(false);
   const [episodeFilter, setEpisodeFilter] = useSearchParam("outcome", "all");
   // "view" (not "mode") because EvalSessions already owns the "mode" param.
-  const [view, setView] = useSearchParam("view", "explorer");
+  const [requestedView, setView] = useSearchParam("view", "explorer");
+  const view = readOnly ? "explorer" : requestedView;
   const setDatasetStatus = useMutation(api.datasets.setStatus);
 
   // -- Staged state --
@@ -923,16 +930,16 @@ function DatasetDetail({
               )}
               <span className="text-xs text-ink-muted font-mono">
                 {selectedEpisode.numFrames} frames &middot;{" "}
-                {formatDuration(selectedEpisode.duration)} &middot; 15 FPS
+                {formatDuration(selectedEpisode.duration)} &middot; {datasetFps(repoId)} FPS
               </span>
             </div>
-            <VideoGrid
+            {cameraKeys.length === 0 ? <p className="text-sm text-ink-muted">This dataset contains state observations without camera recordings. <a className="text-teal" href={`https://huggingface.co/datasets/${repoId}`}>Browse the data on Hugging Face ↗</a></p> : <VideoGrid
               episode={selectedEpisode}
               playing={playing}
               onTogglePlay={handleTogglePlay}
               cameraKeys={cameraKeys}
               datasetId={repoId}
-            />
+            />}
           </div>
         ) : (
           <div className="mt-5 py-12 text-center text-ink-muted font-body">
@@ -948,7 +955,7 @@ function DatasetDetail({
 // Main DataExplorer component
 // ---------------------------------------------------------------------------
 
-export default function DataExplorer() {
+export default function DataExplorer({readOnly = false}: {readOnly?: boolean}) {
   const [sourceFilter, setSourceFilter] = useSearchParam("source", "all");
   const [roleFilter, setRoleFilter] = useSearchParam("role", "all");
   const [trainableFilter, setTrainableFilter] = useSearchParam("trainable", "all");
@@ -980,6 +987,7 @@ export default function DataExplorer() {
           // dataset's signals/pending into another's same-numbered episode.
           key={selectedRepoId}
           repoId={selectedRepoId}
+          readOnly={readOnly}
           onBack={() => setSelectedRepoId(null)}
         />
       </div>
@@ -1129,6 +1137,7 @@ export default function DataExplorer() {
         <TaskFilterChips tasks={allTasks} value={taskFilter} onChange={setTaskFilter} />
       </div>
 
+      {readOnly && <p className="text-xs text-ink-muted">Raw recordings and training views can contain the same episodes; these totals count repository entries. Selected evaluation playback uses the frozen mainline policies. Some source recordings are included because later policies trained on them.</p>}
       {/* Aggregate summary */}
       {filteredDatasets.length > 0 && (() => {
         const totalEpisodes = filteredDatasets.reduce(

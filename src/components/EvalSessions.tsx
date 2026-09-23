@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation } from "../lib/arenaClient";
 import { api } from "../../convex/_generated/api";
 import { StatusBadge, StatusSelect } from "./StatusBadge";
 import type { Id } from "../../convex/_generated/dataModel";

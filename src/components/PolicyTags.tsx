@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery } from "../lib/arenaClient";
 import { api } from "../../convex/_generated/api";
 import { SUGGESTED_METHODS, type PolicyTags as Tags } from "../../convex/policyTags";
 

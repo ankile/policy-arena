@@ -1,5 +1,6 @@
+import type { Release } from "./release/types";
 import { useMemo, useState } from "react";
-import { useQuery } from "convex/react";
+import { useQuery } from "./lib/arenaClient";
 import { api } from "../convex/_generated/api";
 import { computeArenaStats, visibleSessions } from "./lib/arenaRatings";
 
@@ -82,15 +83,15 @@ function EnvironmentTag({ env }: { env: string }) {
 }
 
 type SortKey = "elo" | "success" | "winRate" | "avgSuccessSteps" | "roundMethod";
-function App() {
+function App({ release }: { release?: Release }) {
   const [activeTab] = useSearchParam("tab", "leaderboard");
   const [explorerView] = useSearchParam("view", "explorer");
   const [selectedEnv, setSelectedEnv] = useSearchParam("env", "all");
   const [expandedPolicy, setExpandedPolicy] = useSearchParamNullable("policy");
-  const [sortBy, setSortBy] = useSearchParam("sort", "elo") as [SortKey, (v: string) => void];
+  const [sortBy, setSortBy] = useSearchParam("sort", release ? "roundMethod" : "elo") as [SortKey, (v: string) => void];
   // Global mainline/all lens — deliberately NOT cleared on tab switch.
   const [showParam, setShowParam] = useSearchParam("show", "mainline");
-  const showAll = showParam === "all";
+  const showAll = !release && showParam === "all";
   const [managerOpen, setManagerOpen] = useState(false);
   const [roundFilter, setRoundFilter] = useSearchParam("round", "");
   const [methodFilter, setMethodFilter] = useSearchParam("method", "");
@@ -127,12 +128,15 @@ function App() {
       const rating = arenaStats?.ratings.get(id) ?? null;
       const wdl = arenaStats?.wdl.get(id) ?? { wins: 0, draws: 0, losses: 0 };
       const succ = arenaStats?.success.get(id) ?? null;
+      const published = release?.tasks.flatMap(t => t.policies).find(p => p.id === id);
+      const metric = release?.tasks.find(t => t.policies.some(p => p.id === id))?.metric;
       return {
         ...p,
+        published, metric,
         rating,
         wdl,
         successRate:
-          succ && succ.rollouts > 0 ? succ.successes / succ.rollouts : null,
+          published ? published.rate : succ && succ.rollouts > 0 ? succ.successes / succ.rollouts : null,
         totalRollouts: succ?.rollouts ?? 0,
         totalSuccesses: succ?.successes ?? 0,
         avgSuccessSteps: succ?.avgSuccessSteps ?? null,
@@ -181,7 +185,7 @@ function App() {
           className="mb-14"
           style={{ animation: "fade-up 0.6s ease-out both" }}
         >
-          <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
             <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-teal to-teal/70 flex items-center justify-center">
               <svg
@@ -209,7 +213,7 @@ function App() {
             <AuthControls />
           </div>
           <p className="text-ink-muted font-body text-lg ml-[52px]">
-            Track, compare, and rank robot learning policies and datasets
+            {release ? "Mulligan · Mainline policies, evaluations, and datasets" : "Track, compare, and rank robot learning policies and datasets"}
           </p>
         </header>
 
@@ -218,9 +222,9 @@ function App() {
           className="flex items-center justify-between gap-3 mb-8 flex-wrap"
           style={{ animation: "fade-up 0.6s ease-out 0.1s both" }}
         >
-          <AppTabNavigation activeTab={activeTab} />
+          <AppTabNavigation activeTab={activeTab} readOnly={Boolean(release)} />
           <div className="flex items-center gap-2">
-            <div className="flex gap-1 bg-warm-100 rounded-xl p-1">
+            {!release && <div className="flex gap-1 bg-warm-100 rounded-xl p-1">
               {(
                 [
                   { id: "mainline", label: "Mainline" },
@@ -239,7 +243,7 @@ function App() {
                   {opt.label}
                 </button>
               ))}
-            </div>
+            </div>}
             {viewer?.isEditor && (
               <button
                 onClick={() => setManagerOpen((o) => !o)}
@@ -275,7 +279,7 @@ function App() {
                         : "bg-white text-ink-muted border-warm-200 hover:border-teal/40 hover:text-ink"
                     }`}
                   >
-                    {env === "all" ? "All Tasks" : env}
+                    {env === "all" ? "All Tasks" : release?.tasks.find(t => t.id === env)?.title ?? env}
                   </button>
                 ))}
               </div>
@@ -306,7 +310,7 @@ function App() {
                 </select>
               </label>
               {(roundFilter || methodFilter || tagFilter) && <button onClick={() => clearSearchParams("round", "method", "tag")} className="text-xs text-teal py-2 cursor-pointer">Clear tag filters</button>}
-              <p className="w-full text-xs text-ink-muted">Tag filters select policies. Ratings use all comparisons in the current Mainline or All view.</p>
+              <p className="w-full text-xs text-ink-muted">{release ? "Frozen mainline release. Ratings use paired full-success outcomes; disconnected evaluation blocks are not a cross-round ranking. Routing reports task progress; simulation reports five-seed means." : "Tag filters select policies. Ratings use all comparisons in the current Mainline or All view."}</p>
             </div>
 
             {/* Stats summary */}
@@ -360,11 +364,11 @@ function App() {
               </div>
             ) : (
               <div
-                className="bg-white rounded-2xl border border-warm-200 shadow-sm overflow-hidden"
+                className="bg-white rounded-2xl border border-warm-200 shadow-sm overflow-x-auto"
                 style={{ animation: "fade-up 0.6s ease-out 0.3s both" }}
               >
                 {/* Table header */}
-                <div className="grid grid-cols-[56px_1fr_80px_130px_140px_80px_90px] px-6 py-3.5 border-b border-warm-100 bg-warm-50">
+                <div className="min-w-[950px] grid grid-cols-[56px_1fr_80px_130px_140px_100px_90px] px-6 py-3.5 border-b border-warm-100 bg-warm-50">
                   <span className="text-[11px] uppercase tracking-widest text-ink-muted font-medium">
                     #
                   </span>
@@ -390,7 +394,7 @@ function App() {
                     onClick={() => setSortBy("success")}
                     className={`text-[11px] uppercase tracking-widest font-medium cursor-pointer ${sortBy === "success" ? "text-teal" : "text-ink-muted hover:text-ink"}`}
                   >
-                    Success {sortBy === "success" && "▼"}
+                    {release ? "Outcome" : "Success"} {sortBy === "success" && "▼"}
                   </button>
                   <button
                     onClick={() => setSortBy("avgSuccessSteps")}
@@ -405,7 +409,7 @@ function App() {
                   (policy, i) => (
                     <div key={policy._id}>
                       <div
-                        className={`grid grid-cols-[56px_1fr_80px_130px_140px_80px_90px] items-center px-6 py-4 transition-colors duration-150 hover:bg-warm-50 cursor-pointer ${
+                        className={`min-w-[950px] grid grid-cols-[56px_1fr_80px_130px_140px_100px_90px] items-center px-6 py-4 transition-colors duration-150 hover:bg-warm-50 cursor-pointer ${
                           i < sortedPolicies.length - 1 &&
                           expandedPolicy !== (policy._id as string)
                             ? "border-b border-warm-100"
@@ -469,7 +473,7 @@ function App() {
 
                         {/* W / D / L */}
                         <div className="font-mono text-sm text-ink-muted">
-                          <span className="text-emerald-bar">
+                          {policy.published?.seeds ? "—" : <><span className="text-emerald-bar">
                             {policy.wdl.wins}
                           </span>
                           <span className="text-warm-300 mx-1">/</span>
@@ -479,14 +483,14 @@ function App() {
                           <span className="text-warm-300 mx-1">/</span>
                           <span className="text-rose-bar">
                             {policy.wdl.losses}
-                          </span>
+                          </span></>}
                         </div>
 
                         {/* Win Rate */}
-                        <WinRateBar
+                        {policy.published?.seeds ? <span className="text-ink-muted">—</span> : <WinRateBar
                           wins={policy.wdl.wins}
                           losses={policy.wdl.losses}
-                        />
+                        />}
 
                         {/* Success Rate */}
                         <div
@@ -497,9 +501,9 @@ function App() {
                         >
                           {policy.successRate != null
                             ? <>
-                                {Math.round(policy.successRate * 100)}%
+                                {release ? (policy.successRate * 100).toFixed(1) : Math.round(policy.successRate * 100)}%
                                 <span className="text-xs text-ink-muted/60 ml-1">
-                                  ({policy.totalRollouts})
+                                  ({policy.published?.seeds ? "5 seeds" : policy.totalRollouts})
                                 </span>
                               </>
                             : "—"}
@@ -516,7 +520,7 @@ function App() {
                       {/* Expanded detail */}
                       {expandedPolicy === (policy._id as string) && (
                         <div className="border-b border-warm-100">
-                          <PolicyDetail policyId={policy._id} />
+                          <PolicyDetail policyId={policy._id} published={policy.published} metric={policy.metric} />
                         </div>
                       )}
                     </div>
@@ -531,16 +535,16 @@ function App() {
 
         {activeTab === "pairings" && <Pairings />}
 
-        {activeTab === "explorer" && <DataExplorer />}
-        {activeTab === "coverage" && <CoverageDashboard />}
-        {activeTab === "labeling" && <LabelingLab />}
+        {activeTab === "explorer" && <DataExplorer readOnly={Boolean(release)} />}
+        {activeTab === "coverage" && <CoverageDashboard readOnly={Boolean(release)} />}
+        {activeTab === "labeling" && !release && <LabelingLab />}
 
         {/* Footer */}
         <footer
           className="mt-8 text-center text-xs text-ink-muted/60"
           style={{ animation: "fade-up 0.6s ease-out 0.9s both" }}
         >
-          Bradley-Terry ratings fit live from pairwise policy evaluations in the current view
+          {release ? "Mulligan release · Read-only · Outcomes and dataset revisions are frozen" : "Bradley-Terry ratings fit live from pairwise policy evaluations in the current view"}
         </footer>
       </div>
     </div>

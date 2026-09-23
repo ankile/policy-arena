@@ -1,4 +1,4 @@
-import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { useMutation, usePaginatedQuery, useQuery } from "./arenaClient";
 import {
   fetchAppliedProgress,
   fetchEpisodeFrameSignals,

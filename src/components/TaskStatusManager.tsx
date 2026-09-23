@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation } from "../lib/arenaClient";
 import { api } from "../../convex/_generated/api";
 import { STATUS_VALUES, type EntityStatus } from "../../convex/statusShared";
 

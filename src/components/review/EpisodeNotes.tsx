@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery } from "../../lib/arenaClient";
 import { api } from "../../../convex/_generated/api";
 
 export function EpisodeNotes({ repoId, episodeIndex }: { repoId: string; episodeIndex: number }) {

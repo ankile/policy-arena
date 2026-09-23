@@ -1,5 +1,6 @@
+import type { Policy } from "../release/types";
 import { useMemo, useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation } from "../lib/arenaClient";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import RolloutSection from "./RolloutSection";
@@ -55,9 +56,11 @@ function CollapsibleSection({
 }
 
 export default function PolicyDetail({
-  policyId,
+  policyId, published, metric,
 }: {
   policyId: Id<"policies">;
+  published?: Policy;
+  metric?: string;
 }) {
   const policy = useQuery(api.policies.get, { id: policyId });
   const sessions = useQuery(api.evalSessions.getByPolicy, {
@@ -100,7 +103,8 @@ export default function PolicyDetail({
 
   return (
     <div className="px-6 py-5 bg-warm-50/30">
-      <div className="grid grid-cols-2 gap-6">
+      {published && <div className="mb-5 text-sm text-ink"><h3 className="font-medium">Published {metric === "task_progress" ? "task progress" : "success rate"}: {(100 * published.rate).toFixed(1)}%</h3><p className="text-ink-muted">Interval {(100 * published.lo).toFixed(1)}–{(100 * published.hi).toFixed(1)}%. {published.seeds ? "Student-t 95% across five seeds." : "One standard error, matching the paper."}</p><p className="mt-2">{published.provenance}</p>{published.seeds && <ul className="mt-2 space-y-1">{published.seeds.map(s => <li key={s.seed}>Seed {s.seed}: {(100 * s.rate).toFixed(1)}% {s.dataUrl && <a className="text-teal hover:underline" href={s.dataUrl}>Per-state evidence ↗</a>}</li>)}</ul>}</div>}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Left: info */}
         <div>
           <h3 className="text-sm font-medium text-ink mb-3">Details</h3>
@@ -224,7 +228,7 @@ export default function PolicyDetail({
           {sessions === undefined ? (
             <div className="text-xs text-ink-muted">Loading...</div>
           ) : sessions.length === 0 ? (
-            <div className="text-xs text-ink-muted">No sessions yet</div>
+            <div className="text-xs text-ink-muted">{published?.seeds ? "Simulation evaluation uses fixed grids. Per-seed outcomes are linked above; evaluation videos were not recorded." : "No sessions yet"}</div>
           ) : (
             <div className="space-y-2">
               {sessions.slice(0, 5).map((session) => (

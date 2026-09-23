@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery } from "../lib/arenaClient";
 import { api } from "../../convex/_generated/api";
 import { useSearchParam, useSearchParamNumber } from "../lib/useSearchParam";
 import {

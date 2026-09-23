@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQueries } from "convex/react";
+import { useQueries } from "../lib/arenaClient";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";

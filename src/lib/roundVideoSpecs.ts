@@ -1,4 +1,4 @@
-import type { EpisodeMetadata } from "./hf-api";
+import { episodeForCamera, type EpisodeMetadata } from "./hf-api";
 
 export interface RoundResult {
   policy_id: string;
@@ -50,7 +50,7 @@ export function roundVideoSpecs(
     episodeIndex: result.episode_index,
     datasetRepo,
     cameraKey,
-    episode: episodeMap.get(result.episode_index) ?? null,
+    episode: episodeMap.has(result.episode_index) ? episodeForCamera(episodeMap.get(result.episode_index)!, cameraKey) : null,
     badge: labelByPolicy === null ? null : labelFor(labelByPolicy, result.policy_id),
   }));
 }

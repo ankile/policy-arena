@@ -9,6 +9,11 @@ export default defineConfig({
     name: 'release-entry',
     transformIndexHtml: {order: 'pre', handler: () => readFileSync(resolve('release.html'), 'utf8')},
   }],
+  resolve: {alias: [
+    {find: /.*\/lib\/arenaClient$/, replacement: resolve('src/release/client.ts')},
+    {find: './arenaClient', replacement: resolve('src/release/client.ts')},
+    {find: './components/AuthControls', replacement: resolve('src/release/ReleaseLinks.tsx')},
+  ]},
   publicDir: false,
   build: {outDir: process.env.MULLIGAN_RELEASE_OUTPUT || '/tmp/mulligan-arena-build', emptyOutDir: true},
 });

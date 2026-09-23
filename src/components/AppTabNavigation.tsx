@@ -9,10 +9,10 @@ const TABS = [
   { id: "labeling", label: "Labeling Lab" },
 ];
 
-export function AppTabNavigation({ activeTab }: { activeTab: string }) {
+export function AppTabNavigation({ activeTab, readOnly = false }: { activeTab: string; readOnly?: boolean }) {
   return (
     <div className="flex flex-wrap gap-1 bg-warm-100 rounded-xl p-1 w-fit">
-      {TABS.map((tab) => (
+      {TABS.filter(tab => !readOnly || tab.id !== "labeling").map((tab) => (
         <button
           key={tab.id}
           onClick={() => navigateToAppTab(tab.id)}
