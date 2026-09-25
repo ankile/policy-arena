@@ -19,7 +19,8 @@ const rows = release.datasets.map((d) => {
   const row = datasets.find((r) => r.repo_id === d.source);
   return {
     repo: d.id,
-    created: row?._creationTime ?? Date.parse(release.version.slice(0, 10)),
+    // Datasets never registered in the Arena (simulation) date from the HF copy.
+    created: row?._creationTime ?? Date.parse("2026-09-22"),
     sourceType:
       d.role === "evaluation"
         ? "eval"

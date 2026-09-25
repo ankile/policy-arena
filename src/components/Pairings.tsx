@@ -1,3 +1,4 @@
+import { releaseLabel } from "../lib/releaseLabels";
 import type { SessionOutcome } from "../lib/arenaRatings";
 import { useState, useEffect } from "react";
 import { useQuery } from "../lib/arenaClient";
@@ -274,7 +275,7 @@ export default function Pairings({ gridOutcomes = [] }: { gridOutcomes?: Session
                 >
                   {/* Round index */}
                   <span className="text-xs font-mono text-ink-muted w-16 shrink-0">
-                    Round {roundNumber(round.roundIndex)}
+                    {releaseLabel(round) ?? `Round ${roundNumber(round.roundIndex)}`}
                   </span>
 
                   {/* Pass/fail pills */}
@@ -298,7 +299,8 @@ export default function Pairings({ gridOutcomes = [] }: { gridOutcomes?: Session
 
                   {/* Session metadata */}
                   <span className="text-[11px] text-ink-muted/70 shrink-0">
-                    {formatDate(round.sessionCreationTime)}
+                    {(round as { sessionLabel?: string }).sessionLabel ??
+                      formatDate(round.sessionCreationTime)}
                   </span>
                   <SessionModeTag mode={round.sessionMode} />
                   <a

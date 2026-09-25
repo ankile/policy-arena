@@ -1,3 +1,4 @@
+import { releaseLabel } from "../lib/releaseLabels";
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "../lib/arenaClient";
 import { api } from "../../convex/_generated/api";
@@ -278,7 +279,7 @@ export default function EvalSessions() {
                   {sessionLetter(i)}
                 </span>
                 <span className="font-mono text-ink-light">
-                  {row ? row.policyNames.join(" vs ") : id}
+                  {row ? (releaseLabel(row) ?? row.policyNames.join(" vs ")) : id}
                 </span>
                 {row && (
                   <span className="text-ink-muted">{formatDate(row._creationTime)}</span>
@@ -389,6 +390,9 @@ export default function EvalSessions() {
                 ))}
               </div>
               <div className="flex items-center gap-3 text-xs text-ink-muted">
+                {releaseLabel(session) && (
+                  <span className="font-medium text-ink-light whitespace-nowrap">{releaseLabel(session)}</span>
+                )}
                 <span>{formatDate(session._creationTime)}</span>
                 <span className="inline-block px-2 py-0.5 rounded-full bg-warm-100 text-ink-muted text-[11px] font-mono">
                   {Number(session.num_rounds)} rounds

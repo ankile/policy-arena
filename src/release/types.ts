@@ -8,11 +8,18 @@ export type Result = {
   policyId: string; episode: number; success: boolean; outcome: string;
   steps: number; frames: number; score: number; marks: number | null;
   videos: Record<string, {path: string; from: number; to: number; file: number}>;
+  /** Route Cable launch that recorded this rollout. */
+  visit?: string;
 };
 export type Block = {
   id: string; round: string; dataset: string; source: string; revision: string;
   fps: number; cameras: string[]; reviewedEpisodes: number | null; sourcePath: string;
-  starts: {index: number; results: Result[]}[];
+  /** Session of the round dataset (fixed release block ID) and its readable label. */
+  session?: string; roundDataset?: string; label?: string; date?: string; seed?: number;
+  /** First/last Sobol start of the session, 1-based, as in the paper's session table. */
+  startRange?: [number, number];
+  /** index: the round dataset's start ID (joined on exact initial state); manifestIndex: position in the session's Sobol block. */
+  starts: {index: number; manifestIndex?: number; results: Result[]}[];
 };
 export type Task = {
   id: string; title: string; domain: 'real' | 'sim'; datasetTask: string;

@@ -538,7 +538,19 @@ export function RoundsGrid({
               className="w-full grid items-center gap-x-2 px-3 py-2 hover:bg-warm-50 transition-colors cursor-pointer text-left"
               style={gridStyle}
             >
-              <span className="text-xs font-mono text-ink-muted">Round {roundNumber(round.index)}</span>
+              <span className="text-xs font-mono text-ink-muted">
+                {round.label ?? `Round ${roundNumber(round.index)}`}
+                {round.results.some((r) => r.visit_id) && (
+                  <span
+                    className="block text-[10px] text-ink-muted/70"
+                    title={[...new Set(round.results.map((r) => r.visit_id).filter(Boolean))].join("\n")}
+                  >
+                    {new Set(round.results.map((r) => r.visit_id)).size === 1
+                      ? "1 launch"
+                      : `${new Set(round.results.map((r) => r.visit_id)).size} launches`}
+                  </span>
+                )}
+              </span>
               {arms.map((arm) => {
                 const result = byArm.get(arm.key);
                 if (!result) {
@@ -554,7 +566,7 @@ export function RoundsGrid({
                     className={`block truncate px-2 py-0.5 rounded text-[11px] font-medium text-center ${
                       TONE_PILL[outcomeTone(result.success, result.num_subtask_marks)]
                     }`}
-                    title={`${arm.name} — episode ${result.episode_index}`}
+                    title={`${arm.name} — episode ${result.episode_index}${result.visit_id ? ` — launch ${result.visit_id}` : ""}`}
                   >
                     {outcomeLabel(result.success, result.num_subtask_marks, maxMarks)}
                   </span>

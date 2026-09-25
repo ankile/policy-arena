@@ -153,3 +153,47 @@ test("simulation cannot silently omit computed statistics", () => {
     schemaVersion: 1, selectionSha256: "frozen", sessions: [], evidence: [],
   })).toThrow("Incomplete simulation statistics");
 });
+
+test("round-dataset sessions keep start IDs for joins and number rows by the session's Sobol block", () => {
+  const block = release.tasks[0].blocks[0];
+  const withSession: Release = {
+    ...release,
+    tasks: [
+      {
+        ...release.tasks[0],
+        blocks: [
+          {
+            ...block,
+            session: "b03",
+            roundDataset: "mulligan/eval",
+            label: "Session b03 · Jul 3 · starts 51–100 · pooled",
+            startRange: [51, 100],
+            starts: [
+              {
+                ...block.starts[0],
+                index: 107,
+                manifestIndex: 7,
+                results: block.starts[0].results.map((r) => ({ ...r, visit: "20260907T144237-d212838a" })),
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const a = createReleaseAdapter(withSession, ui);
+  expect(a.resolve("evalSessions:getDetail", { id: "block" })).toMatchObject({
+    label: "Session b03 · Jul 3 · starts 51–100 · pooled",
+    round_dataset: "mulligan/eval",
+    rounds: [
+      {
+        index: 107,
+        label: "Round 58",
+        results: [{ visit_id: "20260907T144237-d212838a" }, { visit_id: "20260907T144237-d212838a" }],
+      },
+    ],
+  });
+  expect(a.resolve("pairings:listRounds", { policyIdA: "a" })).toMatchObject([
+    { roundIndex: 107, label: "Round 58", sessionLabel: "Session b03 · Jul 3 · starts 51–100 · pooled" },
+  ]);
+});

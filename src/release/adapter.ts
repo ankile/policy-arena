@@ -121,9 +121,12 @@ export function createReleaseAdapter(data: Release, ui: UISnapshot, sim?: SimSta
         const selected = policies.filter((p) =>
           b.starts.some((s) => s.results.some((r) => r.policyId === p._id)),
         );
+        const first = b.startRange?.[0];
         return {
           _id: b.id,
           _creationTime: meta.created,
+          label: b.label,
+          round_dataset: b.roundDataset,
           dataset_repo: b.dataset,
           num_rounds: b.starts.length,
           policy_ids: selected.map((p) => p._id),
@@ -138,6 +141,12 @@ export function createReleaseAdapter(data: Release, ui: UISnapshot, sim?: SimSta
             .map((d) => d.repo_id),
           rounds: b.starts.map((s) => ({
             index: s.index,
+            // Start IDs align joined sessions on the same initial state; rows are
+            // numbered by position in the session's Sobol block, as in the paper.
+            label:
+              first !== undefined && s.manifestIndex !== undefined
+                ? `Round ${first + s.manifestIndex}`
+                : undefined,
             results: s.results.map((r) => ({
               policy_id: r.policyId,
               policyName: policies.find((p) => p._id === r.policyId)!.name,
@@ -145,6 +154,7 @@ export function createReleaseAdapter(data: Release, ui: UISnapshot, sim?: SimSta
               episode_index: r.episode,
               num_subtask_marks: r.marks,
               num_frames: r.steps,
+              visit_id: r.visit,
             })),
           })),
         };
@@ -300,7 +310,9 @@ export function createReleaseAdapter(data: Release, ui: UISnapshot, sim?: SimSta
               sessionCreationTime: s._creationTime,
               datasetRepo: s.dataset_repo,
               sessionMode: s.session_mode,
+              sessionLabel: s.label,
               roundIndex: r.index,
+              label: r.label,
               results: r.results
                 .map((p) => ({
                   policyId: p.policy_id,

@@ -33,10 +33,14 @@ export interface ArmResult {
   num_subtask_marks: number | null;
   /** Episode length in control steps; null on rounds submitted without it. */
   num_frames: number | null;
+  /** Release only: Route Cable launch that recorded this rollout. */
+  visit_id?: string;
 }
 
 export interface ArmRound {
   index: number;
+  /** Release only: display label when the index is a start ID rather than a round number. */
+  label?: string;
   results: ArmResult[];
 }
 

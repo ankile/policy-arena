@@ -1,3 +1,4 @@
+import { releaseLabel } from "../lib/releaseLabels";
 import { useEffect, useMemo, useState } from "react";
 import { useQueries } from "../lib/arenaClient";
 import type { FunctionReturnType } from "convex/server";
@@ -201,8 +202,16 @@ export default function JoinedSessions({
     // Policy number per policy id (hidden ones included, so numbers are
     // stable across toggles) for the side-card chips.
     const policyNumbers = new Map(joinedPolicies(sides).map((p, i) => [p.policy_id, i + 1]));
+    // Release rounds carry display labels (start IDs are the alignment key).
+    const labels = new Map<number, string>();
+    for (const d of loadedDetails)
+      for (const r of d.rounds) {
+        const label = releaseLabel(r);
+        if (label !== undefined && !labels.has(r.index)) labels.set(r.index, label);
+      }
     const rounds: ArmRound[] = aligned.map((round) => ({
       index: round.index,
+      label: labels.get(round.index),
       results: round.perSide.flatMap((results, i) =>
         (results ?? []).map((r) => ({
           policy_id: joinedArmKey(i, r.policy_id),
@@ -211,6 +220,7 @@ export default function JoinedSessions({
           episode_index: r.episode_index,
           num_subtask_marks: r.num_subtask_marks ?? null,
           num_frames: r.num_frames ?? null,
+          visit_id: (r as { visit_id?: string }).visit_id,
         })),
       ),
     }));
@@ -321,6 +331,9 @@ export default function JoinedSessions({
                 <span className="w-6 h-6 rounded-md bg-gold text-white text-xs font-mono font-semibold flex items-center justify-center">
                   {sessionLetter(i)}
                 </span>
+                {releaseLabel(detail) && (
+                  <span className="text-xs font-medium text-ink-light whitespace-nowrap">{releaseLabel(detail)}</span>
+                )}
                 <span className="text-xs text-ink-muted">
                   {formatDate(detail._creationTime)}
                 </span>
