@@ -136,9 +136,9 @@ export function createReleaseAdapter(data: Release, ui: UISnapshot, sim?: SimSta
           task: t.id,
           effective_status: "mainline",
           max_subtask_marks: t.metric === "task_progress" ? 1 : 0,
-          derivedDatasetRepos: datasets
-            .filter((d) => d.parent_repo_id === b.dataset)
-            .map((d) => d.repo_id),
+          derivedDatasetRepos: data.datasets
+            .filter((d) => d.parent === b.dataset && (!d.parentSession || d.parentSession === b.session))
+            .map((d) => d.id),
           rounds: b.starts.map((s) => ({
             index: s.index,
             // Start IDs align joined sessions on the same initial state; rows are

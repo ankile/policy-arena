@@ -29,6 +29,8 @@ export type Task = {
 export type Dataset = {
   id: string; task: string; role: string; variant: string | null; episodes: number;
   frames: number; fps: number; cameras: string[]; parent: string | null;
+  /** Session of the parent round dataset this view was split from. */
+  parentSession?: string;
   source: string; revision: string; tier: string;
 };
 export type Release = {
