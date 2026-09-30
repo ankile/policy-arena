@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { validateStageOutcomeReview } from "../convex/stageOutcomeReview";
-import { stageReviewCoverage, STAGE_OUTCOME_REVIEW_FIELDS, reviewedSummariesDisagree } from "../convex/stageReviewCoverage";
+import { prepareStageOutcomeLabel, validateStageOutcomeReview } from "../convex/stageOutcomeReview";
+import { CURRENT_REVIEW_PROTOCOL, stageReviewCoverage, STAGE_OUTCOME_REVIEW_FIELDS, reviewedSummariesDisagree } from "../convex/stageReviewCoverage";
 import { eligibleGold } from "../convex/labelingScores";
 import { blankTrajectoryReview, trajectoryFromReview, type TrajectoryReviewSpec } from "../convex/trajectoryReview";
 import type { StageLabelRow } from "../convex/stageConsistency";
@@ -13,7 +13,6 @@ for (const task of fixtures.synthetic.tasks) {
   test(`${task.source_name}: human result review validates only supervised fields and preserves the original schema`, () => {
     const row: StageLabelRow = structuredClone(success.review_label!);
     row.key_action_observations = [{ action_id: "unreviewed-model-action", first_time_s: 999 }];
-    row.failure_mode = "unreviewed-model-failure";
     row.failure_events = [{ failure_mode_id: "retained", time_s: 999 }];
     const before = structuredClone(row);
     expect(validateStageOutcomeReview(spec, row, success.duration_s)).toEqual([]);
@@ -30,11 +29,27 @@ for (const task of fixtures.synthetic.tasks) {
       expect(validateStageOutcomeReview(spec, { ...row, ...patch }, success.duration_s).length).toBeGreaterThan(0);
     }
     // A later failure does not erase the highest stage achieved earlier.
-    expect(validateStageOutcomeReview(spec, { ...row, task_success: false, final_state: spec.task_definition.finalStates[0].id }, success.duration_s)).toEqual([]);
+    expect(validateStageOutcomeReview(spec, { ...row, task_success: false, failure_mode: spec.task_definition.failureModes.find((mode) => mode.id !== spec.task_definition.successDefinition.noFailureModeId)!.id, final_state: spec.task_definition.finalStates[0].id }, success.duration_s)).toEqual([]);
     expect(validateStageOutcomeReview(spec, row, 0).length).toBeGreaterThan(0);
     const blank = blankTrajectoryReview(spec, "test/repo", 0);
     expect(validateStageOutcomeReview(spec, blank, 30).map((issue) => issue.fields[0])).toContain("task_success");
     expect(validateStageOutcomeReview(spec, blank, 30).map((issue) => issue.fields[0])).toContain("final_state");
+  });
+  test(`${task.source_name}: contradictory final results and unsupported maximum stages cannot be confirmed`, () => {
+    const row = structuredClone(success.review_label!);
+    const stages = spec.task_definition.stages;
+    const withoutMarks = { ...row, stage_transitions: [] };
+    expect(validateStageOutcomeReview(spec, withoutMarks, 30).some((issue) => issue.fields.includes("max_stage"))).toBe(true);
+    const lowFailed = { ...withoutMarks, max_stage: 0, max_stage_id: stages[0].id, task_success: false,
+      failure_mode: spec.task_definition.failureModes.find((mode) => mode.id !== spec.task_definition.successDefinition.noFailureModeId)!.id };
+    expect(validateStageOutcomeReview(spec, lowFailed, 30).some((issue) => issue.fields.includes("task_success"))).toBe(true);
+    const prepared = prepareStageOutcomeLabel(spec, { ...row, failure_mode: "wrong", primary_failure_time_s: 9 });
+    expect(prepared.failure_mode).toBe(spec.task_definition.successDefinition.noFailureModeId);
+    expect(prepared.primary_failure_time_s).toBe(9);
+    expect(prepared.failure_events).toEqual(row.failure_events);
+    expect(validateStageOutcomeReview(spec, prepared, 30)).toEqual([]);
+    // Prior scopes continue to exclude primary failure judgments.
+    expect(validateStageOutcomeReview(spec, { ...row, failure_mode: "unreviewed" }, 30, false)).toEqual([]);
   });
 }
 
@@ -69,4 +84,7 @@ test("adjudication compares success/end state only when both reviews cover them 
     review_coverage: stageReviewCoverage("stages-v1", "confirmed", true) };
   expect(reviewedSummariesDisagree(row, old)).toBe(false);
   expect(reviewedSummariesDisagree(row, { ...old, review_coverage: undefined })).toBe(false);
+  const v2 = { ...row, review_coverage: stageReviewCoverage(CURRENT_REVIEW_PROTOCOL, "confirmed", true) };
+  expect(reviewedSummariesDisagree(v2, { ...v2, label: { ...v2.label, failure_mode: "other" } })).toBe(true);
+  expect(reviewedSummariesDisagree(v2, { ...row, label: { ...row.label, failure_mode: "other" } })).toBe(false);
 });

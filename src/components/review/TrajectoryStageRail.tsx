@@ -1,10 +1,13 @@
 import type { StageLabelFormProps } from "./StageLabelForm";
-import { stageContext, stageTitle } from "../../lib/stageTimeline";
+import { stageContext, stageTitle, StageTimelineDataError } from "../../lib/stageTimeline";
 
 export function TrajectoryStageRail(props: StageLabelFormProps) {
   let context: ReturnType<typeof stageContext>;
   try { context = stageContext(props.spec.trajectory!, props.row, (props.frame + 0.5) / props.spec.fps); }
-  catch { return null; }
+  catch (cause) {
+    if (!(cause instanceof StageTimelineDataError)) throw cause;
+    return <p role="alert" className="mt-3 text-sm text-coral">Stage timeline unavailable: {cause.message}</p>;
+  }
   const select = (mark: typeof context.marks[number]) => {
     props.onSelectEvent?.(`transition:${mark.index}`);
     if (mark.time !== null) props.onSeekTime(mark.time);

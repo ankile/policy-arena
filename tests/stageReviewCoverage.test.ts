@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { convexTest } from "convex-test";
 import { api } from "../convex/_generated/api";
 import schema from "../convex/schema";
-import { EXCLUDED_REVIEW_FIELDS, stageReviewCoverage, STRUCTURED_REVIEW_FIELDS, STAGE_REVIEW_FIELDS, STAGE_OUTCOME_REVIEW_FIELDS } from "../convex/stageReviewCoverage";
+import { CURRENT_REVIEW_PROTOCOL, SUPPORTED_REVIEW_PROTOCOLS, STAGE_OUTCOME_FAILURE_REVIEW_FIELDS, EXCLUDED_REVIEW_FIELDS, stageReviewCoverage, STRUCTURED_REVIEW_FIELDS, STAGE_REVIEW_FIELDS, STAGE_OUTCOME_REVIEW_FIELDS } from "../convex/stageReviewCoverage";
 import { manifestDigest, predictionDigest } from "../convex/stagePredictionContract";
 import { trajectoryFromReview } from "../convex/trajectoryReview";
 import { validateStageLabel, type ExportedStageSpec } from "../convex/stageConsistency";
@@ -46,6 +46,56 @@ function args() {
 }
 
 describe("structured review coverage", () => {
+  for (const task of fixtures.synthetic.tasks) test(`${task.source_name}: v2 attests primary failure only and drops obsolete event associations`, async () => {
+    await t.mutation(api.stageTaskSpecs.upsert, { ...service, task: task.spec.task,
+      taxonomy_version: task.spec.taxonomy_version, taxonomy_hash: task.spec.taxonomy_hash,
+      live: true, spec: task.spec, source: "test-only" });
+    const example = task.cases.find((row) => row.name === "valid_success")!;
+    const label = structuredClone(example.review_label!);
+    label.trajectory_identity.sample_id = `${repo}#episode=0`;
+    label.primary_failure_time_s = 999;
+    label.key_action_observations[0].first_time_s = 999;
+    const input = { ...args(), task: task.spec.task, taxonomy_version: task.spec.taxonomy_version,
+      label, episode_duration_s: example.duration_s, review_protocol: CURRENT_REVIEW_PROTOCOL,
+      event_links: [{ action_id: "removed-action", stage_id: "removed-stage", attempt_index: 1, relation: "shared" as const }] };
+    const id = await t.mutation(api.stageReviews.save, input);
+    const saved = await t.run((ctx) => ctx.db.get(id));
+    expect(saved!.event_links).toBeUndefined();
+    expect(saved!.label).toEqual(label);
+    expect(saved!.review_coverage!.reviewed_fields).toEqual([...STAGE_OUTCOME_FAILURE_REVIEW_FIELDS]);
+    expect(saved!.review_coverage!.excluded_fields).toContain("primary_failure_time_s");
+    expect(saved!.review_coverage!.excluded_fields).toContain("failure_events.*.time_s");
+    const failed = { ...label, task_success: false, final_state: task.spec.trajectory.task_definition.finalStates[0].id };
+    for (const mode of ["", "not-declared", task.spec.trajectory.task_definition.successDefinition.noFailureModeId]) {
+      await expect(t.mutation(api.stageReviews.save, { ...input, label: { ...failed, failure_mode: mode } })).rejects.toThrow("primary reason");
+    }
+    const mode = task.spec.trajectory.task_definition.failureModes.find((mode) => mode.id !== label.failure_mode)!.id;
+    await expect(t.mutation(api.stageReviews.save, { ...input, label: { ...label, failure_mode: mode } })).rejects.toThrow("no-failure mode");
+    const failedId = await t.mutation(api.stageReviews.save, { ...input, label: { ...failed, failure_mode: mode } });
+    expect((await t.run((ctx) => ctx.db.get(failedId)))!.label).toEqual({ ...failed, failure_mode: mode });
+    expect((await t.run((ctx) => ctx.db.get(id)))!.label).toEqual(label);
+    expect((await t.query(api.stageReviews.latestForRepo, { dataset_repo: repo })).supported_review_protocols).toEqual([...SUPPORTED_REVIEW_PROTOCOLS]);
+  });
+
+  test("adjudication exposes unknown coverage separately and includes jointly reviewed timing differences", async () => {
+    const input = args();
+    await t.mutation(api.stageReviews.save, { ...input, review_protocol: CURRENT_REVIEW_PROTOCOL });
+    const other = { ...input, reviewer_override: "second-reviewer", label: structuredClone(input.label), review_protocol: CURRENT_REVIEW_PROTOCOL };
+    other.label.stage_transitions[0].time_s += 0.5;
+    await t.mutation(api.stageReviews.save, other);
+    const query = { dataset_repo: repo, task: source.spec.task, taxonomy_version: source.spec.taxonomy_version };
+    let rows = await t.query(api.stageReviews.disagreementsForRepo, query);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ coverage_unknown: false, reviewed_fields_disagree: true });
+    other.label.stage_transitions[0].time_s = input.label.stage_transitions[0].time_s + 1 / source.spec.fps;
+    await t.mutation(api.stageReviews.save, other);
+    expect(await t.query(api.stageReviews.disagreementsForRepo, query)).toEqual([]);
+    await t.mutation(api.stageReviews.save, { ...input, reviewer_override: "historical-reviewer" });
+    rows = await t.query(api.stageReviews.disagreementsForRepo, query);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ coverage_unknown: true, reviewed_fields_disagree: false });
+  });
+
   for (const task of fixtures.synthetic.tasks) test(`${task.source_name}: backend confirms stages, result and end state without certifying hidden predictions`, async () => {
     await t.mutation(api.stageTaskSpecs.upsert, { ...service, task: task.spec.task,
       taxonomy_version: task.spec.taxonomy_version, taxonomy_hash: task.spec.taxonomy_hash,

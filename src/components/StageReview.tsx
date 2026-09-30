@@ -25,7 +25,9 @@ import {
   type PredictionAttribution,
 } from "../lib/stagePredictionReview";
 import { useStageReviewDraft } from "../lib/useStageReviewDraft";
-import { validateStageOutcomeReview } from "../../convex/stageOutcomeReview";
+import { prepareStageOutcomeLabel, validateStageOutcomeReview } from "../../convex/stageOutcomeReview";
+import { CURRENT_REVIEW_PROTOCOL } from "../../convex/stageReviewCoverage";
+import { isPolicyFrame, policyFrameCount } from "../../convex/trajectoryTime";
 import { stageReviewDataSource, type StageReviewDataSource } from "../lib/stageReviewDataSource";
 import { useSearchParam, useSearchParamNumber, useSearchParamNavigationGuard, setSearchParams } from "../lib/useSearchParam";
 import { EvidencePanel, type StagePrefillView } from "./review/EvidencePanel";
@@ -35,7 +37,7 @@ import { ReviewViewer, type ViewerControls } from "./review/ReviewViewer";
 import { StageLabelForm } from "./review/StageLabelForm";
 import { TrajectoryStageEditor } from "./review/TrajectoryStageEditor";
 import { TrajectoryStageRail } from "./review/TrajectoryStageRail";
-import { stageContext, stageTitle } from "../lib/stageTimeline";
+import { stageContext, stageTitle, StageTimelineDataError } from "../lib/stageTimeline";
 import type { TimelineMarker } from "../lib/timelineMarkers";
 import {
   cameraRoleForVideoKey,
@@ -177,6 +179,8 @@ export default function StageReview({
     api.stageReviews.latestForRepo,
     taxonomyVersion ? { dataset_repo: repoId, taxonomy_version: taxonomyVersion } : "skip"
   );
+  const scopedReviewReady = !spec?.trajectory ||
+    reviews?.supported_review_protocols?.includes(CURRENT_REVIEW_PROTOCOL) === true;
   const [predictionParam, setPredictionParam] = useSearchParam("prediction", "");
   const legacyPrefillRows = useQuery(
     api.stagePrefills.forRepo,
@@ -741,13 +745,16 @@ export default function StageReview({
   }, [selectedEpisode, spec, currentEpisode, predictionsReady, reviews, viewer,
       outcomeGateReady, resolveOutcome, outcomeSignalErrors, ownReviewByEpisode,
       prefillByEpisode, predictionParam, repoId, needsPolicyDuration, policyDurationS, signalKey]);
-  const { draft, edit: editDraft, editHumanNotes, editEventLinks, replaceLabel, markSaved, unsavedCount } =
+  const { draft, edit: editDraft, editHumanNotes, replaceLabel, markSaved, unsavedCount } =
     useStageReviewDraft(sourceKey, seed);
   const pending = predictionsReady ? draft?.label ?? null : null;
   const dirty = draft?.dirty ?? false;
   const inheritedSuccess = draft?.inheritedSuccess ?? false;
   const shownAttribution = draft?.attribution;
-  const formDisabled = saving || pending === null || !predictionsReady;
+  const formDisabled = saving || pending === null || !predictionsReady || !scopedReviewReady;
+  const priorReview = selectedEpisode === null ? undefined : ownReviewByEpisode.get(selectedEpisode);
+  const priorFullReviewId = spec?.trajectory && priorReview?.reviewCoverage?.protocol === "structured-v1" ? priorReview.id : null;
+  const [scopeAcknowledgment, setScopeAcknowledgment] = useState<string | null>(null);
 
   useSearchParamNavigationGuard(useCallback((current, next) => {
     if (pendingInputs.current.size > 0 && ["tab", "dataset", "view", "episode", "prediction", "schema"].some((key) => current.get(key) !== next.get(key))) {
@@ -783,7 +790,7 @@ export default function StageReview({
   const episodeDurationS = shownAttribution?.episode_duration_s ??
     (spec?.trajectory ? policyDurationS : spec && currentEpisode ? currentEpisode.rawLength / spec.fps : null);
   const violations = useMemo(
-    () => spec && pending ? (spec.trajectory ? validateStageOutcomeReview(spec.trajectory, pending, episodeDurationS)
+    () => spec && pending ? (spec.trajectory ? validateStageOutcomeReview(spec.trajectory, prepareStageOutcomeLabel(spec.trajectory, pending), episodeDurationS)
       : validateStageLabel(spec, pending, episodeDurationS)) : [],
     [spec, pending, episodeDurationS]
   );
@@ -837,7 +844,7 @@ export default function StageReview({
       return null;
     }
     const captured = controlsRef.current?.pause() ?? frame;
-    if (spec?.trajectory && (episodeDurationS === null || captured / spec.fps > episodeDurationS)) {
+    if (spec?.trajectory && !isPolicyFrame(captured, episodeDurationS, spec.fps)) {
       setActionError("This frame is outside the policy episode. Seek before the reset footage to mark an event.");
       return null;
     }
@@ -853,6 +860,14 @@ export default function StageReview({
       { isDraft = false }: { isDraft?: boolean } = {}
     ): Promise<boolean> => {
       if (!spec || !task || !draft || !predictionsReady) return false;
+      if (!scopedReviewReady) {
+        setDraftError("This backend does not support the current human-review protocol. Review is read-only until the compatible backend is deployed.");
+        return false;
+      }
+      if (status !== "cleared" && priorFullReviewId && scopeAcknowledgment !== priorFullReviewId) {
+        setDraftError("Accept the narrower review scope before replacing your full structured review.");
+        return false;
+      }
       if (pendingInputs.current.size > 0) {
         setDraftError("A timestamp contains unfinished or invalid text. Correct it or clear its input before saving or leaving.");
         return false;
@@ -864,11 +879,10 @@ export default function StageReview({
           episode_index: BigInt(episodeIndex),
           taxonomy_version: spec.taxonomy_version,
           status,
-          label: label ?? undefined,
+          label: label && spec.trajectory ? prepareStageOutcomeLabel(spec.trajectory, label) : label ?? undefined,
           ...(spec.trajectory && status !== "cleared" ? {
-            review_protocol: "stages-outcome-v1" as const,
+            review_protocol: CURRENT_REVIEW_PROTOCOL,
             notes: draft.humanNotes ?? "",
-            event_links: draft.eventLinks ?? [],
           } : {}),
           ...draft.attribution,
           blind: blind && !everUnblindedRef.current,
@@ -882,7 +896,7 @@ export default function StageReview({
         return false;
       }
     },
-    [spec, task, saveReview, repoId, draft, predictionsReady, blind, episodeDurationS]
+    [spec, task, saveReview, repoId, draft, predictionsReady, blind, episodeDurationS, scopedReviewReady, priorFullReviewId, scopeAcknowledgment]
   );
 
   const advance = useCallback(
@@ -1034,6 +1048,7 @@ export default function StageReview({
     if (!currentEpisode || !spec || formDisabled || saveInFlight.current) return;
 
     if (/^[0-9]$/.test(key)) {
+      if (spec.trajectory) return;
       event.preventDefault();
       // A keystroke before the prefill lands would seed pending with a bare
       // stage and permanently suppress the prefill (its guard sees a non-null
@@ -1081,6 +1096,7 @@ export default function StageReview({
         return;
       case "-":
       case "=": {
+        if (spec.trajectory) return;
         event.preventDefault();
         if (pending === null) return; // same prefill-suppression guard as digits
         const current =
@@ -1139,19 +1155,22 @@ export default function StageReview({
   }
   useWindowKeydown(handleKey);
 
-  const timelineMarkers = useMemo<TimelineMarker[] | undefined>(() => {
-    if (!spec?.trajectory || !pending || !currentEpisode) return undefined;
+  const timelineProjection = useMemo<{ markers?: TimelineMarker[]; error?: string }>(() => {
+    if (!spec?.trajectory || !pending || !currentEpisode) return {};
     try {
       const context = stageContext(spec.trajectory, pending, (frame + 0.5) / spec.fps);
       const active = context.inAttempt.filter((mark) => mark.stage?.id === context.current?.id && mark.time !== null && mark.time <= (frame + 0.5) / spec.fps).at(-1);
-      return context.sorted.filter((mark) => mark.stage && mark.time !== null && mark.time >= 0 &&
+      return { markers: context.sorted.filter((mark) => mark.stage && mark.time !== null && mark.time >= 0 &&
         (episodeDurationS === null || mark.time <= episodeDurationS)).map((mark) => ({
         id: `transition:${mark.index}`, frame: mark.time! * spec.fps, label: `S${mark.stage!.index}`,
         title: `${stageTitle(mark.stage!)} at ${mark.time!.toFixed(2)} s${Number(pending.attempt_count) > 1 ? ` · attempt ${Number.isSafeInteger(mark.event.attempt_index) ? mark.event.attempt_index : "unset"}` : ""}`,
         active: active?.index === mark.index && (episodeDurationS === null || frame / spec.fps <= episodeDurationS),
         selected: selectedEventKey === `transition:${mark.index}`,
-      }));
-    } catch { return []; } // Preserve malformed source data in the editor; do not invent progress.
+      })) };
+    } catch (cause) {
+      if (!(cause instanceof StageTimelineDataError)) throw cause;
+      return { error: cause.message };
+    }
   }, [spec, pending, currentEpisode, frame, episodeDurationS, selectedEventKey]);
 
   // Stage timeline markers: the policy-phase end (episodes keep recording
@@ -1160,7 +1179,7 @@ export default function StageReview({
     (pct: (value: number) => string) => {
       if (!spec || !currentEpisode) return null;
       const policyEnd =
-        episodeDurationS !== null ? Math.round(episodeDurationS * spec.fps) : null;
+        policyFrameCount(episodeDurationS, spec.fps);
       return (
         <>
           {policyEnd !== null && policyEnd < currentEpisode.rawLength && (
@@ -1273,7 +1292,7 @@ export default function StageReview({
       fps={spec.fps} frame={frame} onFrame={setFrame} lastValidFrame={null} controlsRef={controlsRef}
       cropByCameraKey={cropByCameraKey} storedFrameHW={storedFrameHW} onDrift={setViewerDrift}
       onUnverifiable={setUnverifiable} renderTimelineOverlays={renderTimelineOverlays}
-      timelineMarkers={timelineMarkers} timelineMarkersDisabled={formDisabled || pendingInputCount > 0}
+      timelineMarkers={timelineProjection.markers} timelineMarkersDisabled={formDisabled || pendingInputCount > 0}
       onTimelineMarkerSelect={setSelectedEventKey} />
   ));
 
@@ -1282,7 +1301,7 @@ export default function StageReview({
       {showHelp && (
         <HelpOverlay
           title="Stage review shortcuts"
-          keys={HELP_KEYS}
+          keys={spec.trajectory ? [...HELP_KEYS.filter(([key]) => !["0–9", "- / ="].includes(key)), ["m", "mark the selected stage at this frame"]] : HELP_KEYS}
           onClose={() => setShowHelp(false)}
         />
       )}
@@ -1745,10 +1764,18 @@ export default function StageReview({
                     <p className="mt-1">Human labels can be scored against other predictions using compatible labeling definitions. The prediction shown during annotation is recorded for the audit.</p>
                   </details>
                   {inheritedSuccess && <p className="mt-1">Legacy form fields inherit the human success outcome. The original prediction remains in model evidence.</p>}
-                  {currentOwn?.reviewCoverage?.protocol === "stages-v1" && <p className="mt-2 text-sm text-ink">Your earlier review covered stages only. Check the task result and end state, then confirm this review to supervise them too.</p>}
+                  {spec.trajectory && currentOwn?.reviewCoverage && !["structured-v1", CURRENT_REVIEW_PROTOCOL].includes(currentOwn.reviewCoverage.protocol) && <p className="mt-2 text-sm text-ink">Your earlier review had a narrower scope. Check the task result, end state and primary failure mode before confirming this review.</p>}
+                  {priorFullReviewId && <label className="mt-2 flex gap-2 text-sm text-ink">
+                    <input type="checkbox" aria-label="Accept narrower review scope" disabled={formDisabled}
+                      checked={scopeAcknowledgment === priorFullReviewId}
+                      onChange={(event) => setScopeAcknowledgment(event.target.checked ? priorFullReviewId : null)} />
+                    <span>Replace my full structured review with a stages, result, end state and primary failure review. The original stays in history, but my latest review will no longer qualify as full-summary gold (actions and detailed failures are not reviewed here).</span>
+                  </label>}
                 </div>
               )}
 
+              {spec.trajectory && !scopedReviewReady && <p role="alert" className="mb-3 rounded-lg border border-gold/40 bg-gold-light p-3 text-xs text-ink">Review is read-only: this backend has not advertised support for the current human-review protocol. Deploy the compatible backend before enabling edits.</p>}
+              {timelineProjection.error && <p role="alert" className="mb-3 text-sm text-coral">Stage timeline unavailable: {timelineProjection.error}</p>}
               {needsPolicyDuration && policyDurationS === null && <p role="alert" className="mb-3 rounded-lg border border-gold/40 bg-gold-light p-3 text-xs text-ink">
                 {currentOutcomeSignalError ? `Cannot determine policy-phase duration: ${currentOutcomeSignalError}. New annotation is blocked.`
                   : "Loading the validated policy-phase duration before starting a new annotation…"}
@@ -1777,7 +1804,7 @@ export default function StageReview({
                   onEdit={edit} onSeekTime={seekTime} selectedEventKey={selectedEventKey} onSelectEvent={setSelectedEventKey}
                 />}
                 violations={violations} frame={frame} markFrame={markFrame}
-                markDisabled={viewerDrift !== null || unverifiable || cameraKeys.length === 0 || formDisabled}
+                markDisabled={showHelp || viewerDrift !== null || unverifiable || cameraKeys.length === 0 || formDisabled}
                 disabled={formDisabled} hasPendingInput={pendingInputCount > 0}
                 onPendingInputChange={onPendingInputChange}
                 onEdit={edit} onSeekTime={seekTime} selectedEventKey={selectedEventKey} onSelectEvent={setSelectedEventKey}
@@ -1791,10 +1818,6 @@ export default function StageReview({
                   onPendingInputChange={onPendingInputChange}
                   hasPendingInput={pendingInputCount > 0}
                   spec={spec} row={pending}
-                  eventLinks={draft?.eventLinks ?? []}
-                  onEventLinksChange={(links) => {
-                    if (!formDisabled && !saveInFlight.current) editEventLinks(links);
-                  }}
                   humanNotes={draft?.humanNotes ?? ""}
                   onHumanNotesChange={(notes) => {
                     if (!formDisabled && !saveInFlight.current) editHumanNotes(notes);
@@ -1802,8 +1825,7 @@ export default function StageReview({
                   violations={violations} frame={frame} markFrame={markFrame}
                   markDisabled={viewerDrift !== null || formDisabled}
                   onEdit={edit} onSeekTime={seekTime} disabled={formDisabled} blind={blind}
-                  compactEvents selectedEventKey={selectedEventKey} onSelectEvent={setSelectedEventKey}
-                  manualAnnotation={!currentPrefill && !currentOwn}
+                  selectedEventKey={selectedEventKey} onSelectEvent={setSelectedEventKey}
                 />}
               </>}
 

@@ -6,7 +6,7 @@ import { convexToJson, jsonToConvex, type Value } from "convex/values";
 import { api } from "../convex/_generated/api";
 import StageReview from "../src/components/StageReview";
 import { stageReviewDataSource, type StageReviewDataSource } from "../src/lib/stageReviewDataSource";
-import { stageReviewCoverage } from "../convex/stageReviewCoverage";
+import { stageReviewCoverage, SUPPORTED_REVIEW_PROTOCOLS } from "../convex/stageReviewCoverage";
 import "../src/index.css";
 
 // Development-only entry, not an input to the production Vite build.
@@ -54,7 +54,7 @@ const dataSource: StageReviewDataSource = {
       const latest = new Map<string, Saved>();
       for (const review of reviews) if (review.dataset_repo === filter.dataset_repo && review.taxonomy_version === filter.taxonomy_version) latest.set(String(review.episode_index), review);
       const episodes = [...latest.values()];
-      return { episodes, num_confirmed: episodes.filter((r) => r.status === "confirmed").length, num_corrected: 0 };
+      return { episodes, supported_review_protocols: [...SUPPORTED_REVIEW_PROTOCOLS], num_confirmed: episodes.filter((r) => r.status === "confirmed").length, num_corrected: 0 };
     }
     return remote;
   }) as StageReviewDataSource["useQuery"],
