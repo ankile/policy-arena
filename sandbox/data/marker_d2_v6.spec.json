@@ -1,0 +1,1134 @@
+{
+  "task": "marker_d2",
+  "lifecycle_task": "marker_d2",
+  "taxonomy_version": "trajectory-review/v1/marker_d2/v6",
+  "ladder": {
+    "header": "Historical maximum progress in any attempt; final state and task success are separate judgments.",
+    "success_level": 6,
+    "max_stage": 6,
+    "levels": [
+      {
+        "sid": 0,
+        "text": "Initial state before the first verified milestone.\nThe episode begins; record S0 when no later milestone is supported.",
+        "gate_field": null,
+        "gate_time_field": null,
+        "gate_any_of": [],
+        "gate_all_of": []
+      },
+      {
+        "sid": 1,
+        "text": "The gripper is aligned to capture the marker.\nThe jaws visibly bracket a graspable marker segment with an approach direction and opening that could trap it.\nDistant approach, merely reaching the workspace, or a jaw close with visibly wrong geometry does not establish alignment.\nAlignment remains achieved if a later close misses.",
+        "gate_field": null,
+        "gate_time_field": null,
+        "gate_any_of": [],
+        "gate_all_of": []
+      },
+      {
+        "sid": 2,
+        "text": "The gripper establishes a secure hold of the marker.\nThe same marker segment is visibly captured and retained between the jaws across multiple consecutive frames.\nUse jaw-object geometry or coherent small motion to establish retention; the marker may still be supported by the table.\nJaw closure alone, a brief pinch, brushing, or immediate slip does not establish a secure grasp.\nLifting and insertion-compatible tip protrusion are not required for this stage; a secure but badly positioned grasp can still fail later.",
+        "gate_field": null,
+        "gate_time_field": null,
+        "gate_any_of": [],
+        "gate_all_of": []
+      },
+      {
+        "sid": 3,
+        "text": "The gripper lifts the retained marker clear of the table.\nThe marker visibly clears table support under sustained gripper control.\nDragging, pivoting on the table, or a one-frame bounce is insufficient.\nTravel away from the grasp site is not required.",
+        "gate_field": null,
+        "gate_time_field": null,
+        "gate_any_of": [],
+        "gate_all_of": []
+      },
+      {
+        "sid": 4,
+        "text": "The held marker is upright and aligned over a specific holder hole.\nThe retained marker is at the holder and oriented approximately vertically along the hole's insertion axis.\nThe lower tip is positioned over the intended hole opening; verify local geometry primarily in WRIST.\nMaking the marker vertical elsewhere is insufficient.\nSIDE-view overlap, exterior contact, or a downward push beside the holder does not prove alignment.\nNo pause before entry is required.",
+        "gate_field": null,
+        "gate_time_field": null,
+        "gate_any_of": [],
+        "gate_all_of": []
+      },
+      {
+        "sid": 5,
+        "text": "The marker tip engages and begins entering a holder hole.\nThe tip visibly descends into the intended opening and the holder occludes the entered portion.\nAn insertion-directed motion or contact with the top rim alone is not hole engagement.\nSIDE holder contact and pushing down onto the table beside the holder are not engagement.\nFull seating and release are not required; a later jam or partial release does not erase this stage.",
+        "gate_field": null,
+        "gate_time_field": null,
+        "gate_any_of": [],
+        "gate_all_of": []
+      },
+      {
+        "sid": 6,
+        "text": "The fully seated marker is released and retained by the holder.\nFull insertion depth is positively verified before release.\nThe jaws open and relinquish the marker; the holder retains it fully seated and upright.\nThe gripper moves clear, or recording ends after the jaws are visibly no longer clamping the marker while it stays seated.\nA partial insertion that is released does not establish S6.\nJaw opening while still clamping, a held fully seated marker, or an ambiguous final frame is insufficient.\nDo not invent gripper clearance when recording cuts off.",
+        "gate_field": null,
+        "gate_time_field": null,
+        "gate_any_of": [],
+        "gate_all_of": []
+      }
+    ]
+  },
+  "failure_modes": [
+    "none",
+    "pregrasp_misalignment",
+    "grasp_not_attempted",
+    "grasp_miss",
+    "grasp_lost",
+    "lift_blocked",
+    "insertion_position_misalignment",
+    "insertion_orientation_misalignment",
+    "insertion_path_blocked",
+    "holder_contact_no_insertion",
+    "false_insertion",
+    "wrong_hole_entry",
+    "insertion_jammed",
+    "released_before_seating",
+    "release_not_completed",
+    "placement_lost_after_release",
+    "progress_stopped",
+    "unknown_failure_cause",
+    "other"
+  ],
+  "final_states": [
+    "marker_on_table",
+    "marker_grasped_on_table",
+    "marker_in_gripper_away_from_holder",
+    "marker_in_gripper_at_holder",
+    "marker_partially_in_holder_held",
+    "marker_partially_in_holder_released",
+    "marker_fully_seated_held",
+    "marker_fully_seated_released",
+    "marker_release_committed_at_cutoff",
+    "marker_free_outside_holder",
+    "marker_dropped_off_table",
+    "unclear"
+  ],
+  "success_final_state": "marker_fully_seated_released",
+  "released_field": "__trajectory_unused_release__",
+  "stage_field": "max_stage",
+  "final_state_field": "final_state",
+  "failure_mode_field": "failure_mode",
+  "event_fields": [
+    {
+      "name": "trajectory_identity",
+      "kind": "object",
+      "description": "Immutable source response and sample identity."
+    },
+    {
+      "name": "max_stage_id",
+      "kind": "string",
+      "description": "Declared ID of the greatest stage positively verified in any attempt."
+    },
+    {
+      "name": "primary_failure_time_s",
+      "kind": "number",
+      "description": "Primary failure onset time, or null for no failure"
+    },
+    {
+      "name": "attempt_count",
+      "kind": "integer",
+      "description": "Number of chronological attempts identified in the trajectory"
+    },
+    {
+      "name": "task_success",
+      "kind": "boolean",
+      "description": "Whether the declared machine-readable success definition is fully satisfied"
+    },
+    {
+      "name": "stage_transitions",
+      "kind": "array",
+      "description": "Every verified forward stage transition in every attempt"
+    },
+    {
+      "name": "key_action_observations",
+      "kind": "array",
+      "description": "Exactly one item per declared key action, in definition order"
+    },
+    {
+      "name": "failure_events",
+      "kind": "array",
+      "description": "Every distinct visible declared failure event in chronological order"
+    },
+    {
+      "name": "confidence",
+      "kind": "string",
+      "description": "Evidence confidence for this observation"
+    },
+    {
+      "name": "needs_human_review",
+      "kind": "boolean",
+      "description": "Whether decisive evidence remains ambiguous or contradictory"
+    },
+    {
+      "name": "review_reasons",
+      "kind": "array",
+      "description": "Compact reasons for human review; empty when review is unnecessary"
+    },
+    {
+      "name": "notes",
+      "kind": "string",
+      "description": "Compact chronological audit summary and principal ambiguity"
+    }
+  ],
+  "bool_fields": [
+    "task_success",
+    "needs_human_review"
+  ],
+  "time_fields": [
+    "primary_failure_time_s"
+  ],
+  "editable_fields": [
+    "trajectory_identity",
+    "max_stage",
+    "max_stage_id",
+    "final_state",
+    "failure_mode",
+    "primary_failure_time_s",
+    "attempt_count",
+    "task_success",
+    "stage_transitions",
+    "key_action_observations",
+    "failure_events",
+    "confidence",
+    "needs_human_review",
+    "review_reasons",
+    "notes"
+  ],
+  "constraints": {
+    "failure_mode_forbidden_stages": {},
+    "historical_event_failure_modes": {},
+    "final_state_requires_gates": {},
+    "final_state_requires_min_stage": {}
+  },
+  "fps": 15,
+  "trajectory": {
+    "adapter_version": "trajectory-review/v1",
+    "task_definition": {
+      "definitionSchemaVersion": "trajectory-task/v1",
+      "taskId": "marker_d2",
+      "taxonomyVersion": "marker_d2/v6",
+      "displayName": "Marker · six positive milestones",
+      "objective": "Align for a marker grasp, establish a secure hold, lift clear of the table, orient the marker vertically over a holder hole, engage the hole, and release the fully seated marker. Track achieved milestones separately from the failure cause and final physical state.",
+      "successCriteria": [
+        "The marker has visibly entered a holder hole and reached full seating depth.",
+        "The jaws visibly release the fully seated marker and the holder retains it upright.",
+        "The gripper moves clear, or recording cuts off only after the jaws visibly stop clamping the fully seated marker; do not infer release from intent or a supplied outcome.",
+        "Success is judged at the endpoint; later loss of an earlier seated-and-released state is a failure without erasing the achieved milestone."
+      ],
+      "successDefinition": {
+        "successfulStageIds": [
+          "seated_marker_released"
+        ],
+        "successfulFinalStateIds": [
+          "marker_fully_seated_released",
+          "marker_release_committed_at_cutoff"
+        ],
+        "requiredKeyActionIds": [
+          "enter_hole",
+          "reach_full_depth",
+          "open_jaws"
+        ],
+        "noFailureModeId": "none"
+      },
+      "entities": [
+        {
+          "id": "marker",
+          "description": "Whiteboard marker manipulated by the robot."
+        },
+        {
+          "id": "gripper",
+          "description": "Robot gripper and jaws."
+        },
+        {
+          "id": "holder",
+          "description": "Red/orange movable block containing insertion holes."
+        },
+        {
+          "id": "table",
+          "description": "Black supporting table."
+        }
+      ],
+      "evidenceViews": [
+        {
+          "id": "SIDE",
+          "description": "Third-person side_1 view for global motion, table support, marker location, and holder motion.",
+          "caveats": [
+            "Perspective can make separated geometry overlap.",
+            "SIDE overlap alone never proves holder arrival, contact, or insertion."
+          ]
+        },
+        {
+          "id": "WRIST",
+          "description": "wrist_left view; primary for local gripper/marker/holder/hole geometry when usable.",
+          "caveats": [
+            "May point away or be occluded.",
+            "If usable during transport but the holder never appears, holder alignment and engagement are not supported; the highest supported milestone is at most S3."
+          ]
+        }
+      ],
+      "stages": [
+        {
+          "index": 0,
+          "id": "initial_state",
+          "name": "Start",
+          "description": "Initial state before the first verified milestone.",
+          "entryCriteria": [
+            "The episode begins; record S0 when no later milestone is supported."
+          ]
+        },
+        {
+          "index": 1,
+          "id": "pregrasp_aligned",
+          "name": "Align for grasp",
+          "description": "The gripper is aligned to capture the marker.",
+          "entryCriteria": [
+            "The jaws visibly bracket a graspable marker segment with an approach direction and opening that could trap it."
+          ],
+          "exclusions": [
+            "Distant approach, merely reaching the workspace, or a jaw close with visibly wrong geometry does not establish alignment.",
+            "Alignment remains achieved if a later close misses."
+          ]
+        },
+        {
+          "index": 2,
+          "id": "marker_grasped",
+          "name": "Grasp the marker",
+          "description": "The gripper establishes a secure hold of the marker.",
+          "entryCriteria": [
+            "The same marker segment is visibly captured and retained between the jaws across multiple consecutive frames.",
+            "Use jaw-object geometry or coherent small motion to establish retention; the marker may still be supported by the table."
+          ],
+          "exclusions": [
+            "Jaw closure alone, a brief pinch, brushing, or immediate slip does not establish a secure grasp.",
+            "Lifting and insertion-compatible tip protrusion are not required for this stage; a secure but badly positioned grasp can still fail later."
+          ]
+        },
+        {
+          "index": 3,
+          "id": "marker_lifted",
+          "name": "Lift the marker",
+          "description": "The gripper lifts the retained marker clear of the table.",
+          "entryCriteria": [
+            "The marker visibly clears table support under sustained gripper control."
+          ],
+          "exclusions": [
+            "Dragging, pivoting on the table, or a one-frame bounce is insufficient.",
+            "Travel away from the grasp site is not required."
+          ]
+        },
+        {
+          "index": 4,
+          "id": "marker_aligned_for_insertion",
+          "name": "Align the marker for insertion",
+          "description": "The held marker is upright and aligned over a specific holder hole.",
+          "entryCriteria": [
+            "The retained marker is at the holder and oriented approximately vertically along the hole's insertion axis.",
+            "The lower tip is positioned over the intended hole opening; verify local geometry primarily in WRIST."
+          ],
+          "exclusions": [
+            "Making the marker vertical elsewhere is insufficient.",
+            "SIDE-view overlap, exterior contact, or a downward push beside the holder does not prove alignment.",
+            "No pause before entry is required."
+          ]
+        },
+        {
+          "index": 5,
+          "id": "holder_hole_engaged",
+          "name": "Engage the holder hole",
+          "description": "The marker tip engages and begins entering a holder hole.",
+          "entryCriteria": [
+            "The tip visibly descends into the intended opening and the holder occludes the entered portion."
+          ],
+          "exclusions": [
+            "An insertion-directed motion or contact with the top rim alone is not hole engagement.",
+            "SIDE holder contact and pushing down onto the table beside the holder are not engagement.",
+            "Full seating and release are not required; a later jam or partial release does not erase this stage."
+          ]
+        },
+        {
+          "index": 6,
+          "id": "seated_marker_released",
+          "name": "Release the fully seated marker",
+          "description": "The fully seated marker is released and retained by the holder.",
+          "entryCriteria": [
+            "Full insertion depth is positively verified before release.",
+            "The jaws open and relinquish the marker; the holder retains it fully seated and upright.",
+            "The gripper moves clear, or recording ends after the jaws are visibly no longer clamping the marker while it stays seated."
+          ],
+          "exclusions": [
+            "A partial insertion that is released does not establish S6.",
+            "Jaw opening while still clamping, a held fully seated marker, or an ambiguous final frame is insufficient.",
+            "Do not invent gripper clearance when recording cuts off."
+          ]
+        }
+      ],
+      "keyActions": [
+        {
+          "id": "approach_marker_workspace",
+          "name": "Approach marker workspace",
+          "description": "The gripper enters a pose from which marker interaction is plausible.",
+          "stageRelation": "Approach is an independent action and does not by itself establish S1 alignment.",
+          "stageLinks": []
+        },
+        {
+          "id": "align_pregrasp",
+          "name": "Align for grasp",
+          "description": "The jaws and approach direction become arranged so closing could trap the marker.",
+          "stageRelation": "Required for S1 alignment; may share its time with a grasp when both are visible.",
+          "stageLinks": [
+            {
+              "stageId": "pregrasp_aligned",
+              "relation": "required_for_entry"
+            }
+          ]
+        },
+        {
+          "id": "close_jaws_on_marker",
+          "name": "Attempt grasp",
+          "description": "The jaws execute a committed close/contact attempt on the marker.",
+          "stageRelation": "A close attempt supports but does not prove S2 secure grasp.",
+          "stageLinks": [
+            {
+              "stageId": "marker_grasped",
+              "relation": "supports_entry"
+            }
+          ]
+        },
+        {
+          "id": "secure_marker_grasp",
+          "name": "Securely grasp marker",
+          "description": "The gripper establishes a secure hold of the marker. Establish retention across consecutive frames independently of table clearance.",
+          "stageRelation": "Required for S2 grasp; a close attempt and a lift remain separate actions.",
+          "stageLinks": [
+            {
+              "stageId": "marker_grasped",
+              "relation": "required_for_entry"
+            }
+          ]
+        },
+        {
+          "id": "secure_marker_lift",
+          "name": "Securely lift marker",
+          "description": "The marker is retained across frames and lifted clear of the table.",
+          "stageRelation": "Required for S3 lift; travel away is not required.",
+          "stageLinks": [
+            {
+              "stageId": "marker_lifted",
+              "relation": "required_for_entry"
+            }
+          ]
+        },
+        {
+          "id": "transport_marker",
+          "name": "Transport retained marker",
+          "description": "The retained marker moves away from the grasp site with the gripper.",
+          "stageRelation": "Transport may follow S3 and supports arrival for S4; it is not a separate human stage.",
+          "stageLinks": [
+            {
+              "stageId": "marker_lifted",
+              "relation": "may_occur_within"
+            },
+            {
+              "stageId": "marker_aligned_for_insertion",
+              "relation": "supports_entry"
+            }
+          ]
+        },
+        {
+          "id": "arrive_at_holder",
+          "name": "Arrive at holder",
+          "description": "Local geometry establishes that the retained marker reaches the holder area.",
+          "stageRelation": "Necessary for S4 local alignment, but arrival alone does not prove orientation or hole alignment.",
+          "stageLinks": [
+            {
+              "stageId": "marker_aligned_for_insertion",
+              "relation": "required_for_entry"
+            }
+          ]
+        },
+        {
+          "id": "align_tip_with_hole",
+          "name": "Align marker tip with hole",
+          "description": "The marker tip is visibly positioned over a specific hole opening.",
+          "stageRelation": "Necessary for S4 together with an upright, insertion-compatible marker orientation.",
+          "stageLinks": [
+            {
+              "stageId": "marker_aligned_for_insertion",
+              "relation": "required_for_entry"
+            }
+          ]
+        },
+        {
+          "id": "contact_holder",
+          "name": "Contact holder",
+          "description": "The retained marker visibly contacts any holder surface.",
+          "stageRelation": "Contact can occur without entry. Only positive hole engagement establishes S5.",
+          "stageLinks": [
+            {
+              "stageId": "marker_aligned_for_insertion",
+              "relation": "may_occur_within"
+            },
+            {
+              "stageId": "holder_hole_engaged",
+              "relation": "supports_entry"
+            }
+          ]
+        },
+        {
+          "id": "enter_hole",
+          "name": "Enter holder hole",
+          "description": "The marker tip visibly enters a specific holder hole.",
+          "stageRelation": "Required for S5 hole engagement and S6 successful release.",
+          "stageLinks": [
+            {
+              "stageId": "holder_hole_engaged",
+              "relation": "required_for_entry"
+            },
+            {
+              "stageId": "seated_marker_released",
+              "relation": "required_for_entry"
+            }
+          ]
+        },
+        {
+          "id": "reach_full_depth",
+          "name": "Reach full insertion depth",
+          "description": "Visible geometry positively establishes full seating.",
+          "stageRelation": "Required before S6 release; full depth while held is recorded as an action within S5.",
+          "stageLinks": [
+            {
+              "stageId": "seated_marker_released",
+              "relation": "required_for_entry"
+            }
+          ]
+        },
+        {
+          "id": "open_jaws",
+          "name": "Open gripper jaws",
+          "description": "The gripper jaws visibly open or visibly begin to part from the marker. Report the first frame where the finger gap visibly grows, never an earlier frame of intent.",
+          "stageRelation": "Necessary but not sufficient for S6: the marker must be fully seated and actually relinquished.",
+          "stageLinks": [
+            {
+              "stageId": "seated_marker_released",
+              "relation": "required_for_entry"
+            }
+          ]
+        },
+        {
+          "id": "move_gripper_clear",
+          "name": "Move gripper clear",
+          "description": "The gripper retreats enough to test independent holder retention.",
+          "stageRelation": "Confirms independent retention after S6 release; omit when recording ends before retreat.",
+          "stageLinks": [
+            {
+              "stageId": "seated_marker_released",
+              "relation": "supports_entry"
+            }
+          ]
+        }
+      ],
+      "failureModes": [
+        {
+          "id": "none",
+          "description": "No unresolved terminal failure; use only for the declared successful physical endpoint and required achievements."
+        },
+        {
+          "id": "pregrasp_misalignment",
+          "description": "Before secure grasp: visible jaw position or orientation misses a viable capture region. Use grasp_miss when a committed close is the decisive failed event; describe offset or yaw in evidence instead of duplicate enums."
+        },
+        {
+          "id": "grasp_not_attempted",
+          "description": "A viable grasp pose is reached but no committed close occurs. Determine this at final decisive evidence, not during normal alignment."
+        },
+        {
+          "id": "grasp_miss",
+          "description": "A committed pickup close fails to establish sustained secure retention. A fleeting pinch or immediate escape before a confirmed hold is a miss, not grasp_lost. A secure hold that never lifts is not a miss."
+        },
+        {
+          "id": "grasp_lost",
+          "description": "After a confirmed secure hold, the object unintentionally escapes gripper control before successful placement. Describe visible sliding, collision, or dropping without guessing forces. A deliberate off-target release uses the applicable release mode."
+        },
+        {
+          "id": "lift_blocked",
+          "description": "A secure grasp is established but visible contact or obstruction prevents table clearance during a lift attempt. Do not infer obstruction merely from lack of motion; an unexplained stop uses progress_stopped."
+        },
+        {
+          "id": "insertion_position_misalignment",
+          "description": "Before engagement: the held object fails to reach the target entry location during insertion-directed positioning. Require visible offset; prefer a specific contact/miss mode once that contact is observed."
+        },
+        {
+          "id": "insertion_orientation_misalignment",
+          "description": "Before engagement: local orientation prevents an insertion-compatible path at the target. Upright orientation away from the target is not insertion alignment. Describe the visible angular mismatch."
+        },
+        {
+          "id": "insertion_path_blocked",
+          "description": "Before engagement: a visible obstacle or grasp geometry blocks the insertion path, for example jaws covering the entry region or marker tip. Do not infer blockage from a pause or use this for a target-position miss."
+        },
+        {
+          "id": "holder_contact_no_insertion",
+          "description": "Marker-tip contact with the TOP holder face or top rim/edge without hole entry. SIDE wall contact or downward pushing onto the TABLE beside the holder is false_insertion. Contact alone never establishes S5."
+        },
+        {
+          "id": "false_insertion",
+          "description": "An insertion-directed push goes against the SIDE of the holder or down onto the TABLE beside it without actual hole entry. SIDE-view overlap cannot override a clear WRIST miss. Preserve genuine earlier progress."
+        },
+        {
+          "id": "wrong_hole_entry",
+          "description": "The tip visibly enters a hole other than an explicitly required target. Do not invent a designated hole: if any holder hole is allowed, another allowed hole is not a failure."
+        },
+        {
+          "id": "insertion_jammed",
+          "description": "After positive hole entry, visible constrained motion or repeated failed advancement prevents full depth. A pause alone is not a jam; top/rim contact without entry is holder_contact_no_insertion."
+        },
+        {
+          "id": "released_before_seating",
+          "description": "The gripper relinquishes the marker before full-depth seating, leaving a retained partial insertion or an unretained/off-target marker. Use this for the decisive premature release; later landing is evidence, not a second inferred cause."
+        },
+        {
+          "id": "release_not_completed",
+          "description": "The marker is positively fully seated but still clamped at final decisive evidence, so the final released milestone is not achieved. Merely holding it elsewhere is not this mode. A missing jaw-opening frame is insufficient if independent object motion proves release."
+        },
+        {
+          "id": "placement_lost_after_release",
+          "description": "A genuinely completed successful placement later loses required retention or seating. Preserve historical S6 and report the later endpoint; do not reinterpret the original successful release as premature."
+        },
+        {
+          "id": "progress_stopped",
+          "description": "The episode visibly ends without the next required milestone, with no more specific observed cause. This is a terminal shortfall, not a claim of timeout, policy intent, or malfunction. State the last achieved and next unmet milestone in evidence; timestamp final decisive evidence."
+        },
+        {
+          "id": "unknown_failure_cause",
+          "description": "The binary outcome is failure but occlusion, truncation, or missing evidence prevents identifying the physical cause or terminal shortfall. Preserve supported stages, set needs_human_review=true, explain uncertainty, and timestamp final decisive evidence rather than inventing an unseen onset."
+        },
+        {
+          "id": "other",
+          "description": "A directly visible failure mechanism falls outside this inventory. Describe it precisely and set needs_human_review=true. For mere uncertainty use unknown_failure_cause."
+        }
+      ],
+      "finalStates": [
+        {
+          "id": "marker_on_table",
+          "description": "The marker is free of gripper and target and rests on the table outside the successful placement. A held table-supported object uses marker_grasped_on_table."
+        },
+        {
+          "id": "marker_grasped_on_table",
+          "description": "The gripper securely retains the marker, still supported by the table away from an engaged target. Grasp is achieved; lift is not implied."
+        },
+        {
+          "id": "marker_in_gripper_away_from_holder",
+          "description": "The lifted marker is held away from the holder insertion region, with no engagement. Not a table-supported grasp."
+        },
+        {
+          "id": "marker_in_gripper_at_holder",
+          "description": "The marker is held at the holder with NO entry. Partial entry and full seating have more specific states."
+        },
+        {
+          "id": "marker_partially_in_holder_held",
+          "description": "The marker is positively engaged but not fully seated, and remains held. More specific than merely held near the holder."
+        },
+        {
+          "id": "marker_partially_in_holder_released",
+          "description": "The holder retains a released partial insertion, with full depth not reached."
+        },
+        {
+          "id": "marker_fully_seated_held",
+          "description": "The marker is fully seated but still clamped. This does not establish S6."
+        },
+        {
+          "id": "marker_fully_seated_released",
+          "description": "The holder retains a released fully seated marker."
+        },
+        {
+          "id": "marker_release_committed_at_cutoff",
+          "description": "At the final visible frame the marker is fully seated in a holder hole, the jaws have visibly begun to open and are no longer clamping it, and the recording ends before the gripper moves clear."
+        },
+        {
+          "id": "marker_free_outside_holder",
+          "description": "The marker is visibly unheld and unretained at the target, still in the workspace but not resting on the table (for example falling). Do not infer eventual landing."
+        },
+        {
+          "id": "marker_dropped_off_table",
+          "description": "Positive evidence shows the marker leaving the supported table/workspace without target retention. Occlusion or disappearance alone is insufficient."
+        },
+        {
+          "id": "unclear",
+          "description": "The final marker state cannot be determined. Explain missing endpoint facts and request review."
+        }
+      ],
+      "decisionRules": [
+        {
+          "id": "positive_progress_ladder",
+          "rule": "Each numbered stage is a positively achieved milestone, not an attempt or failure category. Timestamp the first evidence that its criteria are met. A failed episode whose maximum is S{k} for k < 6 is summarized as 'reached S{k}; failed to reach S{k+1}'. Do not assign S{k+1} merely because it was attempted. Keep the concrete causal failure enum separate from this progress summary."
+        },
+        {
+          "id": "historical_progress",
+          "rule": "Compute max_stage as the highest positively achieved stage across all attempts, not the final physical state. A later slip, drop, or loss of seating does not erase earlier progress. A failure after S6 means the completed result was later lost, not failure to reach a nonexistent S7. A recovered failure event does not by itself make the final outcome a failure."
+        },
+        {
+          "id": "supported_timestamps",
+          "rule": "Grasp and lift, or alignment and engagement, may share a timestamp if independently supported in that frame. Do not invent intermediate times or achievements to fill the ladder. Occlusion means not verified, not proof the milestone never happened: use the lower supported maximum, flag human review, and explain uncertain boundaries."
+        },
+        {
+          "id": "outcome_not_timestamp",
+          "rule": "If a human_outcome_anchor is supplied, retain it as authoritative binary outcome context, not as evidence of a stage or timestamp. Never invent alignment, grasp, lift, entry, release, or seating to satisfy it. If the visible milestones or endpoint cannot support its terminal semantics, flag the conflict for human review; do not hide it with coerced stage labels."
+        },
+        {
+          "id": "grasp_before_lift",
+          "rule": "S2 is secure retention even on the table. S3 additionally requires clear table clearance under gripper control. A miss remains at the highest earlier verified milestone; a sustained grasp followed by a failed lift reaches S2."
+        },
+        {
+          "id": "hard_wrist_veto",
+          "rule": "Use SIDE for global motion and WRIST for local geometry. If usable WRIST never shows the holder, do not award S4 or S5 from SIDE overlap. A genuinely unusable view warrants uncertainty, not invented geometry."
+        },
+        {
+          "id": "insertion_alignment",
+          "rule": "S4 requires both upright insertion-compatible orientation and the retained marker tip over a specific holder hole. Vertical orientation elsewhere is not enough."
+        },
+        {
+          "id": "contact_surface_taxonomy",
+          "rule": "TOP holder face/rim contact without entry maps to holder_contact_no_insertion. SIDE holder contact or a downward push onto the TABLE beside the holder maps to false_insertion. Neither establishes S5. Preserve any earlier genuine alignment."
+        },
+        {
+          "id": "entry_geometry",
+          "rule": "S5 requires positive tip entry into a specific holder hole. A partial entry followed by a jam or release still achieves S5; partial-release and fully-seated-held states are endpoint/action distinctions, not extra stages."
+        },
+        {
+          "id": "release_after_seating",
+          "rule": "S6 requires visible full-depth seating followed by actual loss of jaw retention while the holder supports the marker. Timestamp the first frame where release and full seated retention are verified. A fully seated marker still clamped is S5, not S6."
+        },
+        {
+          "id": "terminal_cutoff_commitment",
+          "rule": "Preserve the existing narrow cutoff allowance: S6 may be verified before gripper clearance only if multiple terminal frames establish full seating, visible jaw parting that stops clamping, and stable upright holder retention. Use marker_release_committed_at_cutoff, report move_gripper_clear as absent, and never substitute opening intent for actual relinquishment."
+        },
+        {
+          "id": "uncertainty",
+          "rule": "Audit the final WRIST sequence, not one frame. If full depth or loss of clamping cannot be verified, keep the lower supported stage and request review. Do not promote the stage solely to match a supplied human outcome."
+        },
+        {
+          "id": "failure_selection",
+          "rule": "Choose primary_failure as the most specific observed cause explaining unresolved terminal failure, not the first recovered mistake or an enum inferred from max_stage alone. Keep independently observed earlier or recovered failures in failure_events. For success use primary_failure none with null time; recovered events may remain. For failure use a declared non-none mode. Do not duplicate one event under overlapping general and specific modes."
+        },
+        {
+          "id": "failure_time_evidence",
+          "rule": "An observed miss, loss, contact, jam, or incorrect release is timestamped at its first decisive evidence. Endpoint-conditioned absence (grasp_not_attempted, release_not_completed where declared, progress_stopped, unknown_failure_cause) is timestamped at the last decisive endpoint evidence. Never backdate a terminal shortfall to the preceding stage boundary or invent an unseen onset. Include evidence and attempt_index for each event."
+        },
+        {
+          "id": "failure_progress_independence",
+          "rule": "Stages record achievements; failure modes record observed causes or explicitly described terminal shortfalls. A failure enum imposes no automatic cap on historical max_stage. Do not lower earlier progress after loss, promote an attempted milestone, or infer failure solely from an omitted intermediate timestamp. Ambiguous visibility warrants review, not treating missing evidence as physical non-achievement."
+        },
+        {
+          "id": "endpoint_not_cause",
+          "rule": "Choose final_state_id from final valid synchronized evidence, independently of historical maximum and primary failure. The same endpoint can follow a miss, drop, or incorrect release. Do not infer a causal event solely from the final resting place. Off-table states require positive evidence of departure, not simply an occluded object."
+        },
+        {
+          "id": "failure_precedence",
+          "rule": "Prefer a committed grasp miss over preceding approach offset, confirmed grip loss over a generic stalled lift, observed top/rim versus side/table contact over generic insertion misalignment, and actual partial-entry jam over no-entry contact. Distinguish deliberate premature release from unintentional grip loss. A successful release followed by loss is placement_lost_after_release. Wrong-hole failure requires an explicitly constrained target."
+        },
+        {
+          "id": "endpoint_partition",
+          "rule": "Choose the most specific supported endpoint: full seating (held/released or narrow cutoff), then partial engagement (held/released), then unengaged held state (table-supported, at target, or away), then unheld table/free/off-table state. Cutoff states require every declared evidence gate, not predicted future outcomes. If unresolved use unclear and request review. marker_fully_seated_released is the completed released-and-clear endpoint; marker_release_committed_at_cutoff is actual release with clearance cut off."
+        }
+      ],
+      "auditProcedure": [
+        "Locate the marker, gripper, holder, and relevant hole in synchronized SIDE and WRIST evidence.",
+        "Segment chronological attempts and preserve achieved progress across later slips or retries.",
+        "Independently verify alignment, secure grasp, clear lift, local vertical insertion alignment, hole engagement, and fully seated release.",
+        "Record every declared key action independently, including full seating while held and unsuccessful jaw openings; do not expose these as additional human stages.",
+        "Inspect the final second for actual release and retained full seating; use the narrowly defined cutoff state only when all evidence gates hold.",
+        "Choose the physical final state and causal failure enum separately from the highest stage. For a failed episode below S6, name the next unreached milestone; request review for unobserved boundaries.",
+        "Cross-check stage/action identities, transition times, failure onset, endpoint, success, and any human-outcome conflict.",
+        "Audit failure specificity, endpoint partition, recovered versus unresolved events, and failure-time ownership. Explain unknown cause/endpoint and request review; never manufacture an onset or stage to satisfy binary outcome."
+      ]
+    },
+    "task_definition_sha256": "da71186ba00d9fd8ff63b78e3405ad89830e4fbac04cbb9373aa31d5045d57dc",
+    "response_schema": {
+      "type": "OBJECT",
+      "properties": {
+        "schema_version": {
+          "type": "STRING",
+          "enum": [
+            "trajectory-label/v1"
+          ]
+        },
+        "task_id": {
+          "type": "STRING",
+          "enum": [
+            "marker_d2"
+          ]
+        },
+        "taxonomy_version": {
+          "type": "STRING",
+          "enum": [
+            "marker_d2/v6"
+          ]
+        },
+        "sample_id": {
+          "type": "STRING",
+          "description": "Stable trajectory or episode identifier from request context"
+        },
+        "attempt_count": {
+          "type": "INTEGER",
+          "minimum": 1,
+          "description": "Number of chronological attempts identified in the trajectory"
+        },
+        "task_success": {
+          "type": "BOOLEAN",
+          "description": "Whether the declared machine-readable success definition is fully satisfied"
+        },
+        "max_stage": {
+          "type": "OBJECT",
+          "properties": {
+            "stage_id": {
+              "type": "STRING",
+              "enum": [
+                "initial_state",
+                "pregrasp_aligned",
+                "marker_grasped",
+                "marker_lifted",
+                "marker_aligned_for_insertion",
+                "holder_hole_engaged",
+                "seated_marker_released"
+              ]
+            },
+            "stage_index": {
+              "type": "INTEGER",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "stage_id",
+            "stage_index"
+          ],
+          "description": "Greatest declared stage positively verified in any attempt"
+        },
+        "stage_transitions": {
+          "type": "ARRAY",
+          "items": {
+            "type": "OBJECT",
+            "properties": {
+              "attempt_index": {
+                "type": "INTEGER",
+                "minimum": 1,
+                "description": "One-based chronological attempt containing the transition"
+              },
+              "from_stage_id": {
+                "type": "STRING",
+                "enum": [
+                  "initial_state",
+                  "pregrasp_aligned",
+                  "marker_grasped",
+                  "marker_lifted",
+                  "marker_aligned_for_insertion",
+                  "holder_hole_engaged",
+                  "seated_marker_released"
+                ],
+                "description": "Declared stage ID before the transition"
+              },
+              "from_stage_index": {
+                "type": "INTEGER",
+                "minimum": 0,
+                "description": "Declared ordered index before the transition"
+              },
+              "to_stage_id": {
+                "type": "STRING",
+                "enum": [
+                  "initial_state",
+                  "pregrasp_aligned",
+                  "marker_grasped",
+                  "marker_lifted",
+                  "marker_aligned_for_insertion",
+                  "holder_hole_engaged",
+                  "seated_marker_released"
+                ],
+                "description": "Declared stage ID positively reached by the transition"
+              },
+              "to_stage_index": {
+                "type": "INTEGER",
+                "minimum": 0,
+                "description": "Declared ordered index positively reached by the transition"
+              },
+              "time_s": {
+                "type": "NUMBER",
+                "minimum": 0,
+                "description": "Earliest evidence-supported transition time in seconds"
+              },
+              "confidence": {
+                "type": "STRING",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "description": "Evidence confidence for this observation"
+              },
+              "evidence": {
+                "type": "STRING",
+                "description": "Compact visible evidence satisfying the destination stage"
+              }
+            },
+            "required": [
+              "attempt_index",
+              "from_stage_id",
+              "from_stage_index",
+              "to_stage_id",
+              "to_stage_index",
+              "time_s",
+              "confidence",
+              "evidence"
+            ],
+            "description": "One verified forward transition between declared ordered stages"
+          },
+          "description": "Every verified forward stage transition in every attempt"
+        },
+        "key_action_observations": {
+          "type": "ARRAY",
+          "items": {
+            "type": "OBJECT",
+            "properties": {
+              "action_id": {
+                "type": "STRING",
+                "enum": [
+                  "approach_marker_workspace",
+                  "align_pregrasp",
+                  "close_jaws_on_marker",
+                  "secure_marker_grasp",
+                  "secure_marker_lift",
+                  "transport_marker",
+                  "arrive_at_holder",
+                  "align_tip_with_hole",
+                  "contact_holder",
+                  "enter_hole",
+                  "reach_full_depth",
+                  "open_jaws",
+                  "move_gripper_clear"
+                ],
+                "description": "Declared task key-action ID"
+              },
+              "occurred": {
+                "type": "BOOLEAN",
+                "description": "Whether this key action was positively observed"
+              },
+              "first_time_s": {
+                "type": "NUMBER",
+                "nullable": true,
+                "minimum": 0,
+                "description": "Earliest occurrence time, or null when the action was absent"
+              },
+              "occurrences": {
+                "type": "ARRAY",
+                "items": {
+                  "type": "OBJECT",
+                  "properties": {
+                    "attempt_index": {
+                      "type": "INTEGER",
+                      "minimum": 1,
+                      "description": "One-based chronological attempt containing the event"
+                    },
+                    "time_s": {
+                      "type": "NUMBER",
+                      "minimum": 0,
+                      "description": "Earliest evidence-supported event time in seconds"
+                    },
+                    "confidence": {
+                      "type": "STRING",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high"
+                      ],
+                      "description": "Evidence confidence for this observation"
+                    },
+                    "evidence": {
+                      "type": "STRING",
+                      "description": "Compact visible evidence supporting this event"
+                    }
+                  },
+                  "required": [
+                    "attempt_index",
+                    "time_s",
+                    "confidence",
+                    "evidence"
+                  ],
+                  "description": "One observed occurrence of a declared key action"
+                },
+                "description": "Every distinct positively observed occurrence in chronological order"
+              }
+            },
+            "required": [
+              "action_id",
+              "occurred",
+              "first_time_s",
+              "occurrences"
+            ],
+            "description": "Required observation record for one declared key action"
+          },
+          "description": "Exactly one item per declared key action, in definition order"
+        },
+        "failure_events": {
+          "type": "ARRAY",
+          "items": {
+            "type": "OBJECT",
+            "properties": {
+              "attempt_index": {
+                "type": "INTEGER",
+                "minimum": 1,
+                "description": "One-based chronological attempt containing the failure"
+              },
+              "failure_mode_id": {
+                "type": "STRING",
+                "enum": [
+                  "none",
+                  "pregrasp_misalignment",
+                  "grasp_not_attempted",
+                  "grasp_miss",
+                  "grasp_lost",
+                  "lift_blocked",
+                  "insertion_position_misalignment",
+                  "insertion_orientation_misalignment",
+                  "insertion_path_blocked",
+                  "holder_contact_no_insertion",
+                  "false_insertion",
+                  "wrong_hole_entry",
+                  "insertion_jammed",
+                  "released_before_seating",
+                  "release_not_completed",
+                  "placement_lost_after_release",
+                  "progress_stopped",
+                  "unknown_failure_cause",
+                  "other"
+                ],
+                "description": "Declared failure-mode ID"
+              },
+              "time_s": {
+                "type": "NUMBER",
+                "minimum": 0,
+                "description": "Visible event-onset time in seconds"
+              },
+              "confidence": {
+                "type": "STRING",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "description": "Evidence confidence for this observation"
+              },
+              "evidence": {
+                "type": "STRING",
+                "description": "Compact visible evidence supporting the failure event"
+              }
+            },
+            "required": [
+              "attempt_index",
+              "failure_mode_id",
+              "time_s",
+              "confidence",
+              "evidence"
+            ],
+            "description": "One visible event using a declared failure-mode ID"
+          },
+          "description": "Every distinct visible declared failure event in chronological order"
+        },
+        "primary_failure": {
+          "type": "OBJECT",
+          "properties": {
+            "failure_mode_id": {
+              "type": "STRING",
+              "enum": [
+                "none",
+                "pregrasp_misalignment",
+                "grasp_not_attempted",
+                "grasp_miss",
+                "grasp_lost",
+                "lift_blocked",
+                "insertion_position_misalignment",
+                "insertion_orientation_misalignment",
+                "insertion_path_blocked",
+                "holder_contact_no_insertion",
+                "false_insertion",
+                "wrong_hole_entry",
+                "insertion_jammed",
+                "released_before_seating",
+                "release_not_completed",
+                "placement_lost_after_release",
+                "progress_stopped",
+                "unknown_failure_cause",
+                "other"
+              ]
+            },
+            "time_s": {
+              "type": "NUMBER",
+              "nullable": true,
+              "minimum": 0,
+              "description": "Primary failure onset time, or null for no failure"
+            }
+          },
+          "required": [
+            "failure_mode_id",
+            "time_s"
+          ],
+          "description": "Most specific failure explaining the final outcome"
+        },
+        "final_state_id": {
+          "type": "STRING",
+          "enum": [
+            "marker_on_table",
+            "marker_grasped_on_table",
+            "marker_in_gripper_away_from_holder",
+            "marker_in_gripper_at_holder",
+            "marker_partially_in_holder_held",
+            "marker_partially_in_holder_released",
+            "marker_fully_seated_held",
+            "marker_fully_seated_released",
+            "marker_release_committed_at_cutoff",
+            "marker_free_outside_holder",
+            "marker_dropped_off_table",
+            "unclear"
+          ],
+          "description": "Declared physical state at the final visible frame"
+        },
+        "confidence": {
+          "type": "STRING",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "description": "Evidence confidence for this observation"
+        },
+        "needs_human_review": {
+          "type": "BOOLEAN",
+          "description": "Whether decisive evidence remains ambiguous or contradictory"
+        },
+        "review_reasons": {
+          "type": "ARRAY",
+          "items": {
+            "type": "STRING"
+          },
+          "description": "Compact reasons for human review; empty when review is unnecessary"
+        },
+        "notes": {
+          "type": "STRING",
+          "description": "Compact chronological audit summary and principal ambiguity"
+        }
+      },
+      "required": [
+        "schema_version",
+        "task_id",
+        "taxonomy_version",
+        "sample_id",
+        "attempt_count",
+        "task_success",
+        "max_stage",
+        "stage_transitions",
+        "key_action_observations",
+        "failure_events",
+        "primary_failure",
+        "final_state_id",
+        "confidence",
+        "needs_human_review",
+        "review_reasons",
+        "notes"
+      ],
+      "description": "Canonical task-generic trajectory label"
+    }
+  },
+  "taxonomy_hash": "3606c59e74fd1d001c438ab7b276655d97ab14f109b4b7c48344443ac17c07e7"
+}

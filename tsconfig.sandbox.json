@@ -1,5 +1,6 @@
 {
   "extends": "./tsconfig.app.json",
   "compilerOptions": { "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.sandbox.tsbuildinfo" },
-  "include": ["sandbox", "src"]
+  "include": ["sandbox", "src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "sandbox/**/*.test.ts", "sandbox/**/*.test.tsx"]
 }

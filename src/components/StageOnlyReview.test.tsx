@@ -11,6 +11,13 @@ import { CURRENT_REVIEW_PROTOCOL, stageReviewCoverage } from "../../convex/stage
 import type { StageLabelRow, ExportedStageSpec } from "../../convex/stageConsistency";
 import { createStageReviewFixture, configureTrajectoryFixture } from "../../tests/browser/stageReviewFixture";
 import fixtures from "../../tests/fixtures/trajectory-review-fixtures.json";
+import routingV2 from "../../sandbox/data/routing_d1_v2.spec.json";
+import routingV3 from "../../sandbox/data/routing_d1_v3.spec.json";
+import markerV5 from "../../sandbox/data/marker_d2_v5.spec.json";
+import squareV4 from "../../sandbox/data/square_d2_v4.spec.json";
+import routingV4 from "../../sandbox/data/routing_d1_v4.spec.json";
+import markerV6 from "../../sandbox/data/marker_d2_v6.spec.json";
+import squareV5 from "../../sandbox/data/square_d2_v5.spec.json";
 
 GlobalRegistrator.register({ url: "http://localhost/" });
 const { act, cleanup, fireEvent, render } = await import("@testing-library/react");
@@ -36,7 +43,9 @@ function Fixture({ schema = spec, initial = blankTrajectoryReview(schema.traject
 }
 const state = (view: ReturnType<typeof render>) => JSON.parse(view.getByTestId("state").textContent!);
 
-for (const task of fixtures.synthetic.tasks) {
+const positiveTasks = [{ source_name: "marker_d2_v5", spec: markerV5 }, { source_name: "square_d2_v4", spec: squareV4 }, { source_name: "marker_d2_v6", spec: markerV6 }, { source_name: "square_d2_v5", spec: squareV5 }];
+const editorTasks = [...fixtures.synthetic.tasks, { source_name: "routing_d1_v2", spec: routingV2 }, { source_name: "routing_d1_v3", spec: routingV3 }, { source_name: "routing_d1_v4", spec: routingV4 }, ...positiveTasks];
+for (const task of editorTasks) {
   test(`${task.source_name}: every task-defined stage can be captured, retimed and undone`, () => {
     const schema = task.spec as ExportedStageSpec;
     const stages = schema.trajectory!.task_definition.stages.filter((stage) => stage.index > 0);
@@ -295,6 +304,40 @@ test("timestamp precision, navigation guards and source attribution survive the 
   expect(saved.saves[0].prediction_id).toBe("A-prediction-0");
 });
 
+for (const task of positiveTasks) test(`${task.source_name}: new manual milestones save and reload under the new version without certifying actions`, async () => {
+  window.history.replaceState(null, "", `/?episode=0&prediction=A&schema=${encodeURIComponent(task.spec.taxonomy_version)}`);
+  const fixture = createStageReviewFixture();
+  configureTrajectoryFixture(fixture, task.spec.task === "marker_d2" ? "marker_d2_v4" : "square_d2_v3");
+  fixture.state.specRows = [{ taxonomy_version: task.spec.taxonomy_version, live: false, spec: task.spec }];
+  fixture.state.runs = fixture.state.runs.map((run) => ({ ...run, taxonomy_version: task.spec.taxonomy_version, expected_count: 1 }));
+  fixture.state.missingPredictionEpisodes.add(0);
+  fixture.props.dataSource.fetchReviewEpisodes = async () => [0, 1].map((episodeIndex) => ({ episodeIndex, rawLength: 450, dataPath: "test.parquet", perCamera: { side: { fileIndex: 0, fromTimestamp: 0, toTimestamp: 30 } } }));
+  fixture.state.fetchSignals = async () => ({ detectedOutcome: "failure", validLength: 120, lastValidFrame: 119, doneOnsetFrame: null, rewardSpikeFrames: [] });
+  const view = render(<StageReview {...fixture.props} />); await act(async () => {});
+  expect(view.container.textContent).toContain("No model prediction seeded this form.");
+  for (const index of [1, 2, 3]) {
+    fireEvent.change(view.getByRole("combobox", { name: "Stage reached" }), { target: { value: task.spec.trajectory.task_definition.stages[index].id } });
+    fireEvent.keyDown(window, { key: "m" });
+  }
+  fireEvent.click(view.getByRole("radio", { name: "Failure", exact: true }));
+  fireEvent.change(view.getByRole("combobox", { name: "End state" }), { target: { value: task.spec.trajectory.task_definition.finalStates[0].id } });
+  fireEvent.change(view.getByRole("combobox", { name: "Primary failure mode" }), { target: { value: "other" } });
+  await act(async () => fireEvent.click(view.getByRole("button", { name: "Save draft", exact: true })));
+  const saved = fixture.state.saves[0];
+  expect(saved.taxonomy_version).toBe(task.spec.taxonomy_version);
+  expect(saved.review_protocol).toBe(CURRENT_REVIEW_PROTOCOL);
+  expect(saved.prediction_id).toBeUndefined();
+  expect(saved.episode_duration_s).toBe(8);
+  expect(saved.label!.max_stage).toBe(3);
+  expect(saved.label!.stage_transitions.map((item: StageLabelRow) => item.to_stage_index)).toEqual([1, 2, 3]);
+  expect(saved.label!.key_action_observations).toEqual(blankTrajectoryReview(task.spec.trajectory, "org/repo", 0).key_action_observations);
+  view.unmount();
+  const reloaded = render(<StageReview {...fixture.props} />); await act(async () => {});
+  expect((reloaded.getByRole("combobox", { name: "Furthest stage" }) as HTMLSelectElement).value).toBe(task.spec.trajectory.task_definition.stages[3].id);
+  expect((reloaded.getByRole("radio", { name: "Failure", exact: true }) as HTMLInputElement).checked).toBe(true);
+  expect(reloaded.getByRole("region", { name: "Stage labeling" }).textContent).not.toMatch(/key action/i);
+});
+
 for (const task of fixtures.synthetic.tasks) test(`${task.source_name}: source-free annotation waits for verified policy duration without inventing stages`, async () => {
   window.history.replaceState(null, "", "/?episode=0&prediction=A");
   const fixture = createStageReviewFixture(); configureTrajectoryFixture(fixture, task.source_name);
@@ -347,7 +390,7 @@ for (const task of fixtures.synthetic.tasks) {
   });
 }
 
-for (const task of fixtures.synthetic.tasks) test(`${task.source_name}: success filters end states without overwriting a conflicting selection`, () => {
+for (const task of editorTasks) test(`${task.source_name}: success filters end states without overwriting a conflicting selection`, () => {
   const schema = task.spec as ExportedStageSpec;
   const definition = schema.trajectory!.task_definition;
   const initial = { ...blankTrajectoryReview(schema.trajectory!, "test/repo", 0), task_success: false, final_state: definition.finalStates[0].id };
