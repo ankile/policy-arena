@@ -248,6 +248,21 @@ describe("cv2-era backfill of already-applied HF records", () => {
     expect(episodes[0].backfilled_from_hf_sha).toBeUndefined();
   });
 
+  test("an episode whose history ends in a clear is a gap", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(api.reviews.save, { ...service, ...confirmed(0, 3) });
+    await t.mutation(api.reviews.save, {
+      ...service, dataset_repo: REPO, episode_index: 0n, status: "cleared",
+    });
+    await t.mutation(internal.reviews.backfillAppliedRecords, {
+      dataset_repo: REPO, hf_sha: SHA, rows: [mirroredSkip],
+    });
+    const { episodes } = await t.query(api.reviews.latestForRepo, { dataset_repo: REPO });
+    expect(episodes.map((row) => [row.status, row.backfilled_from_hf_sha])).toEqual([["skipped", SHA]]);
+    // Append-only: the cleared history stays.
+    expect(await t.run((ctx) => ctx.db.query("outcomeReviews").collect())).toHaveLength(3);
+  });
+
   test("refuses episodes that already have a row, active applies and malformed rows", async () => {
     const t = convexTest(schema, modules);
     await t.mutation(api.reviews.save, { ...service, ...confirmed(1, 3) });

@@ -13,8 +13,10 @@ archaeology, so `ts` is the time of the HF commit that carried the cv2
 progress record, not the keystroke time):
 
 - real01b-md2-r5-repeat-...-s2026070704 @ ccf86378: 150 progress records
-  (92 changed, 58 skipped). Arena has web rows for ep 7 and 50. For each of
-  the other 148, the newest outcome event is
+  (92 changed, 58 skipped). Arena has web rows for ep 7 and 50; ep 0 has only
+  an e2e-smoke confirm (2026-08-19T04:53Z) that was cleared at 06:40Z, before
+  the first applied job, so it folds to unreviewed and HF keeps the cv2 skip.
+  For each of the other 148, the newest outcome event is
   `{kind: human, agent: ankile, tool: cv2-editor}` at 2026-08-18T19:10:26Z
   (post_sha 9dd53513), and its payload equals the HF record (`{"action":
   "skip"}` for skips).
@@ -32,7 +34,7 @@ tasks have 0 subtask marks); skipped -> `skipped` with no outcome fields.
 
 Rows go through the internal mutation `reviews:backfillAppliedRecords` (via
 `npx convex run` against grandiose-rook-292, like the reconcile script). It
-stamps `backfilled_from_hf_sha`, refuses episodes that already have a row and
+stamps `backfilled_from_hf_sha`, refuses episodes whose newest row is live and
 repos with an active apply job, and does NOT enqueue an apply: the decisions
 are already on HF. The freshness gate (`sir.real.lifecycle.arena_freshness`)
 and the reconcile script treat these rows as applied, and `reviews:save`
@@ -235,8 +237,9 @@ def insert_rows(repo: str, rows: list[dict]) -> None:
         cwd=ARENA_DIR,
         capture_output=True,
         text=True,
-        check=True,
     )
+    if proc.returncode != 0:
+        raise RuntimeError(f"{repo}: convex run failed ({proc.returncode}):\n{proc.stderr[-4000:]}")
     result = json.loads(proc.stdout)
     if result != {"inserted": len(rows)}:
         raise RuntimeError(f"{repo}: expected {len(rows)} inserts, got {result}")

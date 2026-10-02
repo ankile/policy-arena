@@ -356,8 +356,8 @@ export const reattributeScriptedReviews = internalMutation({
  * and the HF commit whose progress record holds the decisions; each row is
  * stamped with that commit in backfilled_from_hf_sha. No apply job is created:
  * the rows already equal HF, and gates treat them as applied by construction.
- * Refuses any episode that already has a review row, and repos with an active
- * apply job.
+ * Refuses any episode whose newest review row is live (not a clear), and repos
+ * with an active apply job.
  */
 export const backfillAppliedRecords = internalMutation({
   args: {
@@ -411,14 +411,20 @@ export const backfillAppliedRecords = internalMutation({
       if (!Number.isFinite(row.saved_at) || row.saved_at <= 0 || row.saved_at >= now) {
         throw new Error(`${where}: saved_at ${row.saved_at} is not a historical timestamp`);
       }
-      const existing = await ctx.db
+      const history = await ctx.db
         .query("outcomeReviews")
         .withIndex("by_repo_episode", (q) =>
           q.eq("dataset_repo", args.dataset_repo).eq("episode_index", row.episode_index)
         )
-        .first();
-      if (existing !== null) {
-        throw new Error(`${where}: already has review ${existing._id}; backfill only fills gaps`);
+        .collect();
+      // A history ending in a clear folds to "unreviewed" (latestForRepo), so
+      // the episode is a gap; any other newest row is a live review.
+      const newest = history.reduce<Doc<"outcomeReviews"> | null>(
+        (a, b) => (a === null || b._creationTime > a._creationTime ? b : a),
+        null
+      );
+      if (newest !== null && newest.status !== "cleared") {
+        throw new Error(`${where}: already has review ${newest._id}; backfill only fills gaps`);
       }
     }
     for (const row of args.rows) {
