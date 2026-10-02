@@ -1,6 +1,7 @@
 import { afterAll, afterEach, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { useCallback, useState } from "react";
+import { getFunctionName } from "convex/server";
 import StageReview from "./StageReview";
 import { TrajectoryStageEditor } from "./review/TrajectoryStageEditor";
 import { TrajectoryStageRail } from "./review/TrajectoryStageRail";
@@ -45,6 +46,49 @@ const state = (view: ReturnType<typeof render>) => JSON.parse(view.getByTestId("
 
 const positiveTasks = [{ source_name: "marker_d2_v5", spec: markerV5 }, { source_name: "square_d2_v4", spec: squareV4 }, { source_name: "marker_d2_v6", spec: markerV6 }, { source_name: "square_d2_v5", spec: squareV5 }];
 const editorTasks = [...fixtures.synthetic.tasks, { source_name: "routing_d1_v2", spec: routingV2 }, { source_name: "routing_d1_v3", spec: routingV3 }, { source_name: "routing_d1_v4", spec: routingV4 }, ...positiveTasks];
+for (const schema of [markerV6, squareV5, routingV4]) test(`${schema.taxonomy_version}: pinned playground uses only the latest definition and hides version navigation`, async () => {
+  window.history.replaceState(null, "", "/?episode=0&prediction=legacy&schema=older-definition");
+  const fixture = createStageReviewFixture();
+  fixture.props.task = schema.task;
+  fixture.state.specRows.push({ taxonomy_version: schema.taxonomy_version, live: false, spec: schema });
+  fixture.state.otherSchemas = [{ taxonomy_version: "older-definition", run_id: "old-run", expected_count: 2, published_at: 1 }];
+  fixture.state.fetchSignals = async () => ({ detectedOutcome: "failure", validLength: 120, lastValidFrame: 119, doneOnsetFrame: null, rewardSpikeFrames: [] });
+  const query = fixture.props.dataSource.useQuery;
+  const versions: string[] = [];
+  fixture.props.dataSource.useQuery = ((reference, args) => {
+    if (args === "skip") return undefined;
+    if (args && typeof args === "object" && "taxonomy_version" in args) versions.push(String(args.taxonomy_version));
+    const name = getFunctionName(reference);
+    if (name === "stagePrefills:forRepo") return [];
+    if (name === "stagePredictions:listForRepo") return { runs: [], active_run_id: null, legacy_count: 0 };
+    return query(reference, args as never);
+  }) as typeof query;
+  const view = render(<StageReview {...fixture.props} fixedTaxonomyVersion={schema.taxonomy_version} />);
+  await act(async () => {});
+  expect(new Set(versions)).toEqual(new Set([schema.taxonomy_version]));
+  expect(view.queryByRole("combobox", { name: "Taxonomy version" })).toBeNull();
+  expect(view.queryByRole("combobox", { name: "Prediction version" })).toBeNull();
+  expect(view.container.textContent).not.toContain("candidate taxonomy");
+  expect(view.container.textContent).not.toContain("separate taxonomy");
+  expect(fixture.state.queries).not.toContain("stagePredictions:otherSchemasForEpisode");
+  const stages = view.getByRole("combobox", { name: "Stage reached" }) as HTMLSelectElement;
+  expect([...stages.options].filter((option) => option.value).map((option) => option.value)).toEqual(schema.trajectory.task_definition.stages.slice(1).map((stage) => stage.id));
+  expect(fixture.state.saves).toHaveLength(0);
+  await act(async () => fireEvent.keyDown(window, { key: "u" }));
+  expect(fixture.state.saves[0].taxonomy_version).toBe(schema.taxonomy_version);
+  expect(fixture.state.saves[0].prediction_id).toBeUndefined();
+});
+
+test("an unavailable pinned definition fails closed instead of falling back to an older live version", async () => {
+  window.history.replaceState(null, "", "/?episode=0&prediction=legacy");
+  const fixture = createStageReviewFixture();
+  const view = render(<StageReview {...fixture.props} fixedTaxonomyVersion="missing-definition" />);
+  await act(async () => {});
+  expect(view.container.textContent).toContain("Required task definition missing-definition is unavailable.");
+  expect(view.queryByRole("combobox", { name: "Stage reached" })).toBeNull();
+  expect(fixture.state.saves).toHaveLength(0);
+});
+
 for (const schema of [markerV6, squareV5, routingV4]) test(`${schema.taxonomy_version}: result colors supplement text and radio selection`, () => {
   const view = render(<Fixture schema={schema as ExportedStageSpec} />);
   const success = view.getByRole("radio", { name: "Success", exact: true }) as HTMLInputElement;

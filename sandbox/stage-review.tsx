@@ -9,8 +9,8 @@ import StageReview from "../src/components/StageReview";
 import { stageReviewDataSource, type StageReviewDataSource } from "../src/lib/stageReviewDataSource";
 import { stageReviewCoverage, SUPPORTED_REVIEW_PROTOCOLS } from "../convex/stageReviewCoverage";
 import ReviewTaskNavigation from "./ReviewTaskNavigation";
-import { reviewSamples, reviewSampleHref } from "./stageReviewSamples";
-import { withLocalStagePreviews } from "./localStagePreviews";
+import { reviewSamples, reviewSampleHref, latestReviewSearch } from "./stageReviewSamples";
+import { withLocalStagePreviews, latestStagePreviews } from "./localStagePreviews";
 import StagePreviewNotice from "./StagePreviewNotice";
 import "../src/index.css";
 
@@ -33,12 +33,8 @@ const subscribe = (listener: () => void) => { listeners.add(listener); return ()
 const refresh = () => { revision++; listeners.forEach((listener) => listener()); };
 const params = new URLSearchParams(window.location.search);
 const sample = reviewSamples.find((s) => s.dataset === params.get("dataset")) ?? reviewSamples[0];
-if (!params.has("dataset")) {
-  params.set("dataset", sample.dataset); params.set("episode", "0");
-  if (sample.prediction) params.set("prediction", sample.prediction);
-  if (sample.schema) params.set("schema", sample.schema);
-  history.replaceState(null, "", `${location.pathname}?${params}`);
-}
+const latestSearch = latestReviewSearch(sample, window.location.search);
+if (latestSearch !== window.location.search) history.replaceState(null, "", `${location.pathname}${latestSearch}`);
 const dataSource: StageReviewDataSource = {
   ...stageReviewDataSource,
   useQuery: ((query, args) => {
@@ -90,6 +86,7 @@ export default function Playground() {
     {storageError && <p role="alert" className="text-coral">{storageError}</p>}
     <StagePreviewNotice task={sample.task} />
     <StageReview repoId={sample.dataset} task={sample.task} dataSource={dataSource}
+      fixedTaxonomyVersion={latestStagePreviews[sample.task].taxonomy_version}
       onExit={() => { window.location.href = "/sandbox/stage-review.html"; }}
       onOpenOutcomeReview={() => window.open(`https://policy-eval.ankile.com/?tab=explorer&dataset=${encodeURIComponent(sample.dataset)}&view=outcome`, "_blank", "noopener")} />
   </main>;

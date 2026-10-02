@@ -2,7 +2,7 @@ import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import ReviewTaskNavigation from "./ReviewTaskNavigation";
 import StagePreviewNotice from "./StagePreviewNotice";
-import { reviewSamples, reviewSampleHref, type ReviewSample } from "./stageReviewSamples";
+import { reviewSamples, reviewSampleHref, latestReviewSearch, type ReviewSample } from "./stageReviewSamples";
 import { latestStagePreviews } from "./localStagePreviews";
 
 GlobalRegistrator.register({ url: "http://localhost/" });
@@ -12,9 +12,10 @@ afterAll(() => GlobalRegistrator.unregister());
 
 for (const task of ["marker_d2", "square_d2", "routing_d1"] as const) test(`${task}: task guide keeps definitions available but collapsed by default`, () => {
   const spec = latestStagePreviews[task];
-  window.history.replaceState({}, "", `?schema=${encodeURIComponent(spec.taxonomy_version)}`);
+  window.history.replaceState({}, "", "?schema=older-definition");
   const view = render(<StagePreviewNotice task={task} />);
-  const guide = view.getByText(`Task guide · ${spec.trajectory.task_definition.taxonomyVersion}`).closest("details")!;
+  const guide = view.getByText("Task guide").closest("details")!;
+  expect(view.queryByRole("link")).toBeNull();
   expect(guide.open).toBe(false);
   fireEvent.click(guide.querySelector("summary")!);
   expect(guide.open).toBe(true);
@@ -25,6 +26,25 @@ for (const task of ["marker_d2", "square_d2", "routing_d1"] as const) test(`${ta
 });
 
 describe("playground task navigation", () => {
+  for (const sample of reviewSamples) test(`${sample.datasetName}: old links open the latest definition without reusing incompatible predictions`, () => {
+    const latest = latestStagePreviews[sample.task].taxonomy_version;
+    for (const schema of ["", "old-version", "typo"]) {
+      const original = new URLSearchParams({ dataset: sample.dataset, episode: "11", prediction: "old-run", schema, sstatus: "all" });
+      const normalized = new URLSearchParams(latestReviewSearch(sample, `?${original}`));
+      expect(normalized.get("schema")).toBe(latest);
+      expect(normalized.get("prediction")).toBe("legacy");
+      expect(normalized.get("episode")).toBe("11");
+      expect(normalized.get("dataset")).toBe(sample.dataset);
+      expect(normalized.get("sstatus")).toBe("all");
+      expect(original.get("prediction")).toBe("old-run");
+    }
+    const current = new URLSearchParams({ dataset: sample.dataset, episode: "11", prediction: "current-run", schema: latest });
+    expect(latestReviewSearch(sample, `?${current}`)).toBe(`?${current}`);
+    const defaults = new URLSearchParams(latestReviewSearch(sample, ""));
+    expect(defaults.get("schema")).toBe(latest);
+    expect(defaults.get("dataset")).toBe(sample.dataset);
+    expect(defaults.get("episode")).toBe("0");
+  });
   for (const current of reviewSamples) {
     test(`one Routing task, including when opening ${current.datasetName}`, () => {
       const selections: ReviewSample[] = [];

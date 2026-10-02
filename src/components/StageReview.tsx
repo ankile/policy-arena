@@ -130,6 +130,7 @@ export default function StageReview({
   onExit,
   onOpenOutcomeReview,
   dataSource = stageReviewDataSource,
+  fixedTaxonomyVersion,
 }: {
   repoId: string;
   task?: string;
@@ -137,6 +138,8 @@ export default function StageReview({
   /** Jump to outcome review for this dataset (episode param carries over). */
   onOpenOutcomeReview: () => void;
   dataSource?: StageReviewDataSource;
+  /** Pin a curated labeling surface to one definition, without version controls. */
+  fixedTaxonomyVersion?: string;
 }) {
   const { useQuery, useMutation, usePaginatedQuery, fetchAppliedProgress,
     fetchEpisodeFrameSignals, fetchLabelHistory, fetchLedgerArms, fetchReviewEpisodes } = dataSource;
@@ -155,23 +158,26 @@ export default function StageReview({
   // A stale/typo'd ?schema= must not strand the surface on a loading card
   // with no selector on screen — fall back to the live row, loudly.
   const schemaFellBack = Boolean(
-    schemaParam && specRows !== undefined &&
+    !fixedTaxonomyVersion && schemaParam && specRows !== undefined &&
       !specRows.some((row) => row.taxonomy_version === schemaParam)
   );
   const specRow =
-    (schemaParam && !schemaFellBack
+    (fixedTaxonomyVersion ? specRows?.find((row) => row.taxonomy_version === fixedTaxonomyVersion)
+      : schemaParam && !schemaFellBack
       ? specRows?.find((row) => row.taxonomy_version === schemaParam)
       : liveRow) ?? null;
+  const specRowsLoaded = specRows !== undefined;
   // A malformed spec payload must render as a banner, not a render-throw that
   // white-screens the app (there is no ErrorBoundary above us).
   const specResult = useMemo<{ spec: ExportedStageSpec | null; error: string | null }>(() => {
-    if (!specRow) return { spec: null, error: null };
+    if (!specRow) return { spec: null, error: fixedTaxonomyVersion && specRowsLoaded
+      ? `Required task definition ${fixedTaxonomyVersion} is unavailable.` : null };
     try {
       return { spec: normalizeStageSpec(specRow.spec), error: null };
     } catch (err) {
       return { spec: null, error: (err as Error).message };
     }
-  }, [specRow]);
+  }, [specRow, fixedTaxonomyVersion, specRowsLoaded]);
   const spec = specResult.spec;
   const taxonomyVersion = spec?.taxonomy_version ?? null;
 
@@ -238,7 +244,7 @@ export default function StageReview({
   const [armFilter, setArmFilter] = useSearchParam("sarm", "all");
   const [selectedEpisode, setSelectedEpisode] = useSearchParamNumber("episode");
   const otherSchemaPredictions = useQuery(api.stagePredictions.otherSchemasForEpisode,
-    task && taxonomyVersion && selectedEpisode !== null && Number.isSafeInteger(selectedEpisode) && selectedEpisode >= 0
+    !fixedTaxonomyVersion && task && taxonomyVersion && selectedEpisode !== null && Number.isSafeInteger(selectedEpisode) && selectedEpisode >= 0
       ? { dataset_repo: repoId, task, taxonomy_version: taxonomyVersion, episode_index: BigInt(selectedEpisode) } : "skip");
 
   // -- HF loads ---------------------------------------------------------------
@@ -1321,7 +1327,7 @@ export default function StageReview({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 min-w-0">
-          {specRows && specRows.length > 1 && (
+          {!fixedTaxonomyVersion && specRows && specRows.length > 1 && (
             <select
               value={spec.taxonomy_version}
               onChange={(e) => {
@@ -1344,7 +1350,7 @@ export default function StageReview({
               ))}
             </select>
           )}
-          <label className="flex flex-col gap-1 text-[10px] font-mono text-ink-muted">
+          {(!fixedTaxonomyVersion || predictionVersions === undefined || predictionVersions.runs.length > 0 || predictionSelection?.error) && <label className="flex flex-col gap-1 text-[10px] font-mono text-ink-muted">
             Prediction version
             <select
               aria-label="Prediction version"
@@ -1366,8 +1372,8 @@ export default function StageReview({
                 </option>
               ))}
             </select>
-          </label>
-          {!specRow?.live && (
+          </label>}
+          {!fixedTaxonomyVersion && !specRow?.live && (
             <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gold-light text-gold">
               candidate taxonomy
             </span>
@@ -1400,7 +1406,7 @@ export default function StageReview({
         </div>
       </div>
 
-      {otherSchemaPredictions && otherSchemaPredictions.length > 0 && <div className="px-6 py-2 border-b border-warm-200 text-xs text-ink-muted">
+      {!fixedTaxonomyVersion && otherSchemaPredictions && otherSchemaPredictions.length > 0 && <div className="px-6 py-2 border-b border-warm-200 text-xs text-ink-muted">
         This episode also has predictions under a separate taxonomy:
         {otherSchemaPredictions.map((available) => <button key={available.taxonomy_version}
           className="ml-2 text-teal underline disabled:opacity-40" disabled={saving}

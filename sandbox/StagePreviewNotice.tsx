@@ -1,13 +1,11 @@
-import { useSearchParam } from "../src/lib/useSearchParam";
-import { latestStagePreviews, stagePreviewHref, type PreviewTask } from "./localStagePreviews";
+import { latestStagePreviews, type PreviewTask } from "./localStagePreviews";
 
 export default function StagePreviewNotice({ task }: { task: PreviewTask }) {
-  const [schema] = useSearchParam("schema", "");
   const candidate = latestStagePreviews[task];
   const definition = candidate.trajectory.task_definition;
   return <aside className="mb-3 text-sm" aria-label="Task definition version">
-    {schema === candidate.taxonomy_version ? <details>
-        <summary className="cursor-pointer text-teal">Task guide · {definition.taxonomyVersion}</summary>
+    <details>
+        <summary className="cursor-pointer text-teal">Task guide</summary>
         <p className="mt-2">{definition.stages.filter((stage) => stage.index > 0).map((stage) => `S${stage.index} ${stage.name}`).join(" → ")}</p>
         <p className="mt-2">{task === "routing_d1"
           ? "Success requires both clips to stay seated, not just release."
@@ -26,9 +24,5 @@ export default function StagePreviewNotice({ task }: { task: PreviewTask }) {
           ))}
         </div>
       </details>
-     : <>
-      <span className="text-ink-muted">Earlier task definition. </span>
-      <a className="text-teal underline" href={stagePreviewHref(task, window.location.search)}>Try {definition.taxonomyVersion}</a>
-    </>}
   </aside>;
 }

@@ -27,7 +27,13 @@ a copy before changing origins; automatic import/sync is not provided.
 
 ## Try the workflow
 
-1. Choose a task, episode, and prediction version. Routing's dataset selector
+1. Choose a task and episode. The playground always uses the latest bundled
+   definition (Marker v6, Square nut v5, Routing v4), without a version selector
+   or links to older definitions. Older URLs keep their episode but open the
+   latest definition without reusing an incompatible model prediction. Earlier
+   saved annotations remain intact under their original definition and in local
+   exports; nothing is migrated. Compatible prediction choices appear only when
+   model runs are available. Routing's dataset selector
    also offers the UMI-relative dataset for annotation from scratch.
 2. Play or scrub the synchronized cameras. Use **−1 frame / +1 frame**,
    slower playback, or **Enlarge** on the camera with the clearest evidence.

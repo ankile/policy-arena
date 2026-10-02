@@ -11,7 +11,8 @@ export type ReviewSample = {
 
 // A sample is a dataset, not a separate task or annotation mode. Keep the
 // original dataset identities. New task navigation opens the latest candidate
-// explicitly; existing URLs keep their original taxonomy and predictions/reviews.
+// explicitly. Opening an older link uses the latest definition without remapping
+// its historical predictions or saved reviews.
 export const reviewSamples: readonly ReviewSample[] = [
   { task: "routing_d1", taskName: "Routing", datasetName: "R8 · 3-arm evaluation", dataset: "ankile/real01b-routing-d1-r8-threearm-checkpoint100000-iql-g0997-n32-heldout-sobol50", prediction: "legacy", schema: latestStagePreviews.routing_d1.taxonomy_version },
   { task: "marker_d2", taskName: "Marker", datasetName: "R5 · repeat evaluation", dataset: "ankile/real01b-md2-r5-repeat-base-dp-filmtiidk4-c200k-n32-s2026070704", prediction: "legacy", schema: latestStagePreviews.marker_d2.taxonomy_version },
@@ -26,4 +27,18 @@ export function reviewSampleHref(sample: ReviewSample) {
     ...(sample.prediction ? { prediction: sample.prediction } : {}),
     ...(sample.schema ? { schema: sample.schema } : {}),
   })}`;
+}
+
+/** Normalize navigation only. Stored reviews and prediction records are untouched. */
+export function latestReviewSearch(sample: ReviewSample, search: string) {
+  const params = new URLSearchParams(search);
+  const latest = latestStagePreviews[sample.task].taxonomy_version;
+  if (!params.has("dataset")) {
+    params.set("dataset", sample.dataset);
+    params.set("episode", "0");
+  }
+  // Never carry an older definition's prediction into the new form.
+  if (params.get("schema") !== latest) params.set("prediction", "legacy");
+  params.set("schema", latest);
+  return `?${params}`;
 }
