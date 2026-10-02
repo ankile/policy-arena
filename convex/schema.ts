@@ -158,6 +158,12 @@ export default defineSchema({
     // the apply records it as label-history source.tool. Absent means an
     // interactive web review.
     source_tool: v.optional(v.string()),
+    // Set only on rows inserted AFTER the fact to mirror a decision that was
+    // already in HF `.outcome_edit_progress.json` at this commit (cv2-era
+    // edits; reviews:backfillAppliedRecords). Such a row was never an input to
+    // an apply job yet is applied by construction: freshness/reconcile gates
+    // must not read it as pending, and it cannot be cleared.
+    backfilled_from_hf_sha: v.optional(v.string()),
     saved_at: v.float64(),
   })
     .index("by_repo", ["dataset_repo"])

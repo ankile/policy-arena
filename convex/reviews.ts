@@ -68,6 +68,39 @@ export const saveNotes = mutation({
 const OUTCOMES = ["success", "failure", "timeout"] as const;
 const STATUSES = ["confirmed", "skipped", "cleared"] as const;
 
+/** Field contract shared by every outcome-review insert path. */
+function validateDecision(args: {
+  status: string;
+  new_outcome?: string;
+  outcome_frame?: bigint;
+  subtask_frames?: bigint[];
+}): void {
+  if (!(STATUSES as readonly string[]).includes(args.status)) {
+    throw new Error(`Invalid review status: ${args.status}`);
+  }
+  if (args.status === "confirmed") {
+    if (
+      args.new_outcome === undefined ||
+      !(OUTCOMES as readonly string[]).includes(args.new_outcome)
+    ) {
+      throw new Error(
+        `Confirmed review requires new_outcome in ${OUTCOMES.join("/")}, got ${args.new_outcome}`
+      );
+    }
+    if (args.outcome_frame === undefined || args.outcome_frame < BigInt(0)) {
+      throw new Error("Confirmed review requires a non-negative outcome_frame");
+    }
+  } else {
+    if (
+      args.new_outcome !== undefined ||
+      args.outcome_frame !== undefined ||
+      args.subtask_frames !== undefined
+    ) {
+      throw new Error(`A ${args.status} review must not carry outcome fields`);
+    }
+  }
+}
+
 /**
  * Outcome reviews are APPEND-ONLY: every save inserts a row, and readers fold
  * to the latest row per (dataset_repo, episode_index). This preserves a full
@@ -99,30 +132,7 @@ export const save = mutation({
   },
   handler: async (ctx, args) => {
     const principal = await requireEditorOrService(ctx, args.serviceToken);
-    if (!(STATUSES as readonly string[]).includes(args.status)) {
-      throw new Error(`Invalid review status: ${args.status}`);
-    }
-    if (args.status === "confirmed") {
-      if (
-        args.new_outcome === undefined ||
-        !(OUTCOMES as readonly string[]).includes(args.new_outcome)
-      ) {
-        throw new Error(
-          `Confirmed review requires new_outcome in ${OUTCOMES.join("/")}, got ${args.new_outcome}`
-        );
-      }
-      if (args.outcome_frame === undefined || args.outcome_frame < BigInt(0)) {
-        throw new Error("Confirmed review requires a non-negative outcome_frame");
-      }
-    } else {
-      if (
-        args.new_outcome !== undefined ||
-        args.outcome_frame !== undefined ||
-        args.subtask_frames !== undefined
-      ) {
-        throw new Error(`A ${args.status} review must not carry outcome fields`);
-      }
-    }
+    validateDecision(args);
     if (args.status === "cleared") {
       // Clearing an ALREADY-APPLIED decision is a trap: the HF edit stays in
       // place, the episode folds out of latestForRepo, and the next apply
@@ -137,6 +147,13 @@ export const save = mutation({
       const newest = latest
         .filter((row) => row.status !== "cleared")
         .sort((a, b) => b.saved_at - a.saved_at)[0];
+      if (newest?.backfilled_from_hf_sha !== undefined) {
+        throw new Error(
+          `This decision mirrors the HF record at ${newest.backfilled_from_hf_sha} (a cv2-era ` +
+            "edit) — clearing cannot revert it. Re-review the episode (confirm the corrected " +
+            "outcome) and commit again instead."
+        );
+      }
       if (newest !== undefined) {
         const jobs = await ctx.db
           .query("applyJobs")
@@ -328,6 +345,98 @@ export const reattributeScriptedReviews = internalMutation({
       await ctx.db.patch(row._id, { reviewer: args.reviewer, source_tool: args.source_tool });
     }
     return rows.length;
+  },
+});
+
+/**
+ * Insert review rows that MIRROR decisions already applied to HF outside the
+ * web flow (cv2-era `sir/tools/outcome_editor.py` edits), so the Arena fold
+ * covers every record in `.outcome_edit_progress.json`. The caller supplies
+ * the historical reviewer, source_tool and saved_at (from `.label_history.jsonl`)
+ * and the HF commit whose progress record holds the decisions; each row is
+ * stamped with that commit in backfilled_from_hf_sha. No apply job is created:
+ * the rows already equal HF, and gates treat them as applied by construction.
+ * Refuses any episode that already has a review row, and repos with an active
+ * apply job.
+ */
+export const backfillAppliedRecords = internalMutation({
+  args: {
+    dataset_repo: v.string(),
+    hf_sha: v.string(),
+    rows: v.array(
+      v.object({
+        episode_index: v.int64(),
+        status: v.string(),
+        new_outcome: v.optional(v.string()),
+        outcome_frame: v.optional(v.int64()),
+        soft_truncate: v.optional(v.boolean()),
+        subtask_frames: v.optional(v.array(v.int64())),
+        reviewer: v.string(),
+        source_tool: v.string(),
+        saved_at: v.float64(),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    if (!/^[0-9a-f]{40}$/.test(args.hf_sha)) {
+      throw new Error(`hf_sha must be a full 40-hex commit sha, got ${args.hf_sha}`);
+    }
+    if (args.rows.length === 0) throw new Error("No rows to backfill");
+    const episodes = args.rows.map((row) => row.episode_index.toString());
+    if (new Set(episodes).size !== episodes.length) {
+      throw new Error("rows contain duplicate episode_index values");
+    }
+    const jobs = await ctx.db
+      .query("applyJobs")
+      .withIndex("by_repo", (q) => q.eq("dataset_repo", args.dataset_repo))
+      .collect();
+    const active = jobs.find((job) => job.status === "pending" || job.status === "applying");
+    if (active) {
+      throw new Error(`Apply job ${active._id} for ${args.dataset_repo} is ${active.status}`);
+    }
+    const now = Date.now();
+    for (const row of args.rows) {
+      const where = `${args.dataset_repo} episode ${row.episode_index}`;
+      if (row.status === "cleared") throw new Error(`${where}: a backfill cannot be a clear`);
+      validateDecision(row);
+      if (row.status === "confirmed" && row.soft_truncate === undefined) {
+        throw new Error(`${where}: a confirmed backfill must state soft_truncate explicitly`);
+      }
+      if (row.status === "skipped" && row.soft_truncate !== undefined) {
+        throw new Error(`${where}: a skipped backfill must not carry soft_truncate`);
+      }
+      if (!row.reviewer.trim() || !row.source_tool.trim()) {
+        throw new Error(`${where}: reviewer and source_tool must be non-empty`);
+      }
+      if (!Number.isFinite(row.saved_at) || row.saved_at <= 0 || row.saved_at >= now) {
+        throw new Error(`${where}: saved_at ${row.saved_at} is not a historical timestamp`);
+      }
+      const existing = await ctx.db
+        .query("outcomeReviews")
+        .withIndex("by_repo_episode", (q) =>
+          q.eq("dataset_repo", args.dataset_repo).eq("episode_index", row.episode_index)
+        )
+        .first();
+      if (existing !== null) {
+        throw new Error(`${where}: already has review ${existing._id}; backfill only fills gaps`);
+      }
+    }
+    for (const row of args.rows) {
+      await ctx.db.insert("outcomeReviews", {
+        dataset_repo: args.dataset_repo,
+        episode_index: row.episode_index,
+        status: row.status,
+        new_outcome: row.new_outcome,
+        outcome_frame: row.outcome_frame,
+        soft_truncate: row.soft_truncate,
+        subtask_frames: row.subtask_frames,
+        reviewer: row.reviewer,
+        source_tool: row.source_tool,
+        backfilled_from_hf_sha: args.hf_sha,
+        saved_at: row.saved_at,
+      });
+    }
+    return { inserted: args.rows.length };
   },
 });
 

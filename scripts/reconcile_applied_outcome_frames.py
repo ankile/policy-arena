@@ -13,6 +13,9 @@ is outcome_frame AND the snap rule explains it: the Arena frame is the
 episode's terminal frame (length - 1), the HF frame is earlier, and the HF
 frame is the episode's last is_valid=1 frame at `main`. Every other
 difference is printed and left alone, and the script exits nonzero.
+Rows with `backfilled_from_hf_sha` (cv2-era decisions mirrored by
+backfill_missing_review_rows.py) are applied by construction, so they are
+compared against HF whatever their creation time.
 
 Patches go through `npx convex run` against the dev deployment
 (grandiose-rook-292), the same internal mutation the apply worker calls.
@@ -152,7 +155,8 @@ def reconcile_repo(arena: ConvexClient, hf: HfApi, fs: HfFileSystem, repo: str) 
         ep = as_int(row["episode_index"])
         arena_eps.add(ep)
         tag = f"ep {ep} ({row['status']} by {row['reviewer']})"
-        if cutoff is None or float(row["_creationTime"]) > cutoff:
+        mirror = row.get("backfilled_from_hf_sha") is not None
+        if not mirror and (cutoff is None or float(row["_creationTime"]) > cutoff):
             report.issues.append(f"{tag}: unapplied (saved after the last applied job claim)")
             continue
         if row["status"] == "skipped":

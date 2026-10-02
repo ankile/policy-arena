@@ -91,6 +91,12 @@ internal.applyWorker.run)`; there is NO polling worker anymore.
   the next apply). Audit/repair Arena-vs-HF drift with
   `uv run python deps/policy_arena/scripts/reconcile_applied_outcome_frames.py`
   from the sir repo (dry run by default, `--apply` patches frame snaps only).
+- cv2-era decisions (made with `sir/tools/outcome_editor.py` before the web
+  flow) are mirrored as review rows by `scripts/backfill_missing_review_rows.py`
+  via internal `reviews:backfillAppliedRecords`: historical reviewer/saved_at
+  from `.label_history.jsonl`, `backfilled_from_hf_sha` stamped, no apply job.
+  Such rows are applied by construction — the freshness gate and reconcile
+  script never read them as pending, and `reviews:save` refuses to clear them.
 - Label-history provenance: `source = {kind: "human", agent: reviewer,
   tool: source_tool ?? "web-review"}`. Scripted saves pass
   `reviewer_override=<human>` + `source_tool=<rule and script path>`

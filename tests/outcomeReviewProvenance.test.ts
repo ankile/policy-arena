@@ -203,3 +203,72 @@ describe("applied outcome_frame write-back", () => {
     expect(await t.query(api.reviews.reviewedRepos, {})).toEqual(["test/a", REPO]);
   });
 });
+
+describe("cv2-era backfill of already-applied HF records", () => {
+  const SHA = "a".repeat(40);
+  const HISTORICAL = Date.parse("2026-08-18T19:10:26+00:00");
+  const base = { reviewer: "ankile", source_tool: "cv2-editor (backfill)", saved_at: HISTORICAL };
+  const mirroredChange = {
+    ...base, episode_index: 1n, status: "confirmed", new_outcome: "success",
+    outcome_frame: 545n, soft_truncate: false,
+  };
+  const mirroredSkip = { ...base, episode_index: 0n, status: "skipped" };
+
+  test("rows mirror the progress record exactly and carry the HF sha", async () => {
+    const t = convexTest(schema, modules);
+    expect(await t.mutation(internal.reviews.backfillAppliedRecords, {
+      dataset_repo: REPO, hf_sha: SHA, rows: [mirroredChange, mirroredSkip],
+    })).toEqual({ inserted: 2 });
+    const { episodes } = await t.query(api.reviews.latestForRepo, { dataset_repo: REPO });
+    expect(episodes.map((row) => [row.backfilled_from_hf_sha, row.saved_at, row.reviewer])).toEqual([
+      [SHA, HISTORICAL, "ankile"], [SHA, HISTORICAL, "ankile"],
+    ]);
+    // The overlay a later apply would build equals the HF record: no
+    // subtask_frames key (0-mark cv2 record), skip listed as a skip.
+    expect(buildOverlay(episodes)).toEqual({
+      changed_episodes: { "1": { new_outcome: "success", outcome_frame: 545, soft_truncate: false } },
+      skipped_episodes: [0],
+    });
+    expect(labelSourcesByEpisode(episodes).get(1)).toEqual({
+      kind: "human", agent: "ankile", tool: "cv2-editor (backfill)",
+    });
+  });
+
+  test("a backfilled decision cannot be cleared", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.reviews.backfillAppliedRecords, {
+      dataset_repo: REPO, hf_sha: SHA, rows: [mirroredChange],
+    });
+    await expect(t.mutation(api.reviews.save, {
+      ...service, dataset_repo: REPO, episode_index: 1n, status: "cleared",
+    })).rejects.toThrow("mirrors the HF record");
+    // Re-reviewing is still the correction path.
+    await t.mutation(api.reviews.save, { ...service, ...confirmed(1, 3) });
+    const { episodes } = await t.query(api.reviews.latestForRepo, { dataset_repo: REPO });
+    expect(episodes[0].backfilled_from_hf_sha).toBeUndefined();
+  });
+
+  test("refuses episodes that already have a row, active applies and malformed rows", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(api.reviews.save, { ...service, ...confirmed(1, 3) });
+    const backfill = (rows: Array<Record<string, unknown>>, hf_sha = SHA) =>
+      t.mutation(internal.reviews.backfillAppliedRecords, {
+        dataset_repo: REPO, hf_sha, rows: rows as never,
+      });
+    await expect(backfill([mirroredSkip, mirroredChange])).rejects.toThrow("backfill only fills gaps");
+    expect(await t.run((ctx) => ctx.db.query("outcomeReviews").collect())).toHaveLength(1);
+    await expect(backfill([mirroredSkip], "abc")).rejects.toThrow("40-hex");
+    await expect(backfill([mirroredSkip, mirroredSkip])).rejects.toThrow("duplicate");
+    await expect(backfill([{ ...mirroredSkip, saved_at: Date.now() + 60_000 }]))
+      .rejects.toThrow("not a historical timestamp");
+    const noSoft: Record<string, unknown> = { ...mirroredChange, episode_index: 2n };
+    delete noSoft.soft_truncate;
+    await expect(backfill([noSoft])).rejects.toThrow("soft_truncate explicitly");
+    await expect(backfill([{ ...mirroredSkip, outcome_frame: 3n }])).rejects.toThrow("must not carry");
+    await expect(backfill([{ ...mirroredSkip, status: "cleared" }])).rejects.toThrow("cannot be a clear");
+    await t.run((ctx) => ctx.db.insert("applyJobs", {
+      dataset_repo: REPO, status: "applying", requested_by: "ankile", requested_at: 1,
+    }));
+    await expect(backfill([mirroredSkip])).rejects.toThrow("is applying");
+  });
+});
