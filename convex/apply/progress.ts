@@ -10,7 +10,8 @@
  * an empty list); records from 0-mark sessions never carry the key.
  */
 
-import { dumpsIndent2 } from "./pyjson";
+import { dumpsIndent2, loadsPy } from "./pyjson";
+import type { Json } from "./pyjson";
 
 export const PROGRESS_FILENAME = ".outcome_edit_progress.json";
 export const OUTCOME_NAMES = ["success", "failure", "timeout"] as const;
@@ -23,9 +24,20 @@ export interface ChangedRecord {
   subtask_frames?: number[];
 }
 
+/**
+ * changed_episodes is a Map: the file is written without sort_keys, so its key
+ * order is Python dict insertion order (a re-review keeps its slot, a review
+ * after a skip appends). A plain object would enumerate the integer-like keys
+ * ascending and rewrite the file on every apply.
+ */
 export interface ProgressRecord {
-  changed_episodes: Record<string, ChangedRecord>;
+  changed_episodes: Map<string, ChangedRecord>;
   skipped_episodes: number[];
+  /** Any other top-level keys of the loaded file, in file order (load_progress
+   * keeps them and save_progress writes them back). */
+  extra?: Map<string, Json>;
+  /** Top-level key order of the loaded file. */
+  keyOrder?: string[];
 }
 
 export interface Overlay {
@@ -128,16 +140,45 @@ export function outcomeFrameWritebacks<Id>(
  * were all migrated cv2-era; a legacy file alongside a missing progress file
  * would need the deprecated Python editor — fail loud instead). */
 export function loadProgress(text: string | null): ProgressRecord {
-  if (text === null) return { changed_episodes: {}, skipped_episodes: [] };
-  const parsed = JSON.parse(text) as Partial<ProgressRecord>;
+  if (text === null) return { changed_episodes: new Map(), skipped_episodes: [] };
+  const parsed = loadsPy(text, { dictsAsMaps: true });
+  if (!(parsed instanceof Map)) throw new Error(`${PROGRESS_FILENAME}: top level is not an object`);
+  const changed = parsed.get("changed_episodes") ?? new Map<string, Json>();
+  if (!(changed instanceof Map)) throw new Error(`${PROGRESS_FILENAME}: changed_episodes is not an object`);
+  const skipped = parsed.get("skipped_episodes") ?? [];
+  if (!Array.isArray(skipped)) throw new Error(`${PROGRESS_FILENAME}: skipped_episodes is not a list`);
   return {
-    changed_episodes: parsed.changed_episodes ?? {},
-    skipped_episodes: parsed.skipped_episodes ?? [],
+    // Entry records keep their own key order (non-integer keys: a plain object
+    // preserves it).
+    changed_episodes: new Map(
+      [...changed.entries()].map(([ep, rec]) => {
+        if (!(rec instanceof Map)) throw new Error(`${PROGRESS_FILENAME}: episode ${ep} record is not an object`);
+        return [ep, Object.fromEntries(rec) as unknown as ChangedRecord];
+      })
+    ),
+    skipped_episodes: skipped as number[],
+    extra: new Map([...parsed.entries()].filter(([k]) => k !== "changed_episodes" && k !== "skipped_episodes")),
+    keyOrder: [...parsed.keys()],
   };
 }
 
+/** Progress record from a plain changed_episodes object (tests, fixtures). */
+export function progressRecord(
+  changed: Record<string, ChangedRecord>,
+  skipped: number[] = []
+): ProgressRecord {
+  return { changed_episodes: new Map(Object.entries(changed)), skipped_episodes: skipped };
+}
+
+/** save_progress: json.dump(indent=2) of the loaded dict — file key order, with
+ * load_progress's setdefault keys appended when the file lacked them. */
 export function serializeProgress(progress: ProgressRecord): string {
-  return dumpsIndent2(progress as never);
+  const values = new Map<string, Json>(progress.extra ?? []);
+  values.set("changed_episodes", progress.changed_episodes as unknown as Map<string, Json>);
+  values.set("skipped_episodes", progress.skipped_episodes);
+  const order = [...(progress.keyOrder ?? [])];
+  for (const key of ["changed_episodes", "skipped_episodes"]) if (!order.includes(key)) order.push(key);
+  return dumpsIndent2(new Map(order.map((k) => [k, values.get(k)!])));
 }
 
 function removeSkipped(progress: ProgressRecord, epIdx: number): void {
@@ -165,11 +206,12 @@ export function markEpisodeChanged(
   if (record.subtask_reviewed || record.subtask_frames.length > 0) {
     entry.subtask_frames = [...new Set(record.subtask_frames)].sort((a, b) => a - b);
   }
-  progress.changed_episodes[String(epIdx)] = entry;
+  // Map.set keeps an existing key's slot — Python dict assignment semantics.
+  progress.changed_episodes.set(String(epIdx), entry);
 }
 
 export function markEpisodeSkipped(progress: ProgressRecord, epIdx: number): void {
-  delete progress.changed_episodes[String(epIdx)];
+  progress.changed_episodes.delete(String(epIdx));
   removeSkipped(progress, epIdx);
   progress.skipped_episodes.push(epIdx);
 }

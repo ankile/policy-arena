@@ -122,8 +122,7 @@ export function applyOutcomeEdits(
   progress: ProgressRecord,
   subtaskMarks: number
 ): boolean {
-  const changed = progress.changed_episodes;
-  const entries = Object.entries(changed);
+  const entries = [...progress.changed_episodes.entries()];
   if (entries.length === 0) return false;
 
   for (const [epStr, info] of entries) {

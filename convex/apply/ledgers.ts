@@ -4,6 +4,8 @@
  */
 
 import type { OutcomeName } from "./progress";
+import { dumpsSorted, loadsPy } from "./pyjson";
+import type { Json } from "./pyjson";
 
 export const DEFAULT_LEDGER_NAMES = [
   "meta/blind_dagger_ledger.jsonl",
@@ -17,17 +19,19 @@ function loadJsonlRows(text: string, path: string): LedgerRow[] {
   const rows: LedgerRow[] = [];
   for (const line of text.split("\n")) {
     if (!line.trim()) continue;
-    rows.push(JSON.parse(line) as LedgerRow);
+    const row = loadsPy(line);
+    if (typeof row !== "object" || row === null || Array.isArray(row)) {
+      throw new Error(`${path}: ledger row must be a JSON object`);
+    }
+    rows.push(row as LedgerRow);
   }
   if (rows.length === 0) throw new Error(`${path}: ledger file has no rows`);
   return rows;
 }
 
 function writeJsonlRows(rows: LedgerRow[]): string {
-  // Python _write_jsonl_rows uses json.dumps defaults (insertion key order,
-  // ", "/": " separators); JSON.stringify preserves key order but not the
-  // spacing. Values are what matter; rows stay one-per-line.
-  return rows.map((r) => JSON.stringify(r)).join("\n") + "\n";
+  // Python _write_jsonl_rows: json.dumps(row, sort_keys=True) per line.
+  return rows.map((r) => dumpsSorted(r as Json) + "\n").join("");
 }
 
 /**

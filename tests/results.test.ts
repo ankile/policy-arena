@@ -7,6 +7,7 @@ import {
   liveSubtaskFramesByEpisode,
   subtaskFramesForValidation,
 } from "../convex/apply/results";
+import { progressRecord } from "../convex/apply/progress";
 
 // Rollout rows as save_results_file writes them: live 'g' marks land in
 // subtask_frames; an older row has no key at all.
@@ -32,7 +33,7 @@ describe("live subtask marks from results.json", () => {
 
   test("unreviewed episodes keep their live marks", () => {
     const out = subtaskFramesForValidation(
-      { changed_episodes: {}, skipped_episodes: [] },
+      progressRecord({}),
       livePayload()
     );
     expect([...out]).toEqual([
@@ -42,17 +43,14 @@ describe("live subtask marks from results.json", () => {
   });
 
   test("the review record overrides live marks per episode", () => {
-    const progress = {
-      changed_episodes: {
+    const progress = progressRecord({
         // Reviewed with a MOVED mark: the record wins over the live frame.
         "0": { new_outcome: "failure" as const, outcome_frame: 9, soft_truncate: false, subtask_frames: [5] },
         // Reviewed, marks cleared: apply zeroed the live spike, so none tolerated.
         "1": { new_outcome: "failure" as const, outcome_frame: 11, soft_truncate: false, subtask_frames: [] },
         // Pre-subtask record (no key): same as cleared.
         "3": { new_outcome: "failure" as const, outcome_frame: 7, soft_truncate: false },
-      },
-      skipped_episodes: [],
-    };
+      });
     expect([...subtaskFramesForValidation(progress, livePayload())]).toEqual([[0, [5]]]);
     // Record-only (collection datasets have no results.json).
     expect([...subtaskFramesForValidation(progress, null)]).toEqual([[0, [5]]]);
@@ -108,12 +106,9 @@ describe("resumed eval prefix", () => {
     const args = {
       resultsText: JSON.stringify(current()),
       existingBackupText: JSON.stringify(previous()),
-      progressRecord: {
-        changed_episodes: {
+      progressRecord: progressRecord({
           "0": { new_outcome: "success" as const, outcome_frame: 3, soft_truncate: true },
-        },
-        skipped_episodes: [],
-      },
+        }),
       overridesFilename: ".outcome_edit_progress.json",
       frameOutcomes: new Map([
         [0, { outcome: "success" as const, expectedNumSteps: 4 }],
@@ -150,8 +145,8 @@ describe("results.json subtask_frames canonicalization", () => {
       { episode_index: 4, policy_id: 0, outcome: "failure", num_steps: 6, subtask_frames: [2] },
     ],
   });
-  const progress = () => ({
-    changed_episodes: {
+  const progress = () =>
+    progressRecord({
       // Live mark deliberately removed (the routing "second clip only" case).
       "0": { new_outcome: "failure" as const, outcome_frame: 9, soft_truncate: false, subtask_frames: [] },
       // Mark moved, duplicates in a hand-edited record collapse.
@@ -160,9 +155,7 @@ describe("results.json subtask_frames canonicalization", () => {
       "3": { new_outcome: "failure" as const, outcome_frame: 7, soft_truncate: false, subtask_frames: [3] },
       // Same marks as live: no patch.
       "4": { new_outcome: "failure" as const, outcome_frame: 5, soft_truncate: false, subtask_frames: [2] },
-    },
-    skipped_episodes: [],
-  });
+    });
   const frameOutcomes = new Map([
     [0, { outcome: "failure" as const, expectedNumSteps: 10 }],
     [1, { outcome: "success" as const, expectedNumSteps: 12 }],
@@ -195,13 +188,10 @@ describe("results.json subtask_frames canonicalization", () => {
   });
 
   test("a record without the key canonicalizes to no marks; keyless no-mark rows stay keyless", () => {
-    const record = {
-      changed_episodes: {
+    const record = progressRecord({
         "0": { new_outcome: "failure" as const, outcome_frame: 9, soft_truncate: false },
         "3": { new_outcome: "failure" as const, outcome_frame: 7, soft_truncate: false },
-      },
-      skipped_episodes: [],
-    };
+      });
     const rollouts = JSON.parse(canon(JSON.stringify(raw()), null, record).resultsText!).rollouts;
     expect(rollouts[0].subtask_frames).toEqual([]);
     expect("subtask_frames" in rollouts[3]).toBe(false);
@@ -235,7 +225,7 @@ describe("results.json subtask_frames canonicalization", () => {
     // Episode 0 later SKIPPED: unreviewed again, so its live (eval-time) mark
     // must be tolerated — not the canonical empty list.
     const record = progress();
-    delete (record.changed_episodes as Record<string, unknown>)["0"];
+    record.changed_episodes.delete("0");
     const live = liveMarksPayload(reconciled, raw());
     expect(live).toEqual(raw());
     expect([...subtaskFramesForValidation(record, live)].sort((a, b) => a[0] - b[0])).toEqual([

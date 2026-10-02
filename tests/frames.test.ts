@@ -7,6 +7,7 @@ import {
   episodeOutcomesByIndex,
   type FileFrameColumns,
 } from "../convex/apply/frames";
+import { progressRecord } from "../convex/apply/progress";
 
 function episodeWithTerminalPadding(): FileFrameColumns {
   return {
@@ -26,12 +27,9 @@ describe("outcome frame and subtask frame boundaries", () => {
   test("repeat applies do not dirty unchanged columns, but repair differing stored labels", () => {
     const file = episodeWithTerminalPadding();
     const episodes = buildEpisodeMap([file]);
-    const progress = {
-      changed_episodes: {
+    const progress = progressRecord({
         "0": { new_outcome: "success" as const, outcome_frame: 3, soft_truncate: true, subtask_frames: [1] },
-      },
-      skipped_episodes: [],
-    };
+      });
     applyOutcomeEdits(episodes, progress, 1);
     expect(file.dirty).toBe(true);
     const expected = structuredClone(file);
@@ -53,17 +51,14 @@ describe("outcome frame and subtask frame boundaries", () => {
     expect(
       applyOutcomeEdits(
         episodes,
-        {
-          changed_episodes: {
+        progressRecord({
             "0": {
               new_outcome: "timeout",
               outcome_frame: 5,
               soft_truncate: false,
               subtask_frames: [4],
             },
-          },
-          skipped_episodes: [],
-        },
+          }),
         1
       )
     ).toBe(true);
@@ -85,17 +80,14 @@ describe("outcome frame and subtask frame boundaries", () => {
     expect(() =>
       applyOutcomeEdits(
         episodes,
-        {
-          changed_episodes: {
+        progressRecord({
             "0": {
               new_outcome: "failure",
               outcome_frame: 4,
               soft_truncate: false,
               subtask_frames: [4],
             },
-          },
-          skipped_episodes: [],
-        },
+          }),
         1
       )
     ).toThrow("equality is allowed only for timeout");

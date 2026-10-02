@@ -58,7 +58,7 @@ import {
   liveMarksPayload,
   subtaskFramesForValidation,
 } from "./results";
-import { dumpsIndent4 } from "./pyjson";
+import { dumpsIndent4, loadsPy, num, pyFloat } from "./pyjson";
 import type { Json } from "./pyjson";
 
 /** Snapshot of the repo at the pre-apply sha. */
@@ -126,6 +126,27 @@ function normalizeOverlayRecords(overlay: Overlay, episodes: EpisodeMap, subtask
   }
 }
 
+/**
+ * Per-episode stats cells written by different tools differ in the last float32
+ * bits: the robot recorder (numpy 1.x) and the Python editor (numpy 2) compute
+ * float32-sourced features (reward) in float32, this port in float64 — ~1e-8
+ * relative, ~1e-18 absolute on the ±1e-10 quantile edges. A stats group whose
+ * every float cell is within this tolerance (and whose count is equal) already
+ * describes the frame data and is left as-is, so re-applying a record never
+ * churns another tool's stats. A real edit cannot hide under it: the edited
+ * features are 0/1-valued, so their stats are a function of (count, number of
+ * ones), and changing the number of ones moves the mean by 1/count >= 1e-5.
+ * Mirrors STATS_REFRESH_ATOL/RTOL in sir/tools/outcome_editor.py.
+ */
+export const STATS_REFRESH_ATOL = 1e-6;
+export const STATS_REFRESH_RTOL = 1e-6;
+export const STATS_REFRESH_MAX_COUNT = 100_000;
+
+export function statCellMatches(oldValue: number, newValue: number, isCount: boolean): boolean {
+  if (isCount) return oldValue === newValue;
+  return Math.abs(oldValue - newValue) <= STATS_REFRESH_ATOL + STATS_REFRESH_RTOL * Math.abs(newValue);
+}
+
 interface MetaFile {
   path: string;
   table: Table;
@@ -175,6 +196,13 @@ function refreshEpisodeStats(args: {
         const epIdx = meta.episodeOrder[rowPos];
         if (!args.changedEpisodes.has(epIdx)) continue;
         const stats = getFeatureStats1D(episodeFeature(epIdx, feat));
+        if (stats.count > STATS_REFRESH_MAX_COUNT) {
+          throw new Error(
+            `${meta.path}: episode ${epIdx} has ${stats.count} frames; the stats-refresh ` +
+              `tolerance only separates real edits from precision noise up to ${STATS_REFRESH_MAX_COUNT}`
+          );
+        }
+        const group: Array<{ col: string; oldValue: number; newValue: number; isCount: boolean }> = [];
         for (const col of statCols) {
           const statKey = col.split("/").pop() as StatKey;
           if (!STAT_KEYS.includes(statKey)) {
@@ -184,12 +212,21 @@ function refreshEpisodeStats(args: {
           if (oldCell.length !== 1) {
             throw new Error(`${meta.path}: ${col} cell is not length-1 (${oldCell.length})`);
           }
-          const newValue = statKey === "count" ? Math.round(stats.count) : stats[statKey];
-          if (oldCell[0] !== newValue) {
-            let colPatch = patches.get(col);
-            if (!colPatch) patches.set(col, (colPatch = new Map()));
-            colPatch.set(rowPos, [newValue]);
-          }
+          const isCount = statKey === "count";
+          group.push({
+            col,
+            oldValue: oldCell[0],
+            newValue: isCount ? Math.round(stats.count) : stats[statKey],
+            isCount,
+          });
+        }
+        // One (episode, feature) stats group is rewritten whole, and only when it
+        // disagrees with the frame data beyond recomputation-precision noise.
+        if (group.every((c) => statCellMatches(c.oldValue, c.newValue, c.isCount))) continue;
+        for (const c of group) {
+          let colPatch = patches.get(c.col);
+          if (!colPatch) patches.set(c.col, (colPatch = new Map()));
+          colPatch.set(rowPos, [c.newValue]);
         }
       }
     }
@@ -200,7 +237,10 @@ function refreshEpisodeStats(args: {
 
   let newStatsJson: string | null = null;
   if (args.statsJsonText !== null) {
-    const globalStats = JSON.parse(args.statsJsonText) as Record<string, Record<string, unknown>>;
+    const globalStats = loadsPy(args.statsJsonText, { requireStableKeyOrder: true }) as Record<
+      string,
+      Record<string, unknown>
+    >;
     let globalChanged = false;
     for (const feat of features) {
       if (!(feat in globalStats)) continue;
@@ -214,7 +254,7 @@ function refreshEpisodeStats(args: {
         if (!STAT_KEYS.includes(statKey as StatKey)) {
           throw new Error(`stats.json ${feat}: unknown stat key ${statKey}`);
         }
-        const oldArr = globalStats[feat][statKey] as number[];
+        const oldArr = globalStats[feat][statKey] as unknown[];
         if (!Array.isArray(oldArr) || oldArr.length !== 1) {
           throw new Error(`stats.json ${feat}/${statKey}: expected length-1 array`);
         }
@@ -223,8 +263,9 @@ function refreshEpisodeStats(args: {
         // np.allclose(old, new, atol=1e-9) with numpy's DEFAULT rtol=1e-5 —
         // sub-1e-5-relative drift is deliberately left un-rewritten, matching
         // the historical Python refresh exactly.
-        if (!(Math.abs(oldArr[0] - newValue) <= 1e-9 + 1e-5 * Math.abs(newValue))) {
-          globalStats[feat][statKey] = [newValue];
+        if (!(Math.abs(num(oldArr[0]) - newValue) <= 1e-9 + 1e-5 * Math.abs(newValue))) {
+          // Python writes np.asarray(new, dtype=float64).tolist(): a float list.
+          globalStats[feat][statKey] = [pyFloat(newValue)];
           globalChanged = true;
         }
       }
@@ -335,13 +376,13 @@ export async function headlessApply(args: {
   const subtaskByEp = subtaskFramesForValidation(
     progress,
     liveMarksPayload(
-      resultsText === null ? null : (JSON.parse(resultsText) as Record<string, unknown>),
-      backupText === null ? null : (JSON.parse(backupText) as Record<string, unknown>)
+      resultsText === null ? null : (loadsPy(resultsText) as Record<string, unknown>),
+      backupText === null ? null : (loadsPy(backupText) as Record<string, unknown>)
     )
   );
 
   // --- Apply edits + refresh stats + repair ledgers.
-  const changedEpisodes = new Set(Object.keys(progress.changed_episodes).map((s) => parseInt(s, 10)));
+  const changedEpisodes = new Set([...progress.changed_episodes.keys()].map((s) => parseInt(s, 10)));
   const updatedLedgers: string[] = [];
   if (changedEpisodes.size > 0) {
     applyOutcomeEdits(episodes, progress, subtaskMarks);

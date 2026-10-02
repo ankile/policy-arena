@@ -4,7 +4,7 @@
  * frame classifier lives in frames.ts).
  */
 
-import { dumpsIndent2Sorted, dumpsSorted } from "./pyjson";
+import { dumpsIndent2Sorted, dumpsSorted, loadsPy, pyFloat } from "./pyjson";
 import type { Json } from "./pyjson";
 import { OUTCOME_NAMES } from "./progress";
 import type { ProgressRecord } from "./progress";
@@ -124,7 +124,7 @@ export function subtaskFramesForValidation(
   payload: Payload | null
 ): Map<number, number[]> {
   const out = liveSubtaskFramesByEpisode(payload);
-  for (const [epStr, entry] of Object.entries(progress.changed_episodes)) {
+  for (const [epStr, entry] of progress.changed_episodes) {
     const epIdx = parseInt(epStr, 10);
     const frames = [...new Set((entry.subtask_frames ?? []).map((f) => Number(f)))].sort(
       (a, b) => a - b
@@ -145,7 +145,8 @@ export function recomputeSummaryFromRollouts(payload: Payload): void {
     if ("num_rounds" in row) row.num_rounds = sub.length;
     row.successes = successes;
     row.failures = sub.length - successes;
-    row.success_rate = sub.length ? successes / sub.length : 0.0;
+    // Python: successes / len(sub) if sub else 0.0 — always a float.
+    row.success_rate = pyFloat(sub.length ? successes / sub.length : 0.0);
   }
 }
 
@@ -198,7 +199,7 @@ export function applyOutcomeEditRecord(
 ): Reconciliation {
   const existingReconciliation = payload._outcome_edit_reconciliation;
   const changed = new Map<number, Record<string, unknown>>(
-    Object.entries(record.changed_episodes).map(([k, v]) => [parseInt(k, 10), v as never])
+    [...record.changed_episodes.entries()].map(([k, v]) => [parseInt(k, 10), v as never])
   );
   const byEp = rolloutsByEpisode(payload);
   const unknown = [...changed.keys()].filter((ep) => !byEp.has(ep)).sort((a, b) => a - b);
@@ -387,8 +388,8 @@ export function canonicalizeResultsTexts(args: {
   overridesFilename: string;
   frameOutcomes: Map<number, FrameOutcome>;
 }): CanonicalizeFileResult {
-  const payload = JSON.parse(args.resultsText) as Payload;
-  const canonical = JSON.parse(args.resultsText) as Payload; // deep copy
+  const payload = loadsPy(args.resultsText) as Payload;
+  const canonical = loadsPy(args.resultsText) as Payload; // deep copy
   let reconciliation: Reconciliation | null = null;
   if (args.progressRecord !== null) {
     reconciliation = applyOutcomeEditRecord(canonical, args.progressRecord, args.overridesFilename);
@@ -413,9 +414,9 @@ export function canonicalizeResultsTexts(args: {
   let backupText: string | null = null;
   if (args.existingBackupText !== null) {
     const normalizedBackup =
-      dumpsIndent2Sorted(JSON.parse(args.existingBackupText) as Json) + "\n";
+      dumpsIndent2Sorted(loadsPy(args.existingBackupText)) + "\n";
     if (!alreadyReconciled && normalizedBackup !== originalText) {
-      const backupPayload = JSON.parse(args.existingBackupText) as Payload;
+      const backupPayload = loadsPy(args.existingBackupText) as Payload;
       if (isResumedEvalPrefix(backupPayload, payload)) {
         backupText = originalText;
       } else {

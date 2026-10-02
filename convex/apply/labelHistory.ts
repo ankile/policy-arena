@@ -77,7 +77,7 @@ function jsonEqual(a: Json | null, b: Json | null): boolean {
 }
 
 function preState(preProgress: ProgressRecord, epIdx: number): Json | null {
-  const record = preProgress.changed_episodes[String(epIdx)];
+  const record = preProgress.changed_episodes.get(String(epIdx));
   if (record !== undefined) return recordJson(record);
   if (preProgress.skipped_episodes.some((s) => Number(s) === epIdx)) {
     return { ...SKIP_PAYLOAD };

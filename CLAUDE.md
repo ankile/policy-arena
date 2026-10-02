@@ -66,6 +66,17 @@ internal.applyWorker.run)`; there is NO polling worker anymore.
   every file. It passed on routing_d1 (subtask marks), marker_d2 collection
   (ledgers), and marker_d2 + insert_marker_d1 evals (results.json) before
   cutover. Re-run it after touching `convex/apply/` or the Python editor.
+- **Re-apply is a byte-level no-op on canonical state** (since 2026-10-01).
+  Every JSON/JSONL sidecar goes through `pyjson.loadsPy` + the Python-`json`
+  dumpers: integral floats (`30.0`) stay floats (`PyFloat`), numbers use
+  Python repr, strings ensure_ascii, and the progress record's
+  `changed_episodes` is a `Map` in Python dict insertion order. Per-episode
+  stats are rewritten per (episode, feature) group only when they disagree with
+  the frame data beyond float32 recomputation noise (`STATS_REFRESH_ATOL/RTOL`
+  = 1e-6, mirrored in the Python editor): the Python editor and recorder write
+  reward stats in float32, this port in float64. Regression tests:
+  `tests/applyCanonical.test.ts`, `tests/pyjson.test.ts`; the parity harness
+  byte-compares every JSON file except meta/stats.json.
 - Node-runtime deps (`parquet-wasm`, `apache-arrow`, `@huggingface/hub`) are
   `externalPackages` in `convex.json`; `convex/apply/{hf,parquetIO,pipeline}`
   carry `"use node"` and must never be imported from default-runtime
