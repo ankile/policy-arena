@@ -1,7 +1,8 @@
 """Backfill Arena review rows for pre-web outcome decisions already on HF.
 
-Many eval datasets were outcome-reviewed with the local cv2 editor
-(`sir/tools/outcome_editor.py`) before the web review flow existed: their HF
+Many eval and collection (teleop/DAgger) datasets were outcome-reviewed with
+the local cv2 editor (`sir/tools/outcome_editor.py`) before the web review
+flow existed: their HF
 `.outcome_edit_progress.json` holds the decisions but Arena has no review row
 (or only rows for the episodes later re-reviewed on the web). This script
 inserts one row per HF record that has no row, so the Arena fold
@@ -45,8 +46,9 @@ commit is the only evidence. The row takes reviewer = that commit's sole HF
 author (the account that pushed the decision, the only identity on record;
 more than one author aborts), saved_at = the commit time, and a source_tool
 that says the editor was not recorded and names the commit. On 2026-10-01 no
-repo needed this: for all 5,350 episodes backfilled that day (43 repos) the
-event agreed with the landing commit to the second and sha.
+repo needed this: for all 9,088 episodes backfilled that day (43 eval repos,
+5,350 rows; 29 teleop/DAgger collection parents, 3,738 rows) the event agreed
+with the landing commit to the second and sha.
 
 Record mirroring: changed -> `confirmed` with new_outcome / outcome_frame /
 soft_truncate, and subtask_frames only when the record has that key; skipped ->

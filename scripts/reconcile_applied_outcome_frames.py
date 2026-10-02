@@ -7,14 +7,15 @@ frame, so `reviews:latestForRepo` drifted from HF by that snap. The worker now
 writes the applied frame back (`reviews:recordAppliedOutcomeFrames`); this
 script repairs rows applied before that change.
 
-It scans every repo with outcome reviews or an Arena eval session and
-compares the Arena fold against the progress record at HF `main`. A repo with
-neither rows nor a progress record has nothing to compare; an HF record without
-a row (the cv2-era gap `backfill_missing_review_rows.py` fills) is an issue.
-Collection parents (teleop/DAgger repos) with no review rows and no eval
-session are outside the scan. A row is patched only when its ONLY difference
-is outcome_frame AND the snap rule explains it: the Arena frame is the
-episode's terminal frame (length - 1), the HF frame is earlier, and the HF
+It scans every repo Arena knows (registered datasets, eval sessions, repos
+with outcome reviews), eval and collection alike, and compares the Arena fold
+against the progress record at HF `main`. A repo with neither rows nor a
+progress record has nothing to compare; an HF record without a row (the
+cv2-era gap `backfill_missing_review_rows.py` fills) is an issue. On
+2026-10-01 every one of the 82 `ankile/*` HF datasets (of 1,118) carrying a
+progress record was registered in Arena. A row is patched only when its ONLY
+difference is outcome_frame AND the snap rule explains it: the Arena frame is
+the episode's terminal frame (length - 1), the HF frame is earlier, and the HF
 frame is the episode's last is_valid=1 frame at `main`. Every other
 difference is printed and left alone, and the script exits nonzero.
 Rows with `backfilled_from_hf_sha` (cv2-era decisions mirrored by
@@ -270,10 +271,12 @@ def main() -> int:
     fs = HfFileSystem()
     reviewed = set(arena.query("reviews:reviewedRepos", {}))
     sessions = {s["dataset_repo"] for s in arena.query("evalSessions:list", {})}
-    repos = sorted(reviewed | sessions)
+    datasets = {d["repo_id"] for d in arena.query("datasets:list", {})}
+    repos = sorted(reviewed | sessions | datasets)
     print(
-        f"{len(repos)} repo(s): {len(reviewed)} with outcome reviews, {len(sessions)} with an "
-        f"eval session ({'APPLY' if args.apply else 'dry run'})"
+        f"{len(repos)} repo(s): {len(datasets)} registered datasets, {len(sessions)} with an "
+        f"eval session, {len(reviewed)} with outcome reviews "
+        f"({'APPLY' if args.apply else 'dry run'})"
     )
     reports = [reconcile_repo(arena, hf, fs, repo) for repo in repos]
 

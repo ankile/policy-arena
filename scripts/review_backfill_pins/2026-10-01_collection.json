@@ -1,0 +1,512 @@
+[
+ {
+  "repo": "ankile/real01b-marker-d2-blind-dagger-r1-ef25cov25",
+  "hf_sha": "b55cb90ac866f87281d3d5a77dc377e06c9bf9a9",
+  "missing": 115,
+  "confirmed": 114,
+  "skipped": 1,
+  "attribution": {
+   "cv2-event": 115
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-06-24T22:49:43+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-marker-d2-blind-dagger-r2-ef25cov25",
+  "hf_sha": "3f8c43f609cef8035580f0303b2ba69ede13b809",
+  "missing": 121,
+  "confirmed": 121,
+  "skipped": 0,
+  "attribution": {
+   "cv2-event": 121
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-06-28T00:53:02+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-marker-d2-blind-dagger-r3-ef25cov25",
+  "hf_sha": "ea41c2c289bb44302121713db9322d0090963baa",
+  "missing": 118,
+  "confirmed": 116,
+  "skipped": 2,
+  "attribution": {
+   "cv2-event": 118
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-07-02T20:59:35+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-marker-d2-blind-dagger-r4-ef25cov25",
+  "hf_sha": "1b5afa5e3515e35da3d011f00c35c01b348386c8",
+  "missing": 110,
+  "confirmed": 109,
+  "skipped": 1,
+  "attribution": {
+   "cv2-event": 110
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-07-06T19:41:00+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-marker-d2-blind-dagger-r5-ef25cov25",
+  "hf_sha": "d07912ba2428ffa9f8a354fa3b3b74df5c25b537",
+  "missing": 110,
+  "confirmed": 110,
+  "skipped": 0,
+  "attribution": {
+   "cv2-event": 110
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-07-08T20:37:10+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-marker-d2-r0-blind-teleop-uniform100-sobol100-evalsobol50",
+  "hf_sha": "51a7251516ebf48a8c4f440234ab47698cd605a2",
+  "missing": 250,
+  "confirmed": 250,
+  "skipped": 0,
+  "attribution": {
+   "cv2-event": 250
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-06-23T01:10:33+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-marker-insert-d1-blind-dagger-r2-ef25cov25",
+  "hf_sha": "42f14fbaf1e6b543a8c5f0bddc9a6f80952e6b3b",
+  "missing": 121,
+  "confirmed": 121,
+  "skipped": 0,
+  "attribution": {
+   "cv2-event": 121
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-06-09T22:22:02+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-marker-insert-d1-blind-dagger-r3-dmxl-ef25cov25",
+  "hf_sha": "2a1ef4612c85723257262a9710e1268fe3a499dc",
+  "missing": 116,
+  "confirmed": 116,
+  "skipped": 0,
+  "attribution": {
+   "cv2-event": 116
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-06-18T04:21:35+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-routing-d1-blind-dagger-r1-ef25cov25",
+  "hf_sha": "d2e9f4b61c500a73a22d514920610dbbcfbc3de5",
+  "missing": 112,
+  "confirmed": 112,
+  "skipped": 0,
+  "attribution": {
+   "cv2-event": 112
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-07-08T06:54:03+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-routing-d1-blind-dagger-r2-ef25cov25",
+  "hf_sha": "38ae3f78fc6e16455e7832ec87e2c27a6422118f",
+  "missing": 103,
+  "confirmed": 103,
+  "skipped": 0,
+  "attribution": {
+   "cv2-event": 103
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-07-09T07:45:34+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-routing-d1-blind-dagger-r3-ef25cov25",
+  "hf_sha": "43c81ac4668b1fa28c1d0fcd590cd4b0bbf017ee",
+  "missing": 119,
+  "confirmed": 119,
+  "skipped": 0,
+  "attribution": {
+   "cv2-event": 119
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-07-10T04:13:06+00:00",
+   "2026-07-10T07:10:12+00:00",
+   "2026-07-10T07:48:24+00:00",
+   "2026-07-30T00:30:10+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-routing-d1-blind-dagger-r4-ef25cov25",
+  "hf_sha": "278f0e477686ba20c7a84f7ee4b4289212334429",
+  "missing": 111,
+  "confirmed": 111,
+  "skipped": 0,
+  "attribution": {
+   "cv2-event": 111
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-07-11T08:04:27+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-routing-d1-blind-dagger-r5-ef20cov30",
+  "hf_sha": "fb51c852723ce38c6722ee887b34b71b4e3027b4",
+  "missing": 104,
+  "confirmed": 104,
+  "skipped": 0,
+  "attribution": {
+   "cv2-event": 104
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-07-12T08:16:57+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-routing-d1-blind-dagger-r6-ef25cov25",
+  "hf_sha": "506f0a63e950c53caccc3be318c3118006884ca4",
+  "missing": 111,
+  "confirmed": 111,
+  "skipped": 0,
+  "attribution": {
+   "cv2-event": 111
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-07-13T09:26:52+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-routing-d1-blind-dagger-r7-ef25cov25",
+  "hf_sha": "a7544482f92327619b58748930a4e3362a89a06c",
+  "missing": 103,
+  "confirmed": 103,
+  "skipped": 0,
+  "attribution": {
+   "cv2-event": 103
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-07-14T10:39:16+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-routing-d1-r0-blind-teleop-uniform100-sobol100-evalsobol50",
+  "hf_sha": "1d61f6f4aee6ae08555042454741d5f653c5f981",
+  "missing": 250,
+  "confirmed": 250,
+  "skipped": 0,
+  "attribution": {
+   "cv2-event": 250
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-07-07T00:55:36+00:00",
+   "2026-07-08T05:33:49+00:00",
+   "2026-07-09T23:23:23+00:00",
+   "2026-07-10T06:29:37+00:00",
+   "2026-07-10T23:35:39+00:00",
+   "2026-07-11T08:08:44+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-square-d1-blind-dagger-r1-ef25cov25",
+  "hf_sha": "9ba8030a2de4762ef0d85d260b70df5870c83fae",
+  "missing": 120,
+  "confirmed": 118,
+  "skipped": 2,
+  "attribution": {
+   "cv2-event": 120
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-06-11T00:29:42+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-square-d2-blind-dagger-r1-ef25cov25",
+  "hf_sha": "eb8c856e69cd7a5f1c065641fe2e4a8d92b52ca1",
+  "missing": 119,
+  "confirmed": 118,
+  "skipped": 1,
+  "attribution": {
+   "cv2-event": 119
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-06-25T21:49:56+00:00",
+   "2026-06-25T22:13:22+00:00",
+   "2026-06-25T22:58:54+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-square-d2-blind-dagger-r2-ef25cov25",
+  "hf_sha": "5f551d191a71df325ec6a22c64b3f0dccedc3374",
+  "missing": 116,
+  "confirmed": 116,
+  "skipped": 0,
+  "attribution": {
+   "cv2-event": 116
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-06-28T20:55:02+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-square-d2-blind-dagger-r3-ef25cov25",
+  "hf_sha": "c82ec97d89aa5657e6fad4b21cdae947171ce439",
+  "missing": 115,
+  "confirmed": 115,
+  "skipped": 0,
+  "attribution": {
+   "cv2-event": 115
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-07-01T00:50:14+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-square-d2-blind-dagger-r4-ef25cov25",
+  "hf_sha": "dbf8750759ffd074f0103f9e1a23b20a1af3c576",
+  "missing": 115,
+  "confirmed": 115,
+  "skipped": 0,
+  "attribution": {
+   "cv2-event": 115
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-07-04T23:44:51+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-square-d2-blind-dagger-r5-ef25cov25",
+  "hf_sha": "55065860e1e88f1e6a2dec82ad5a0da67f8694a6",
+  "missing": 109,
+  "confirmed": 109,
+  "skipped": 0,
+  "attribution": {
+   "cv2-event": 109
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-07-09T02:16:37+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01b-square-d2-r0-blind-teleop-uniform100-sobol100-evalsobol50",
+  "hf_sha": "b976cfec3b7a1909bb77dc35abbf9c67eb02136c",
+  "missing": 250,
+  "confirmed": 250,
+  "skipped": 0,
+  "attribution": {
+   "cv2-event": 250
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-06-25T21:52:49+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01c-insert-marker-d1-blind-dagger-r1-25k-protocol",
+  "hf_sha": "ca10d1bac821e2e86ad49d82c1182b9d5341541b",
+  "missing": 112,
+  "confirmed": 109,
+  "skipped": 3,
+  "attribution": {
+   "cv2-event": 112
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [
+   102,
+   108,
+   109
+  ],
+  "saved_at": [
+   "2026-05-27T01:21:14+00:00",
+   "2026-05-27T01:26:13+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01c-insert-marker-d1-blind-dagger-r2-baseline-uniform-ours-iql-protocol",
+  "hf_sha": "8d9e722847409cf2199ed6e6bd4cbde80a933505",
+  "missing": 66,
+  "confirmed": 65,
+  "skipped": 1,
+  "attribution": {
+   "cv2-event": 66
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-05-28T04:55:34+00:00",
+   "2026-05-28T05:12:50+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01c-marker-insert-d1-bc-r0",
+  "hf_sha": "ae9502dc416af2ffadfe96bb46e8f7acb70e948f",
+  "missing": 100,
+  "confirmed": 100,
+  "skipped": 0,
+  "attribution": {
+   "cv2-event": 100
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-05-27T01:41:50+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01c-marker-insert-d1-blind-dagger-r1-100ep",
+  "hf_sha": "7ee9f20158355e897402d5d110e6b6f0fd8d3792",
+  "missing": 117,
+  "confirmed": 116,
+  "skipped": 1,
+  "attribution": {
+   "cv2-event": 117
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-06-06T19:01:48+00:00",
+   "2026-06-06T20:25:29+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/real01c-marker-insert-d1-blind-dagger-r1-replacement-r0evidence23-beta025",
+  "hf_sha": "170a065d1c337b06f85665c76ad42ae0f9f9a85f",
+  "missing": 125,
+  "confirmed": 122,
+  "skipped": 3,
+  "attribution": {
+   "cv2-event": 125
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-06-08T05:39:24+00:00"
+  ]
+ },
+ {
+  "repo": "ankile/square-d1-r0-blind-teleop-uniform100-sobol100",
+  "hf_sha": "4afce75f2de3add3176f9b0bd7e8dfbd3e19b4b7",
+  "missing": 200,
+  "confirmed": 200,
+  "skipped": 0,
+  "attribution": {
+   "cv2-event": 200
+  },
+  "reviewers": [
+   "ankile"
+  ],
+  "terminal_padding_episodes": [],
+  "saved_at": [
+   "2026-06-11T01:00:17+00:00"
+  ]
+ }
+]
