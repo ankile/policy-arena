@@ -1751,18 +1751,17 @@ export default function StageReview({
               </div>
 
               {draft && (
-                <div className="mb-3 rounded-lg border border-warm-200 px-3 py-2 text-[11px] text-ink-muted">
-                  <p>{draft.fromOwnReview
-                    ? "Your saved label is in the form. The selected model prediction is shown in model evidence."
+                <div className="mb-3 text-xs text-ink-muted">
+                  <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1"><p>{draft.fromOwnReview
+                    ? "Your saved annotation"
                     : draft.attribution.copied_from_review_id
-                      ? "The form was copied from another human review. Its original prediction source is preserved."
+                      ? "Copied human annotation"
                       : currentPrefill
-                      ? "The form started from the selected prediction; edits are your review."
-                      : "Manual annotation — no prediction available. No model prediction seeded this form."}</p>
-                  <details className="mt-1"><summary className="cursor-pointer text-teal">Saved label provenance</summary>
+                      ? "Model-prefilled annotation"
+                      : "Manual annotation · no model prefill"}</p>
+                  <details><summary className="cursor-pointer text-teal">Source details</summary>
                     <p className="font-mono break-all">Review source: {attributionDescription(draft.attribution)}</p>
-                    <p className="mt-1">Human labels can be scored against other predictions using compatible labeling definitions. The prediction shown during annotation is recorded for the audit.</p>
-                  </details>
+                  </details></div>
                   {inheritedSuccess && <p className="mt-1">Legacy form fields inherit the human success outcome. The original prediction remains in model evidence.</p>}
                   {spec.trajectory && currentOwn?.reviewCoverage && !["structured-v1", CURRENT_REVIEW_PROTOCOL].includes(currentOwn.reviewCoverage.protocol) && <p className="mt-2 text-sm text-ink">Your earlier review had a narrower scope. Check the task result, end state and primary failure mode before confirming this review.</p>}
                   {priorFullReviewId && <label className="mt-2 flex gap-2 text-sm text-ink">

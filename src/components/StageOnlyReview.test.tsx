@@ -45,6 +45,23 @@ const state = (view: ReturnType<typeof render>) => JSON.parse(view.getByTestId("
 
 const positiveTasks = [{ source_name: "marker_d2_v5", spec: markerV5 }, { source_name: "square_d2_v4", spec: squareV4 }, { source_name: "marker_d2_v6", spec: markerV6 }, { source_name: "square_d2_v5", spec: squareV5 }];
 const editorTasks = [...fixtures.synthetic.tasks, { source_name: "routing_d1_v2", spec: routingV2 }, { source_name: "routing_d1_v3", spec: routingV3 }, { source_name: "routing_d1_v4", spec: routingV4 }, ...positiveTasks];
+for (const schema of [markerV6, squareV5, routingV4]) test(`${schema.taxonomy_version}: optional definitions stay collapsed without changing the annotation`, () => {
+  const definition = schema.trajectory.task_definition;
+  const failure = definition.failureModes.find((mode) => mode.id !== definition.successDefinition.noFailureModeId)!;
+  const initial = { ...blankTrajectoryReview(schema.trajectory, "test/repo", 0), task_success: false, failure_mode: failure.id, final_state: definition.finalStates[0].id };
+  const view = render(<Fixture schema={schema as ExportedStageSpec} initial={initial} />);
+  for (const title of ["Failure mode definition", "End state definition"]) {
+    const summary = view.getByText(title);
+    const disclosure = summary.closest("details")!;
+    expect(disclosure.open).toBe(false);
+    fireEvent.click(summary);
+    expect(disclosure.open).toBe(true);
+  }
+  expect(view.getByText(failure.description)).toBeTruthy();
+  expect(view.getByText(definition.finalStates[0].description)).toBeTruthy();
+  expect(state(view).row).toEqual(initial);
+});
+
 for (const task of editorTasks) {
   test(`${task.source_name}: every task-defined stage can be captured, retimed and undone`, () => {
     const schema = task.spec as ExportedStageSpec;
@@ -314,7 +331,7 @@ for (const task of positiveTasks) test(`${task.source_name}: new manual mileston
   fixture.props.dataSource.fetchReviewEpisodes = async () => [0, 1].map((episodeIndex) => ({ episodeIndex, rawLength: 450, dataPath: "test.parquet", perCamera: { side: { fileIndex: 0, fromTimestamp: 0, toTimestamp: 30 } } }));
   fixture.state.fetchSignals = async () => ({ detectedOutcome: "failure", validLength: 120, lastValidFrame: 119, doneOnsetFrame: null, rewardSpikeFrames: [] });
   const view = render(<StageReview {...fixture.props} />); await act(async () => {});
-  expect(view.container.textContent).toContain("No model prediction seeded this form.");
+  expect(view.container.textContent).toContain("Manual annotation · no model prefill");
   for (const index of [1, 2, 3]) {
     fireEvent.change(view.getByRole("combobox", { name: "Stage reached" }), { target: { value: task.spec.trajectory.task_definition.stages[index].id } });
     fireEvent.keyDown(window, { key: "m" });
@@ -403,6 +420,7 @@ for (const task of editorTasks) test(`${task.source_name}: success filters end s
   expect(select.value).toBe(initial.final_state);
   expect(select.selectedOptions[0].disabled).toBe(true);
   expect(select.getAttribute("aria-invalid")).toBe("true");
+  expect(view.getByText("This end state conflicts with Success. Change the end state or result.").closest("details")).toBeNull();
   expect(state(view).row).toEqual({ ...initial, task_success: true, failure_mode: definition.successDefinition.noFailureModeId });
   fireEvent.change(select, { target: { value: successful[0] } });
   expect(select.getAttribute("aria-invalid")).toBeNull();

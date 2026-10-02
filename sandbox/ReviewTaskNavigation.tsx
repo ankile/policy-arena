@@ -27,7 +27,6 @@ export default function ReviewTaskNavigation({ current, onSelect }: {
           {datasets.map((sample) => <option key={sample.dataset} value={sample.dataset}>{sample.datasetName}</option>)}
         </select>
       </label>
-      <p className="text-xs text-ink-muted">Same Routing stages; each dataset keeps its own predictions and your reviews.</p>
     </div>}
   </div>;
 }

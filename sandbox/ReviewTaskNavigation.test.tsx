@@ -10,11 +10,14 @@ const { cleanup, fireEvent, render, within } = await import("@testing-library/re
 afterEach(cleanup);
 afterAll(() => GlobalRegistrator.unregister());
 
-for (const task of ["marker_d2", "square_d2", "routing_d1"] as const) test(`${task}: reference shows the versioned failure and endpoint definitions`, () => {
+for (const task of ["marker_d2", "square_d2", "routing_d1"] as const) test(`${task}: task guide keeps definitions available but collapsed by default`, () => {
   const spec = latestStagePreviews[task];
   window.history.replaceState({}, "", `?schema=${encodeURIComponent(spec.taxonomy_version)}`);
   const view = render(<StagePreviewNotice task={task} />);
-  expect(view.getByText("Failure causes and end states · definition reference")).toBeTruthy();
+  const guide = view.getByText(`Task guide · ${spec.trajectory.task_definition.taxonomyVersion}`).closest("details")!;
+  expect(guide.open).toBe(false);
+  fireEvent.click(guide.querySelector("summary")!);
+  expect(guide.open).toBe(true);
   const causes = within(view.getByRole("region", { name: "Failure causes" }));
   for (const item of spec.trajectory.task_definition.failureModes) expect(causes.getByText(item.description)).toBeTruthy();
   const endpoints = within(view.getByRole("region", { name: "Physical end states" }));

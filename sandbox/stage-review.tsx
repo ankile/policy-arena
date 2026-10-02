@@ -80,7 +80,7 @@ export default function Playground() {
   return <main className="max-w-[1900px] mx-auto p-4 md:p-6">
     <div className="rounded-xl border border-teal/30 bg-teal/5 p-4 mb-4 flex flex-wrap items-center gap-4">
       <div className="flex-1 min-w-60"><h1 className="font-display text-xl">Stage Review · Local playground</h1>
-        <p className="text-sm text-ink-muted">Real videos and imported predictions. Trial labels save only in this browser; shared labels stay untouched. No sign-in needed.</p></div>
+        <p className="text-sm text-ink-muted">Saves stay in this browser. Shared labels are unchanged.</p></div>
       <ReviewTaskNavigation current={sample} onSelect={(next) => { window.location.href = reviewSampleHref(next); }} />
       <button className="text-sm text-teal underline" onClick={() => {
         const url = URL.createObjectURL(new Blob([JSON.stringify(convexToJson(reviews as unknown as Value), null, 2)], { type: "application/json" }));

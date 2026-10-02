@@ -103,7 +103,7 @@ describe("stage prediction version review", () => {
     expect(state.saves).toHaveLength(1);
     await act(async () => release?.());
     expect(new URLSearchParams(window.location.search).get("prediction")).toBe("B");
-    expect(view.container.textContent).toContain("Your saved label is in the form");
+    expect(view.container.textContent).toContain("Your saved annotation");
     expect(view.container.textContent).toContain("Review source: prediction A-prediction-0");
     state.save = async () => {};
     await act(async () => fireEvent.click(view.getByRole("button", { name: /^uncertain/ })));
@@ -255,7 +255,7 @@ describe("stage prediction version review", () => {
       prediction_id: "B-prediction-0", prediction_sha256: "B".repeat(64), episode_duration_s: 20,
     }]);
     await settle();
-    expect(view.container.textContent).toContain("Your saved label is in the form");
+    expect(view.container.textContent).toContain("Your saved annotation");
     await act(async () => fireEvent.click(view.getByRole("button", { name: /^uncertain/ })));
     expect(state.saves[0].prediction_id).toBe("B-prediction-0");
     expect(state.saves[0].label?.max_stage).toBe(8);
@@ -268,7 +268,7 @@ describe("stage prediction version review", () => {
       prediction_id: "B-prediction-0", prediction_sha256: "B".repeat(64), episode_duration_s: 20,
     }]);
     await settle();
-    expect(view.container.textContent).not.toContain("Your saved label is in the form");
+    expect(view.container.textContent).not.toContain("Your saved annotation");
     await act(async () => fireEvent.click(view.getByRole("button", { name: /^uncertain/ })));
     expect(state.saves[0].prediction_id).toBe("A-prediction-0");
     expect(state.saves[0].label?.max_stage).toBe(3);

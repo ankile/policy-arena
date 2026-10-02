@@ -5,17 +5,13 @@ export default function StagePreviewNotice({ task }: { task: PreviewTask }) {
   const [schema] = useSearchParam("schema", "");
   const candidate = latestStagePreviews[task];
   const definition = candidate.trajectory.task_definition;
-  return <aside className="rounded-xl border border-teal/30 bg-teal/5 p-4 mb-4 text-sm" aria-label="Task definition version">
-    {schema === candidate.taxonomy_version ? <>
-      <p className="font-medium">{definition.displayName} · {definition.taxonomyVersion} · local preview</p>
-      <p className="mt-1">{definition.stages.filter((stage) => stage.index > 0).map((stage) => `S${stage.index} ${stage.name}`).join(" → ")}</p>
-      <p className="mt-1">{task === "routing_d1"
-        ? "Release does not prove seating or success."
-        : "Mark achieved milestones, not attempted ones. A failure ending at S3 means lift achieved; S4 insertion alignment was not reached. The failure cause and physical end state remain separate."}</p>
-      <p className="mt-1 text-ink-muted">Earlier predictions and reviews keep their original definitions. This version starts without model prefill. No migration or Gemini rerun.</p>
-      <details className="mt-2">
-        <summary className="cursor-pointer font-medium">Failure causes and end states · definition reference</summary>
-        <p className="mt-2">Stages say what was achieved. Failure causes explain the unresolved problem. End states describe the final physical scene; they do not determine the cause.</p>
+  return <aside className="mb-3 text-sm" aria-label="Task definition version">
+    {schema === candidate.taxonomy_version ? <details>
+        <summary className="cursor-pointer text-teal">Task guide · {definition.taxonomyVersion}</summary>
+        <p className="mt-2">{definition.stages.filter((stage) => stage.index > 0).map((stage) => `S${stage.index} ${stage.name}`).join(" → ")}</p>
+        <p className="mt-2">{task === "routing_d1"
+          ? "Success requires both clips to stay seated, not just release."
+          : "Mark achieved milestones, not attempts. Keep the failure cause separate from the physical end state."}</p>
         <div className="mt-3 grid gap-4 md:grid-cols-2">
           {[{ title: "Failure causes", items: definition.failureModes }, { title: "Physical end states", items: definition.finalStates }].map(({ title, items }) => (
             <section key={title} aria-label={title}>
@@ -30,9 +26,9 @@ export default function StagePreviewNotice({ task }: { task: PreviewTask }) {
           ))}
         </div>
       </details>
-    </> : <>
-      <p>You are viewing an earlier task definition. Existing predictions and reviews keep that version.</p>
-      <a className="inline-block mt-1 text-teal underline" href={stagePreviewHref(task, window.location.search)}>Try {definition.displayName} ({definition.taxonomyVersion})</a>
+     : <>
+      <span className="text-ink-muted">Earlier task definition. </span>
+      <a className="text-teal underline" href={stagePreviewHref(task, window.location.search)}>Try {definition.taxonomyVersion}</a>
     </>}
   </aside>;
 }

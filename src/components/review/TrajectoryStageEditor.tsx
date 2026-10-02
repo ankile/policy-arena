@@ -95,7 +95,7 @@ export function TrajectoryStageEditor(props: StageLabelFormProps & { video?: Rea
       </div>}
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-        <p className="flex-1 text-ink-muted">{context.current ? `At playhead: ${stageTitle(context.current)}` : "Pause the video, choose a stage, then mark this frame."}</p>
+        <p className="flex-1 text-ink-muted">{context.current ? `At playhead: ${stageTitle(context.current)}` : "Pause → choose stage → mark (M)"}</p>
         {selected && <>
           <button className={button} disabled={blocked} onClick={() => { props.onSelectEvent?.(null); setChoice(null); }}>Next stage</button>
           <button className="text-coral cursor-pointer disabled:opacity-40" disabled={blocked} onClick={() => remember(removeStageMark(spec.trajectory!, row, selected.index), null, "Stage mark removed; furthest stage updated.")}>Remove this mark</button>
@@ -138,29 +138,34 @@ export function TrajectoryStageEditor(props: StageLabelFormProps & { video?: Rea
       <details className="text-sm"><summary className="cursor-pointer text-teal">What counts as success?</summary>
         <ul className="list-disc pl-5 mt-2 space-y-1">{task.successCriteria.map((text) => <li key={text}>{text}</li>)}</ul>
       </details>
-      {row.task_success === true ? <p className="text-sm text-ink-muted">Primary failure mode: no failure (set when you save Success).</p> : <>
+      {row.task_success !== true && <>
         <label className="block text-sm font-medium">Why did it fail?
-          <select aria-label="Primary failure mode" aria-describedby="primary-failure-description" className={`${input} mt-2`} disabled={blocked || row.task_success !== false}
+          <select aria-label="Primary failure mode" aria-describedby={row.task_success === false && failureMode?.id !== noFailure && failureMode ? "primary-failure-description" : undefined} className={`${input} mt-2`} disabled={blocked || row.task_success !== false}
             value={row.task_success === false && failureMode?.id !== noFailure ? failureMode?.id ?? "" : ""}
             onChange={(event) => remember({ ...row, failure_mode: event.target.value }, props.selectedEventKey ?? null, "Primary failure mode updated.")}>
             <option value="">Choose the main reason…</option>{task.failureModes.filter((item) => item.id !== noFailure).map((item) => <option key={item.id} value={item.id}>{endStateTitle(item.id)}</option>)}
           </select>
         </label>
-        <p id="primary-failure-description" className="text-sm text-ink-muted">{row.task_success === false && failureMode?.id !== noFailure ? failureMode?.description ?? "Choose the primary cause, not just where the object ended up." : "Choose Failure to label its primary cause."}</p>
+        {row.task_success === false && failureMode && failureMode.id !== noFailure && <details className="text-sm">
+          <summary className="cursor-pointer text-teal">Failure mode definition</summary>
+          <p id="primary-failure-description" className="mt-2 text-ink-muted">{failureMode.description}</p>
+        </details>}
       </>}
       <label className="block text-sm font-medium">How did the episode end?
-        <select className={`${input} mt-2`} aria-label="End state" aria-describedby="episode-end-description episode-end-options" aria-invalid={incompatibleEnd || undefined} value={finalState?.id ?? ""} disabled={blocked}
+        <select className={`${input} mt-2`} aria-label="End state" aria-describedby={[finalState ? "episode-end-description" : "", row.task_success === true ? "episode-end-options" : ""].filter(Boolean).join(" ") || undefined} aria-invalid={incompatibleEnd || undefined} value={finalState?.id ?? ""} disabled={blocked}
           onChange={(e) => remember({ ...row, final_state: e.target.value }, props.selectedEventKey ?? null, "End state updated.")}>
           <option value="">Choose the end state…</option>
           {incompatibleEnd && <option value={finalState.id} disabled>{endStateTitle(finalState.id)} — not valid for Success</option>}
           {endStates.map((item) => <option key={item.id} value={item.id}>{endStateTitle(item.id)}</option>)}
         </select>
       </label>
-      <p id="episode-end-options" className="text-sm text-ink-muted">{row.task_success === true
-        ? incompatibleEnd ? "The current end state conflicts with Success. Choose a successful ending or change the result."
-          : "Showing successful end states only."
-        : "All end states are available while the result is failed or undecided."}</p>
-      <p id="episode-end-description" className="text-sm text-ink-muted">{finalState?.description ?? "Describe the physical state at the end of the task, before any reset movement."}</p>
+      {row.task_success === true && <p id="episode-end-options" className={`text-sm ${incompatibleEnd ? "text-coral" : "text-ink-muted"}`}>{incompatibleEnd
+        ? "This end state conflicts with Success. Change the end state or result."
+        : "Successful end states only."}</p>}
+      {finalState && <details className="text-sm">
+        <summary className="cursor-pointer text-teal">End state definition</summary>
+        <p id="episode-end-description" className="mt-2 text-ink-muted">{finalState.description}</p>
+      </details>}
       {outcomeIssues.length > 0 && <div className="rounded-lg bg-gold-light p-3 text-sm" aria-label="Result checklist">{outcomeIssues.map((issue, index) => <p key={index}>{issue.message}</p>)}</div>}
       <div className="border-t border-warm-200" />
       {selected && <details><summary className="text-sm text-teal cursor-pointer">Attempt for this mark · {Number.isFinite(attempt) ? attempt : "unset"}</summary>
@@ -173,7 +178,7 @@ export function TrajectoryStageEditor(props: StageLabelFormProps & { video?: Rea
         value={task.stages.find((s) => s.id === row.max_stage_id && s.index === row.max_stage)?.id ?? ""}
         onChange={(e) => { const s = task.stages.find((s) => s.id === e.target.value)!; remember({ ...row, max_stage: s.index, max_stage_id: s.id }, props.selectedEventKey ?? null, `Furthest stage set to S${s.index}.`); }}>
         <option value="" disabled>Choose the furthest stage…</option>{task.stages.map((s) => <option key={s.id} value={s.id}>{stageTitle(s)}</option>)}</select></label>
-      <p className="text-xs text-ink-muted">Must match the highest marked stage. Keep earlier progress even if the episode later fails. S0 needs no timestamp.</p>
+      <p className="text-xs text-ink-muted">Highest marked stage · S0 if none.</p>
       <details><summary className="text-sm text-teal cursor-pointer">Retries and timeline settings</summary><div className="mt-3 space-y-3">
         <label className="block text-sm">Attempt count<input aria-label="Attempt count" type="number" min="1" className={input} value={typeof row.attempt_count === "number" ? row.attempt_count : ""} disabled={blocked} onChange={(e) => {
           remember({ ...row, attempt_count: e.target.value === "" ? null : Number(e.target.value) }, null, "Attempt count updated."); setAttemptOverride(undefined);
@@ -189,7 +194,6 @@ export function TrajectoryStageEditor(props: StageLabelFormProps & { video?: Rea
     </div>
     {props.violations.length > 0 && <details className="rounded-lg bg-gold-light p-3"><summary className="text-sm cursor-pointer">Review checklist · {props.violations.length} items</summary>
       {props.violations.map((v, i) => <p key={i} className="text-sm mt-2">{v.message}</p>)}</details>}
-    <p className="text-sm text-ink-muted">Confirming verifies the stages, task result, end state and primary failure mode. Failure times and other prediction details are kept, not reviewed. If unsure, save as uncertain.</p>
     </aside>
   </section>;
 }
