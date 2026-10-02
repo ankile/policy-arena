@@ -12,10 +12,23 @@ Open <http://127.0.0.1:5174/sandbox/stage-review.html>. Node users can run
 `npx --yes bun@1.3.6 install --frozen-lockfile` and `npm run dev -- --host
 127.0.0.1 --port 5174 --strictPort` instead.
 
+## Hosted playground
+
+Vercel **Preview** deployments include `/sandbox/stage-review.html` alongside
+the normal app. Push this branch and use that path on its Vercel preview URL.
+Vercel's existing deployment access protection still applies. The normal
+production build excludes the playground; no shared backend deployment is needed.
+
+To build it explicitly outside Vercel, run `npm run build:playground` and serve
+`dist` as a static site. The preview reads the same public data and retains the
+local-only save boundary. Saves are isolated by browser and origin: localhost
+annotations do not appear on the hosted URL. Use **Export local saves** to keep
+a copy before changing origins; automatic import/sync is not provided.
+
 ## Try the workflow
 
-1. Choose a task, episode, and prediction version. **Routing · manual** opens
-   a dataset without legacy predictions to try annotation from scratch.
+1. Choose a task, episode, and prediction version. Routing's dataset selector
+   also offers the UMI-relative dataset for annotation from scratch.
 2. Play or scrub the synchronized cameras. Use **−1 frame / +1 frame**,
    slower playback, or **Enlarge** on the camera with the clearest evidence.
    Recorded stages appear as **S1, S2, …** on the progress bar. Click a marker
@@ -135,7 +148,8 @@ Legacy non-trajectory taxonomies retain their existing editor and protocol.
 - Trial saves live under `policy-arena-stage-playground-v1`, scoped to this
   browser and exact origin. Export before clearing site data. They are not
   uploaded, synced, backed up, or suitable as a shared labeling database.
-- The HTML entry is dev-only, excluded from the production Vite build. Local
+- The HTML entry is available in development and preview builds, excluded from
+  the normal production Vite build. Local
   exports include the same scoped coverage metadata as the new backend.
 
 ## Checks

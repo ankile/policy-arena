@@ -15,6 +15,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:playground": "tsc -b && tsc -p tsconfig.sandbox.json --noEmit && vite build --mode playground",
     "lint": "eslint .",
     "test": "bun test",
     "preview": "vite preview"

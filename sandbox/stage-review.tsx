@@ -14,7 +14,7 @@ import { withLocalStagePreviews } from "./localStagePreviews";
 import StagePreviewNotice from "./StagePreviewNotice";
 import "../src/index.css";
 
-// Development-only entry, not an input to the production Vite build.
+// Browser-local entry: available in development and preview builds, not shared production.
 // Reads use the public query API. There is deliberately no mutation client.
 const client = new ConvexReactClient("https://grandiose-rook-292.convex.cloud");
 const storageKey = "policy-arena-stage-playground-v1";
