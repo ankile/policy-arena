@@ -8,6 +8,10 @@ import { useWindowKeydown, isTypingTarget } from "./useWindowKeydown";
 const button = "rounded-lg border border-warm-200 px-3 py-2 text-sm text-teal cursor-pointer disabled:opacity-40";
 const input = "w-full rounded-lg border border-warm-200 bg-white px-3 py-2 text-sm";
 const endStateTitle = (id: string) => id.charAt(0).toUpperCase() + id.slice(1).replaceAll("_", " ");
+const resultOptions = [
+  { value: true, title: "Success", color: "text-emerald-800 accent-emerald-700 focus-within:outline-emerald-700", selected: "border-emerald-700 bg-emerald-100 ring-1 ring-emerald-700 font-semibold", idle: "border-emerald-200 bg-emerald-50" },
+  { value: false, title: "Failure", color: "text-red-800 accent-red-700 focus-within:outline-red-700", selected: "border-red-700 bg-red-100 ring-1 ring-red-700 font-semibold", idle: "border-red-200 bg-red-50" },
+];
 
 /** Human-facing projection: stages, result, end state and primary failure mode. */
 export function TrajectoryStageEditor(props: StageLabelFormProps & { video?: ReactNode; timeline?: ReactNode; episodeDurationS?: number | null }) {
@@ -127,10 +131,10 @@ export function TrajectoryStageEditor(props: StageLabelFormProps & { video?: Rea
     <div className="space-y-3">
       <fieldset disabled={blocked} className="space-y-2">
         <legend className="text-sm font-medium mb-2">Did the task succeed?</legend>
-        <div className="grid grid-cols-2 gap-2">{[true, false].map((value) => <label key={String(value)} className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm cursor-pointer ${row.task_success === value ? "border-teal bg-teal/10 text-teal" : "border-warm-200 bg-white"}`}>
+        <div className="grid grid-cols-2 gap-2">{resultOptions.map(({ value, title, color, selected, idle }) => <label key={String(value)} className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm focus-within:outline-2 focus-within:outline-offset-2 ${color} ${row.task_success === value ? selected : idle} ${blocked ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}>
           <input type="radio" name="episode-result" checked={row.task_success === value} onChange={() => remember({ ...row, task_success: value,
             failure_mode: value ? noFailure : row.failure_mode === noFailure ? "" : row.failure_mode }, props.selectedEventKey ?? null, `Result set to ${value ? "success" : "failure"}.`)} />
-          {value ? "Success" : "Failure"}
+          {title}
         </label>)}</div>
         <label className="flex items-center gap-2 text-sm text-ink-muted cursor-pointer"><input type="radio" name="episode-result" checked={typeof row.task_success !== "boolean"}
           onChange={() => remember({ ...row, task_success: null, failure_mode: "" }, props.selectedEventKey ?? null, "Result left undecided. Save as uncertain if needed.")} />Not sure yet</label>

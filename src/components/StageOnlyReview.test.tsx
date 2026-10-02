@@ -45,6 +45,26 @@ const state = (view: ReturnType<typeof render>) => JSON.parse(view.getByTestId("
 
 const positiveTasks = [{ source_name: "marker_d2_v5", spec: markerV5 }, { source_name: "square_d2_v4", spec: squareV4 }, { source_name: "marker_d2_v6", spec: markerV6 }, { source_name: "square_d2_v5", spec: squareV5 }];
 const editorTasks = [...fixtures.synthetic.tasks, { source_name: "routing_d1_v2", spec: routingV2 }, { source_name: "routing_d1_v3", spec: routingV3 }, { source_name: "routing_d1_v4", spec: routingV4 }, ...positiveTasks];
+for (const schema of [markerV6, squareV5, routingV4]) test(`${schema.taxonomy_version}: result colors supplement text and radio selection`, () => {
+  const view = render(<Fixture schema={schema as ExportedStageSpec} />);
+  const success = view.getByRole("radio", { name: "Success", exact: true }) as HTMLInputElement;
+  const failure = view.getByRole("radio", { name: "Failure", exact: true }) as HTMLInputElement;
+  expect(success.closest("label")!.className).toContain("text-emerald-800");
+  expect(failure.closest("label")!.className).toContain("text-red-800");
+  expect(success.checked).toBe(false);
+  expect(failure.checked).toBe(false);
+  fireEvent.click(success);
+  expect(success.checked).toBe(true);
+  expect(success.closest("label")!.className).toContain("ring-1");
+  expect(state(view).row.task_success).toBe(true);
+  fireEvent.click(failure);
+  expect(success.checked).toBe(false);
+  expect(success.closest("label")!.className).not.toContain("ring-1");
+  expect(failure.checked).toBe(true);
+  expect(failure.closest("label")!.className).toContain("ring-1");
+  expect(state(view).row.task_success).toBe(false);
+});
+
 for (const schema of [markerV6, squareV5, routingV4]) test(`${schema.taxonomy_version}: optional definitions stay collapsed without changing the annotation`, () => {
   const definition = schema.trajectory.task_definition;
   const failure = definition.failureModes.find((mode) => mode.id !== definition.successDefinition.noFailureModeId)!;
