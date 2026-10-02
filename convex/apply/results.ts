@@ -18,6 +18,7 @@ export interface Reconciliation {
   episodes_reviewed: number;
   outcome_class_changes: number;
   num_steps_patches: number;
+  subtask_frames_patches: number;
   success_flips: Array<{ episode_index: number; old: string; new: string }>;
 }
 
@@ -86,6 +87,30 @@ export function liveSubtaskFramesByEpisode(payload: Payload | null): Map<number,
 }
 
 /**
+ * live_marks_payload: the results payload whose rollout `subtask_frames` are the
+ * LIVE (eval-time) marks. An outcome-reconciled results.json carries the review
+ * record's marks on reviewed rollouts (applyOutcomeEditRecord canonicalizes
+ * them), so its live marks come from the results_eval_time.json backup written
+ * at that reconciliation — the raw payload, same rollout set. A raw results.json
+ * (never reconciled, or rewritten by a resumed eval) is itself the live source.
+ */
+export function liveMarksPayload(
+  resultsPayload: Payload | null,
+  evalTimePayload: Payload | null
+): Payload | null {
+  if (resultsPayload === null || !("_outcome_edit_reconciliation" in resultsPayload)) {
+    return resultsPayload;
+  }
+  if (evalTimePayload === null) {
+    throw new Error(
+      "results.json is already outcome-reconciled but results_eval_time.json is missing; " +
+        "refusing to invent eval-time provenance for the live subtask marks"
+    );
+  }
+  return evalTimePayload;
+}
+
+/**
  * subtask_frames_for_validation: subtask frames the frame validator must
  * tolerate, per episode — live eval-time marks overridden per episode by the
  * review record. A reviewed episode (present in changed_episodes) is
@@ -149,7 +174,23 @@ export function validateSummaryMatchesRollouts(payload: Payload): void {
   }
 }
 
-/** apply_outcome_edit_record: patch rollout outcomes/num_steps in place. */
+/**
+ * subtask_frames canonical for a REVIEWED episode: exactly the spikes apply wrote
+ * to the parquet (applyOutcomeEdits stamps reward=1.0 at `subtask_frames ?? []`
+ * and zeroes every other pre-outcome frame). A record without the key (0-mark
+ * task, or a pre-subtask-era review) therefore canonicalizes to no marks.
+ */
+function canonicalSubtaskFrames(entry: Record<string, unknown>): number[] {
+  const frames = (entry.subtask_frames as Array<number | bigint> | undefined) ?? [];
+  return [...new Set(frames.map((f) => Number(f)))].sort((a, b) => a - b);
+}
+
+/**
+ * apply_outcome_edit_record: patch rollout outcomes/num_steps/subtask_frames in
+ * place. Reviewed episodes get the record's subtask marks (rollouts with no key
+ * and no marks stay keyless — absent ≡ no marks); unreviewed rollouts keep their
+ * live marks. The eval-time marks survive in results_eval_time.json.
+ */
 export function applyOutcomeEditRecord(
   payload: Payload,
   record: ProgressRecord,
@@ -167,6 +208,7 @@ export function applyOutcomeEditRecord(
 
   let classChanges = 0;
   let stepPatches = 0;
+  let subtaskPatches = 0;
   const flips: Reconciliation["success_flips"] = [];
   for (const ep of [...changed.keys()].sort((a, b) => a - b)) {
     const entry = changed.get(ep)!;
@@ -197,6 +239,16 @@ export function applyOutcomeEditRecord(
         stepPatches += 1;
       }
     }
+    const marks = canonicalSubtaskFrames(entry);
+    if ("subtask_frames" in rollout) {
+      if (dumpsSorted(rollout.subtask_frames as Json) !== dumpsSorted(marks)) {
+        rollout.subtask_frames = marks;
+        subtaskPatches += 1;
+      }
+    } else if (marks.length > 0) {
+      rollout.subtask_frames = marks;
+      subtaskPatches += 1;
+    }
   }
 
   recomputeSummaryFromRollouts(payload);
@@ -205,9 +257,15 @@ export function applyOutcomeEditRecord(
     episodes_reviewed: changed.size,
     outcome_class_changes: classChanges,
     num_steps_patches: stepPatches,
+    subtask_frames_patches: subtaskPatches,
     success_flips: flips,
   };
-  if (existingReconciliation !== undefined && classChanges === 0 && stepPatches === 0) {
+  if (
+    existingReconciliation !== undefined &&
+    classChanges === 0 &&
+    stepPatches === 0 &&
+    subtaskPatches === 0
+  ) {
     payload._outcome_edit_reconciliation = existingReconciliation;
     return existingReconciliation as unknown as Reconciliation;
   }

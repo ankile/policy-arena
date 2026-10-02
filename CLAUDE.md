@@ -55,7 +55,10 @@ internal.applyWorker.run)`; there is NO polling worker anymore.
   success/reward/done/is_valid via parquet-wasm + apache-arrow, LeRobot
   RunningQuantileStats refresh of per-episode meta cells + meta/stats.json,
   ledger repair, results.json canonicalization + eval-time backup,
-  progress-record merge, label-history append). One ATOMIC HF commit pinned
+  progress-record merge, label-history append). Canonicalization sets each
+  REVIEWED rollout's outcome, num_steps AND subtask_frames to the progress
+  record (unreviewed rollouts keep live marks); live eval-time marks are read
+  from results_eval_time.json once results.json is reconciled. One ATOMIC HF commit pinned
   on the pre-apply sha (`parentCommit` — a concurrent push fails the job
   loudly), then the v3.0 tag advances.
 - Parity gate: `experiments/2026-08-21/01_ts_apply_parity_harness.py` in the

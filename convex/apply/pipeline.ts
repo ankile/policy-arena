@@ -55,6 +55,7 @@ import type { LabelSource } from "./labelHistory";
 import { DEFAULT_LEDGER_NAMES, repairLedger } from "./ledgers";
 import {
   canonicalizeResultsTexts,
+  liveMarksPayload,
   subtaskFramesForValidation,
 } from "./results";
 import { dumpsIndent4 } from "./pyjson";
@@ -323,15 +324,20 @@ export async function headlessApply(args: {
   mergeOverlayIntoProgress(progress, overlay);
   changedFiles.set(PROGRESS_FILENAME, serializeProgress(progress));
 
-  // Subtask frames the validator tolerates: live eval-time marks from
-  // results.json (unreviewed episodes still carry their live spike), overridden
-  // per episode by the merged progress record.
+  // Subtask frames the validator tolerates: live eval-time marks (unreviewed
+  // episodes still carry their live spike), overridden per episode by the
+  // merged progress record. A reconciled results.json carries the REVIEWED
+  // marks, so the live source is then the results_eval_time.json backup.
   const resultsText = store.paths.includes(RESULTS_FILENAME)
     ? await fetchText(store, RESULTS_FILENAME)
     : null;
+  const backupText = await fetchOptionalText(store, RESULTS_BACKUP_FILENAME);
   const subtaskByEp = subtaskFramesForValidation(
     progress,
-    resultsText === null ? null : (JSON.parse(resultsText) as Record<string, unknown>)
+    liveMarksPayload(
+      resultsText === null ? null : (JSON.parse(resultsText) as Record<string, unknown>),
+      backupText === null ? null : (JSON.parse(backupText) as Record<string, unknown>)
+    )
   );
 
   // --- Apply edits + refresh stats + repair ledgers.
@@ -391,7 +397,7 @@ export async function headlessApply(args: {
     const canonical = canonicalizeResultsTexts({
       resultsText,
       progressRecord: changedEpisodes.size > 0 ? progress : null,
-      existingBackupText: await fetchOptionalText(store, RESULTS_BACKUP_FILENAME),
+      existingBackupText: backupText,
       overridesFilename: PROGRESS_FILENAME,
       frameOutcomes,
     });
@@ -403,7 +409,8 @@ export async function headlessApply(args: {
       const rec = canonical.reconciliation;
       log.push(
         `Repaired results.json from outcome edits: reviewed=${rec?.episodes_reviewed} ` +
-          `class_changes=${rec?.outcome_class_changes} success_flips=${rec?.success_flips.length}`
+          `class_changes=${rec?.outcome_class_changes} success_flips=${rec?.success_flips.length} ` +
+          `subtask_frames_patches=${rec?.subtask_frames_patches ?? 0}`
       );
     }
   }
