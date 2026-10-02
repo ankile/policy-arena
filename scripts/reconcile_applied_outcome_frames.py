@@ -7,15 +7,21 @@ frame, so `reviews:latestForRepo` drifted from HF by that snap. The worker now
 writes the applied frame back (`reviews:recordAppliedOutcomeFrames`); this
 script repairs rows applied before that change.
 
-For every repo with outcome reviews it compares the Arena fold against the
-progress record at HF `main`. A row is patched only when its ONLY difference
+It scans every repo with outcome reviews or an Arena eval session and
+compares the Arena fold against the progress record at HF `main`. A repo with
+neither rows nor a progress record has nothing to compare; an HF record without
+a row (the cv2-era gap `backfill_missing_review_rows.py` fills) is an issue.
+Collection parents (teleop/DAgger repos) with no review rows and no eval
+session are outside the scan. A row is patched only when its ONLY difference
 is outcome_frame AND the snap rule explains it: the Arena frame is the
 episode's terminal frame (length - 1), the HF frame is earlier, and the HF
 frame is the episode's last is_valid=1 frame at `main`. Every other
 difference is printed and left alone, and the script exits nonzero.
 Rows with `backfilled_from_hf_sha` (cv2-era decisions mirrored by
 backfill_missing_review_rows.py) are applied by construction, so they are
-compared against HF whatever their creation time.
+compared against HF whatever their creation time. An HF record without
+`soft_truncate` (written by the 2026-02 editor) compares as soft_truncate=True,
+the value both apply implementations use for a missing key.
 
 Patches go through `npx convex run` against the dev deployment
 (grandiose-rook-292), the same internal mutation the apply worker calls.
@@ -53,6 +59,8 @@ def as_int(value) -> int:
 class RepoReport:
     repo: str
     sha: str | None = None
+    has_progress: bool = True
+    records: int = 0
     rows: int = 0
     matched: int = 0
     patches: list[dict] = field(default_factory=list)
@@ -141,14 +149,18 @@ def reconcile_repo(arena: ConvexClient, hf: HfApi, fs: HfFileSystem, repo: str) 
             repo, PROGRESS_FILENAME, repo_type="dataset", revision=report.sha
         )
     except EntryNotFoundError:
-        report.issues.append(f"no {PROGRESS_FILENAME} at main {report.sha}")
+        progress_path = None
+    rows = arena.query("reviews:latestForRepo", {"dataset_repo": repo})["episodes"]
+    report.rows = len(rows)
+    if progress_path is None:
+        report.has_progress = False
+        if rows:
+            report.issues.append(f"{len(rows)} review row(s) but no {PROGRESS_FILENAME} at main")
         return report
     progress = json.loads(Path(progress_path).read_text())
     changed: dict[str, dict] = progress["changed_episodes"]
     skipped = {int(e) for e in progress["skipped_episodes"]}
-
-    rows = arena.query("reviews:latestForRepo", {"dataset_repo": repo})["episodes"]
-    report.rows = len(rows)
+    report.records = len(changed) + len(skipped)
     candidates: dict[int, dict] = {}
     arena_eps: set[int] = set()
     for row in rows:
@@ -178,6 +190,7 @@ def reconcile_repo(arena: ConvexClient, hf: HfApi, fs: HfFileSystem, repo: str) 
             continue
         rest_mine = {k: v for k, v in mine.items() if k != "outcome_frame"}
         rest_theirs = {k: v for k, v in theirs.items() if k != "outcome_frame"}
+        rest_theirs.setdefault("soft_truncate", True)  # the apply default for a missing key
         if rest_mine != rest_theirs:
             report.issues.append(f"{tag}: non-frame drift Arena {mine} vs HF {theirs}")
             continue
@@ -255,14 +268,24 @@ def main() -> int:
     arena = ConvexClient(CONVEX_URL)
     hf = HfApi()
     fs = HfFileSystem()
-    repos = arena.query("reviews:reviewedRepos", {})
-    print(f"{len(repos)} repo(s) with outcome reviews ({'APPLY' if args.apply else 'dry run'})")
+    reviewed = set(arena.query("reviews:reviewedRepos", {}))
+    sessions = {s["dataset_repo"] for s in arena.query("evalSessions:list", {})}
+    repos = sorted(reviewed | sessions)
+    print(
+        f"{len(repos)} repo(s): {len(reviewed)} with outcome reviews, {len(sessions)} with an "
+        f"eval session ({'APPLY' if args.apply else 'dry run'})"
+    )
     reports = [reconcile_repo(arena, hf, fs, repo) for repo in repos]
 
+    bare = [r for r in reports if not r.has_progress and not r.rows and not r.issues]
+    print(f"{len(bare)} repo(s) have neither a progress record nor review rows")
     for report in reports:
+        if report in bare:
+            continue
         print(f"\n== {report.repo} @ main {report.sha}")
         print(
-            f"   {report.rows} latest row(s): {report.matched} match HF, "
+            f"   {report.records} HF record(s), {report.rows} latest row(s): "
+            f"{report.matched} match HF, "
             f"{len(report.patches)} frame snap(s) to patch, {len(report.issues)} issue(s)"
         )
         for patch in report.patches:

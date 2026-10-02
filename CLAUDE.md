@@ -108,7 +108,12 @@ internal.applyWorker.run)`; there is NO polling worker anymore.
 - cv2-era decisions (made with `sir/tools/outcome_editor.py` before the web
   flow) are mirrored as review rows by `scripts/backfill_missing_review_rows.py`
   via internal `reviews:backfillAppliedRecords`: historical reviewer/saved_at
-  from `.label_history.jsonl`, `backfilled_from_hf_sha` stamped, no apply job.
+  from `.label_history.jsonl`, cross-checked against the HF commit that landed
+  each decision (commit author/time when no event exists),
+  `backfilled_from_hf_sha` stamped, no apply job. Repo lists go through a
+  dry run that writes a pins file (`--repos-file … --write-pins`) and an apply
+  that refuses any moved pin (`--pins … --apply`); committed pins live in
+  `scripts/review_backfill_pins/`.
   Such rows are applied by construction — the freshness gate and reconcile
   script never read them as pending, and `reviews:save` refuses to clear them.
 - Label-history provenance: `source = {kind: "human", agent: reviewer,
