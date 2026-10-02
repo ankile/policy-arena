@@ -1,4 +1,6 @@
-import { query, mutation } from "./_generated/server";
+import { query, mutation, internalMutation } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { requireEditor, requireEditorOrService } from "./access";
@@ -91,6 +93,9 @@ export const save = mutation({
     // Attribution override for scripted backfills of historical cv2-era
     // records (service principal only; humans are attributed from auth).
     reviewer_override: v.optional(v.string()),
+    // The script/rule that produced a scripted review (service principal
+    // only); becomes the label-history source.tool on apply.
+    source_tool: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const principal = await requireEditorOrService(ctx, args.serviceToken);
@@ -155,9 +160,15 @@ export const save = mutation({
     let reviewer: string;
     if (principal === "service") {
       reviewer = args.reviewer_override ?? "service";
+      if (args.source_tool !== undefined && !args.source_tool.trim()) {
+        throw new Error("source_tool must be a non-empty string");
+      }
     } else {
       if (args.reviewer_override !== undefined) {
         throw new Error("reviewer_override is reserved for the service principal");
+      }
+      if (args.source_tool !== undefined) {
+        throw new Error("source_tool is reserved for the service principal");
       }
       reviewer = principal;
     }
@@ -172,6 +183,7 @@ export const save = mutation({
       subtask_frames: args.subtask_frames,
       reviewer,
       reviewer_user_id: userId ?? undefined,
+      source_tool: args.source_tool,
       saved_at: Date.now(),
     });
   },
@@ -200,6 +212,132 @@ export const latestForRepo = query({
       num_confirmed: episodes.filter((e) => e.status === "confirmed").length,
       num_skipped: episodes.filter((e) => e.status === "skipped").length,
     };
+  },
+});
+
+/** The newest row for an episode, cleared rows included (latestForRepo's fold). */
+async function newestEpisodeRow(
+  ctx: MutationCtx,
+  datasetRepo: string,
+  episodeIndex: bigint
+): Promise<Doc<"outcomeReviews">> {
+  const rows = await ctx.db
+    .query("outcomeReviews")
+    .withIndex("by_repo_episode", (q) =>
+      q.eq("dataset_repo", datasetRepo).eq("episode_index", episodeIndex)
+    )
+    .collect();
+  if (rows.length === 0) throw new Error(`No reviews for ${datasetRepo} episode ${episodeIndex}`);
+  return rows.reduce((a, b) => (b._creationTime > a._creationTime ? b : a));
+}
+
+/**
+ * Write the outcome_frame an apply actually committed to HF back onto the
+ * review row it applied, keeping the reviewer's raw frame in
+ * submitted_outcome_frame. Apply normalization only ever moves a mark on the
+ * terminal is_valid=0 padding frame back to the last valid frame, so the
+ * applied frame must be strictly earlier. A row that is no longer the newest
+ * for its episode (a review saved while the apply ran) is left alone: the next
+ * apply normalizes the newer row.
+ */
+export const recordAppliedOutcomeFrames = internalMutation({
+  args: {
+    dataset_repo: v.string(),
+    applied: v.array(
+      v.object({ review_id: v.id("outcomeReviews"), outcome_frame: v.int64() })
+    ),
+  },
+  handler: async (ctx, args) => {
+    let patched = 0;
+    const superseded: bigint[] = [];
+    for (const { review_id, outcome_frame } of args.applied) {
+      const row = await ctx.db.get(review_id);
+      if (row === null) throw new Error(`Review ${review_id} not found`);
+      const where = `${args.dataset_repo} episode ${row.episode_index} (review ${review_id})`;
+      if (row.dataset_repo !== args.dataset_repo) {
+        throw new Error(`Review ${review_id} belongs to ${row.dataset_repo}, not ${args.dataset_repo}`);
+      }
+      if (row.status !== "confirmed" || row.outcome_frame === undefined) {
+        throw new Error(`${where}: only confirmed reviews carry an outcome_frame`);
+      }
+      if (row.submitted_outcome_frame !== undefined) {
+        throw new Error(
+          `${where}: already normalized once (submitted ${row.submitted_outcome_frame}, ` +
+            `applied ${row.outcome_frame}); a second differing frame ${outcome_frame} means ` +
+            "the apply normalization is not idempotent"
+        );
+      }
+      if (outcome_frame >= row.outcome_frame) {
+        throw new Error(
+          `${where}: applied frame ${outcome_frame} is not earlier than the submitted ` +
+            `frame ${row.outcome_frame}; normalization only snaps terminal padding back`
+        );
+      }
+      const newest = await newestEpisodeRow(ctx, row.dataset_repo, row.episode_index);
+      if (newest._id !== row._id) {
+        superseded.push(row.episode_index);
+        continue;
+      }
+      await ctx.db.patch(review_id, {
+        outcome_frame,
+        submitted_outcome_frame: row.outcome_frame,
+      });
+      patched += 1;
+    }
+    return { patched, superseded };
+  },
+});
+
+/**
+ * Re-attribute scripted reviews saved under a placeholder reviewer string.
+ * The episode list is explicit and must match the reviewer's rows exactly.
+ */
+export const reattributeScriptedReviews = internalMutation({
+  args: {
+    dataset_repo: v.string(),
+    from_reviewer: v.string(),
+    reviewer: v.string(),
+    source_tool: v.string(),
+    episode_indices: v.array(v.int64()),
+  },
+  handler: async (ctx, args) => {
+    if (!args.reviewer.trim() || !args.source_tool.trim()) {
+      throw new Error("reviewer and source_tool must be non-empty");
+    }
+    const rows = (
+      await ctx.db
+        .query("outcomeReviews")
+        .withIndex("by_repo", (q) => q.eq("dataset_repo", args.dataset_repo))
+        .collect()
+    ).filter((row) => row.reviewer === args.from_reviewer);
+    const expected = [...new Set(args.episode_indices.map(String))].sort();
+    const found = rows.map((row) => String(row.episode_index)).sort();
+    if (expected.length !== args.episode_indices.length) {
+      throw new Error("episode_indices contains duplicates");
+    }
+    if (found.length !== expected.length || found.some((ep, i) => ep !== expected[i])) {
+      throw new Error(
+        `Rows by ${args.from_reviewer} on ${args.dataset_repo} cover episodes [${found}], ` +
+          `expected exactly [${expected}]`
+      );
+    }
+    for (const row of rows) {
+      if (row.source_tool !== undefined) {
+        throw new Error(`Review ${row._id} already carries source_tool ${row.source_tool}`);
+      }
+      await ctx.db.patch(row._id, { reviewer: args.reviewer, source_tool: args.source_tool });
+    }
+    return rows.length;
+  },
+});
+
+/** Every dataset repo with at least one outcome review row (audit surface). */
+export const reviewedRepos = query({
+  args: {},
+  handler: async (ctx) => {
+    const repos = new Set<string>();
+    for await (const row of ctx.db.query("outcomeReviews")) repos.add(row.dataset_repo);
+    return [...repos].sort();
   },
 });
 

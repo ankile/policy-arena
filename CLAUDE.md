@@ -83,6 +83,18 @@ internal.applyWorker.run)`; there is NO polling worker anymore.
   success/num_frames IN PLACE after each apply (ratings are fit on read, so
   this fully replaces the legacy delete-and-resubmit
   `sir/tools/arena_resubmit.py` replay).
+- Review rows track the applied record: a mark on the terminal is_valid=0
+  padding frame is normalized to the last valid frame on HF, and after a
+  non-dry-run commit the worker writes that frame back onto the applied row
+  (`reviews:recordAppliedOutcomeFrames`; raw frame kept in
+  `submitted_outcome_frame`; a row superseded during the apply is left for
+  the next apply). Audit/repair Arena-vs-HF drift with
+  `uv run python deps/policy_arena/scripts/reconcile_applied_outcome_frames.py`
+  from the sir repo (dry run by default, `--apply` patches frame snaps only).
+- Label-history provenance: `source = {kind: "human", agent: reviewer,
+  tool: source_tool ?? "web-review"}`. Scripted saves pass
+  `reviewer_override=<human>` + `source_tool=<rule and script path>`
+  (`save_outcome_review(..., source_tool=...)`, service principal only).
 - Rollback: set `APPLY_NATIVE=0` on the deployment (enqueue stops scheduling)
   and start the deprecated Python `sir.tools.arena_review_worker` poller —
   claims are atomic, so the two paths cannot double-apply.

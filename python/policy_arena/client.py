@@ -570,8 +570,14 @@ class PolicyArenaClient:
         soft_truncate: bool | None = None,
         subtask_frames: list[int] | None = None,
         reviewer_override: str | None = None,
+        source_tool: str | None = None,
     ) -> str:
-        """Record an outcome review (service path — e.g. cv2-era backfills)."""
+        """Record an outcome review (service path — e.g. cv2-era backfills).
+
+        ``reviewer_override`` names the human who made the decision;
+        ``source_tool`` names the script or rule that wrote it and becomes the
+        label-history ``source.tool`` on apply (default ``"web-review"``).
+        """
         args: dict = {
             "dataset_repo": dataset_repo,
             "episode_index": ConvexInt64(int(episode_index)),
@@ -587,6 +593,8 @@ class PolicyArenaClient:
             args["subtask_frames"] = [ConvexInt64(int(f)) for f in subtask_frames]
         if reviewer_override is not None:
             args["reviewer_override"] = reviewer_override
+        if source_tool is not None:
+            args["source_tool"] = source_tool
         return self._mutation("reviews:save", args)
 
     def upsert_task_spec(

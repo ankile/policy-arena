@@ -38,6 +38,33 @@ class PolicyArenaClientTest(unittest.TestCase):
             "https://grandiose-rook-292.convex.site/api/v1",
         )
 
+    @patch("policy_arena.client.urlopen")
+    def test_outcome_review_carries_scripted_provenance(self, mock_urlopen):
+        mock_urlopen.return_value = _Response({"ok": True, "value": "review-id"})
+        client = PolicyArenaClient(
+            "https://grandiose-rook-292.convex.cloud", api_key="pa_test.secret"
+        )
+        client.save_outcome_review(
+            "org/dataset",
+            3,
+            "confirmed",
+            new_outcome="failure",
+            outcome_frame=41,
+            soft_truncate=False,
+            subtask_frames=[],
+            reviewer_override="ankile",
+            source_tool="rule:example (scripts/example.py)",
+        )
+        request = mock_urlopen.call_args.args[0]
+        self.assertTrue(request.full_url.endswith("/mutate/reviews/save"))
+        body = json_to_convex(json.loads(request.data))
+        self.assertEqual(body["reviewer_override"], "ankile")
+        self.assertEqual(body["source_tool"], "rule:example (scripts/example.py)")
+
+        client.save_outcome_review("org/dataset", 4, "skipped")
+        body = json_to_convex(json.loads(mock_urlopen.call_args.args[0].data))
+        self.assertNotIn("source_tool", body)
+
     def test_write_requires_machine_key(self):
         client = PolicyArenaClient(
             "https://grandiose-rook-292.convex.cloud", api_key=None

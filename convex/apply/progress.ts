@@ -42,6 +42,7 @@ export interface ReviewRow {
   soft_truncate?: boolean;
   subtask_frames?: Array<number | bigint>;
   reviewer: string;
+  source_tool?: string;
 }
 
 export function asInt(value: number | bigint): number {
@@ -94,6 +95,33 @@ export function buildOverlay(rows: ReviewRow[]): Overlay {
     }
   }
   return { changed_episodes: changed, skipped_episodes: skipped };
+}
+
+/**
+ * Review rows whose stored outcome_frame differs from the frame the apply
+ * committed (normalization snaps a terminal-padding mark to the last valid
+ * frame). The apply worker writes these back so the Arena fold keeps
+ * matching the HF progress record.
+ */
+export function outcomeFrameWritebacks<Id>(
+  rows: Array<{ _id: Id; episode_index: number | bigint; status: string; outcome_frame?: number | bigint }>,
+  appliedFrames: Array<{ episode_index: number; outcome_frame: number }>
+): Array<{ review_id: Id; episode_index: number; outcome_frame: number }> {
+  const applied = new Map(appliedFrames.map((e) => [e.episode_index, e.outcome_frame]));
+  const out: Array<{ review_id: Id; episode_index: number; outcome_frame: number }> = [];
+  for (const row of rows) {
+    if (row.status !== "confirmed") continue;
+    const epIdx = asInt(row.episode_index);
+    const frame = applied.get(epIdx);
+    if (frame === undefined) throw new Error(`Episode ${epIdx}: confirmed review was not applied`);
+    if (row.outcome_frame === undefined) {
+      throw new Error(`Episode ${epIdx}: confirmed review missing outcome_frame`);
+    }
+    if (frame !== asInt(row.outcome_frame)) {
+      out.push({ review_id: row._id, episode_index: epIdx, outcome_frame: frame });
+    }
+  }
+  return out;
 }
 
 /** load_progress (without the legacy reward-file migration: those datasets

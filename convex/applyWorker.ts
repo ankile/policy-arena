@@ -19,7 +19,7 @@
 import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal, api } from "./_generated/api";
-import { buildOverlay } from "./apply/progress";
+import { asInt, buildOverlay, outcomeFrameWritebacks } from "./apply/progress";
 import type { ReviewRow } from "./apply/progress";
 import type { LabelSource } from "./apply/labelHistory";
 import { headlessApply } from "./apply/pipeline";
@@ -42,6 +42,17 @@ export function resolveUploadBranch(dryRun: boolean, revision?: string, branch?:
     throw new Error("Validation uploads require a pinned revision and an apply-validation/ branch");
   }
   return dryRun ? (branch ?? null) : "main";
+}
+
+/** Label-history source per episode: the human who decided, and the tool
+ * that wrote the decision (a scripted rule's source_tool, else the web UI). */
+export function labelSourcesByEpisode(rows: ReviewRow[]): Map<number, LabelSource> {
+  return new Map(
+    rows.map((row) => [
+      asInt(row.episode_index),
+      { kind: "human", agent: String(row.reviewer), tool: row.source_tool ?? "web-review" },
+    ])
+  );
 }
 
 export const run = internalAction({
@@ -82,12 +93,7 @@ export const run = internalAction({
       // Label-history provenance: who made each decision and which apply job
       // carried it. Side-channel, NOT overlay fields — decision records stay
       // shaped exactly like the historical editor's.
-      const sourceByEpisode = new Map<number, LabelSource>(
-        (reviews.episodes as unknown as ReviewRow[]).map((row) => [
-          Number(row.episode_index),
-          { kind: "human", agent: String(row.reviewer), tool: "web-review" },
-        ])
-      );
+      const sourceByEpisode = labelSourcesByEpisode(reviews.episodes as unknown as ReviewRow[]);
 
       const taskSpecs = (await ctx.runQuery(api.taskSpecs.all, {})) as Array<{
         task_name: string;
@@ -145,6 +151,30 @@ export const run = internalAction({
       await reportProgress(`Committed ${result.changedFiles.size} file(s) @ ${postSha}`);
       await advanceLerobotVersionTag(client, postSha);
       log.push(`Moved v3.0 -> ${postSha.slice(0, 8)}`);
+
+      // Keep the Arena fold equal to the committed HF record: write normalized
+      // outcome frames back onto the exact rows this apply read.
+      const writebacks = outcomeFrameWritebacks(
+        reviews.episodes,
+        result.summary.applied_outcome_frames
+      );
+      if (writebacks.length > 0) {
+        const recorded = await ctx.runMutation(internal.reviews.recordAppliedOutcomeFrames, {
+          dataset_repo: repoId,
+          applied: writebacks.map((w) => ({
+            review_id: w.review_id,
+            outcome_frame: BigInt(w.outcome_frame),
+          })),
+        });
+        log.push(
+          `Review outcome_frame normalized to the applied frame on ${recorded.patched} row(s)` +
+            (recorded.superseded.length > 0
+              ? `; left ${recorded.superseded.length} superseded by a newer review ` +
+                `(episodes ${recorded.superseded.join(", ")})`
+              : "") +
+            "."
+        );
+      }
 
       const corrected = await ctx.runMutation(internal.evalSessions.correctOutcomes, {
         dataset_repo: repoId,

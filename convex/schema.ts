@@ -148,8 +148,16 @@ export default defineSchema({
     outcome_frame: v.optional(v.int64()),
     soft_truncate: v.optional(v.boolean()),
     subtask_frames: v.optional(v.array(v.int64())),
+    // The frame the reviewer submitted, kept for audit once an apply wrote the
+    // normalized frame back to outcome_frame (a mark on the terminal
+    // is_valid=0 padding frame lands on the last valid frame on HF).
+    submitted_outcome_frame: v.optional(v.int64()),
     reviewer: v.string(),
     reviewer_user_id: v.optional(v.id("users")),
+    // Tool or rule that produced a scripted review (service principal only);
+    // the apply records it as label-history source.tool. Absent means an
+    // interactive web review.
+    source_tool: v.optional(v.string()),
     saved_at: v.float64(),
   })
     .index("by_repo", ["dataset_repo"])

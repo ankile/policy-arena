@@ -75,6 +75,8 @@ export interface ApplySummary {
   subtask_marks: number;
   overlay_changed: number[];
   overlay_skipped: number[];
+  /** Overlay outcome frames after normalization: what HF records. */
+  applied_outcome_frames: Array<{ episode_index: number; outcome_frame: number }>;
   num_data_files_rewritten: number;
   episode_success: Array<{
     episode_index: number;
@@ -418,6 +420,9 @@ export async function headlessApply(args: {
         .map((s) => parseInt(s, 10))
         .sort((a, b) => a - b),
       overlay_skipped: [...overlay.skipped_episodes].map(asInt).sort((a, b) => a - b),
+      applied_outcome_frames: Object.entries(overlay.changed_episodes)
+        .map(([ep, record]) => ({ episode_index: parseInt(ep, 10), outcome_frame: asInt(record.outcome_frame) }))
+        .sort((a, b) => a.episode_index - b.episode_index),
       num_data_files_rewritten: dataFiles.filter((f) => f.dirty).length,
       episode_success: [...successAndFrames.entries()]
         .sort((a, b) => a[0] - b[0])
