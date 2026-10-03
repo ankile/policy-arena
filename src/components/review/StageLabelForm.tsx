@@ -1,7 +1,5 @@
-import type { TrajectoryEventLink } from "../../../convex/trajectoryEventLinks";
 import { useMemo, useState } from "react";
 import { TimeControls } from "./ReviewTimeControls";
-import { TrajectoryLabelForm } from "./TrajectoryLabelForm";
 import type { ExportedStageSpec, StageLabelRow, Violation } from "../../../convex/stageConsistency";
 
 // ---------------------------------------------------------------------------
@@ -21,8 +19,6 @@ export interface StageLabelFormProps {
   blind?: boolean;
   row: StageLabelRow;
   humanNotes?: string;
-  eventLinks?: TrajectoryEventLink[];
-  onEventLinksChange?: (links: TrajectoryEventLink[]) => void;
   onHumanNotesChange?: (notes: string) => void;
   violations: Violation[];
   /** Current playhead frame (display only). */
@@ -38,13 +34,12 @@ export interface StageLabelFormProps {
   onPendingInputChange?: (id: string, pending: boolean) => void;
   /** Do not reorder index-keyed event editors while local timestamp text is unfinished. */
   hasPendingInput?: boolean;
+  /** Selection is UI-only. */
+  selectedEventKey?: string | null;
+  onSelectEvent?: (key: string | null) => void;
 }
 
-export function StageLabelForm(props: StageLabelFormProps) {
-  return props.spec.trajectory ? <TrajectoryLabelForm {...props} /> : <LegacyStageLabelForm {...props} />;
-}
-
-function LegacyStageLabelForm({
+export function StageLabelForm({
   spec,
   row,
   violations,

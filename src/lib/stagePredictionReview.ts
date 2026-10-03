@@ -39,8 +39,15 @@ export function seedStageReview({
 }): ReviewSeed {
   const fromOwnReview = own?.label != null;
   const label = { ...(fromOwnReview ? own.label : prediction?.label ?? emptyLabel) };
-  // Legacy outcome inheritance remains explicit. An immutable prediction is
-  // shown exactly as registered, including disagreement with human outcomes.
+  // The human outcome belongs to the episode, not its stage taxonomy. Prefill
+  // only that boolean in a new structured review; never invent stage progress,
+  // end states or failure causes. Saved/working human reviews keep their edits.
+  if (!fromOwnReview && spec.trajectory) {
+    if (outcome === "success") label.task_success = true;
+    else if (outcome === "failure" || outcome === "timeout") label.task_success = false;
+  }
+  // Legacy outcome inheritance remains explicit. The original prediction is
+  // untouched and still shown verbatim in model evidence, even if it disagrees.
   const inheritedSuccess = !fromOwnReview && legacy && !spec.trajectory && outcome === "success";
   if (inheritedSuccess) {
     label[spec.stage_field] = spec.ladder.success_level;

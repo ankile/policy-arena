@@ -5,8 +5,10 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { canonicalDigest } from "./stagePredictionContract";
 import { blankTrajectoryReview } from "./trajectoryReview";
 import { requireEditorOrService } from "./access";
-import { reviewProtocolValidator, stageReviewCoverage } from "./stageReviewCoverage";
+import { reviewProtocolValidator, stageReviewCoverage, reviewedSummariesDisagree, CURRENT_REVIEW_PROTOCOL, SUPPORTED_REVIEW_PROTOCOLS } from "./stageReviewCoverage";
 import { analyzeTrajectoryTimeline } from "./trajectoryTimeline";
+import { validateStageOnlyReview } from "./stageOnlyReview";
+import { validateStageOutcomeReview } from "./stageOutcomeReview";
 import { eventLinksValidator, validateTrajectoryEventLinks } from "./trajectoryEventLinks";
 import {
   canonicalizeStageLabel,
@@ -26,10 +28,14 @@ import {
  * supersedes), plus draft/cleared:
  *  - confirmed:  the episode's review is complete (gold-eligible within its
  *    recorded review_coverage; missing historical coverage means unknown).
- *    For structured-v1, source prose/confidence are not human gold. Whether the
+ *    For structured-v1, source prose/confidence are not human gold. stages-v1
+ *    covers only stage judgments, never the retained pipeline fields. Whether the
  *    reviewer edited the prediction is not encoded here — it is derivable
  *    from the row's label vs the prefill generation it was shown
  *    (prefill_pushed_at) and from the HF ledger's vlm/human event chain.
+ *    stages-outcome-v1 covers stages plus task_success/final_state, but never
+ *    hidden model actions, failure details, source prose or confidence.
+ *    stages-outcome-v2 additionally covers the primary failure_mode only.
  *  - corrected:  LEGACY (gold-eligible, same as confirmed). The web UI no
  *    longer emits it (user decision 2026-08-20); it remains accepted for
  *    service replays of historical cv2 human_labels.csv batches.
@@ -222,9 +228,13 @@ export const save = mutation({
         throw new Error("trajectory identity must match the exact prediction source or source-free episode identity");
       }
       if ((COMMITTED as readonly string[]).includes(args.status)) {
-        const linkErrors = validateTrajectoryEventLinks(label, args.event_links ?? []);
+        const scopedReview = spec.trajectory && args.review_protocol !== undefined && args.review_protocol !== "structured-v1";
+        const linkErrors = scopedReview ? [] : validateTrajectoryEventLinks(label, args.event_links ?? []);
         if (linkErrors.length > 0) throw new Error(linkErrors.join("; "));
-        const violations = validateStageLabel(spec, label, resolvedDuration);
+        const violations = scopedReview ? (args.review_protocol === "stages-v1"
+          ? validateStageOnlyReview(spec.trajectory!, label, resolvedDuration)
+          : validateStageOutcomeReview(spec.trajectory!, label, resolvedDuration, args.review_protocol === CURRENT_REVIEW_PROTOCOL))
+          : validateStageLabel(spec, label, resolvedDuration);
         if (violations.length > 0) {
           throw new Error(
             `label is internally inconsistent (${violations.length} violation(s)): ` +
@@ -233,7 +243,7 @@ export const save = mutation({
         }
         // A review-only gate: immutable imported predictions and historical
         // saved labels remain untouched, including their original conflicts.
-        if (spec.trajectory) {
+        if (spec.trajectory && !scopedReview) {
           const timelineIssues = analyzeTrajectoryTimeline(spec.trajectory, label);
           if (timelineIssues.length > 0) {
             throw new Error("label timeline is inconsistent: " + timelineIssues.map((issue) => issue.message).join("; "));
@@ -273,7 +283,7 @@ export const save = mutation({
       label,
       notes: args.notes,
       review_coverage: reviewCoverage,
-      event_links: args.event_links,
+      event_links: args.review_protocol && args.review_protocol !== "structured-v1" ? undefined : args.event_links,
       prefill_pushed_at: resolvedPushedAt,
       prediction_id: args.prediction_id,
       prediction_sha256: args.prediction_sha256,
@@ -357,6 +367,7 @@ export const latestForRepo = query({
     const count = (status: string) => folded.filter((r) => r.status === status).length;
     return {
       episodes: folded,
+      supported_review_protocols: [...SUPPORTED_REVIEW_PROTOCOLS],
       num_confirmed: count("confirmed"),
       num_corrected: count("corrected"),
       num_uncertain: count("uncertain"),
@@ -394,8 +405,9 @@ export const historyForEpisode = query({
 
 /**
  * Episodes whose COMMITTED latest rows differ across reviewers on the core
- * triple (stage, failure mode, final state) under one taxonomy version — the
- * blinded-double-labeling disagreement queue.
+ * judgments under one taxonomy version — the blinded-double-labeling queue.
+ * Unknown historical coverage is returned explicitly, not silently discarded
+ * or treated as a known disagreement. Timing differences tolerate one frame.
  */
 export const disagreementsForRepo = query({
   args: {
@@ -445,9 +457,12 @@ export const disagreementsForRepo = query({
     const disagreements = [];
     for (const [episode, reviewRows] of byEpisode) {
       if (reviewRows.length < 2) continue;
-      const triples = new Set(reviewRows.map(triple));
-      if (triples.size > 1) {
-        disagreements.push({ episode_index: Number(episode), reviews: reviewRows });
+      const coverageUnknown = !!spec.trajectory && reviewRows.some((row) => !row.review_coverage);
+      const disagrees = spec.trajectory
+        ? reviewRows.some((left, index) => reviewRows.slice(index + 1).some((right) => reviewedSummariesDisagree(left, right, 1 / spec.fps)))
+        : new Set(reviewRows.map(triple)).size > 1;
+      if (disagrees || coverageUnknown) {
+        disagreements.push({ episode_index: Number(episode), reviews: reviewRows, coverage_unknown: coverageUnknown, reviewed_fields_disagree: disagrees });
       }
     }
     return disagreements.sort((a, b) => a.episode_index - b.episode_index);

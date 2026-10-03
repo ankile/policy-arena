@@ -5,6 +5,12 @@ import { v } from "convex/values";
  * A confirmed structured-v1 review covers the structured judgments below,
  * including retained values. Source prose and confidence remain lossless but
  * explicitly outside that attestation. Human notes live at review.notes.
+ * stages-v1 attests only stage transitions, maximum stage and attempt count;
+ * all other pipeline fields remain outside the human review.
+ * stages-outcome-v1 additionally attests task_success and final_state. It does
+ * not upgrade old stage-only reviews or attest hidden actions/failure details.
+ * stages-outcome-v2 also attests the primary failure_mode, but never its time
+ * or secondary failure events. Earlier scopes retain their original meaning.
  * Missing coverage on historical rows means unknown coverage, never all fields.
  */
 export const STRUCTURED_REVIEW_FIELDS = [
@@ -29,7 +35,13 @@ export const EXCLUDED_REVIEW_FIELDS = [
   "failure_events.*.evidence", "failure_events.*.confidence",
 ] as const;
 
-export const reviewProtocolValidator = v.literal("structured-v1");
+export const STAGE_REVIEW_FIELDS = STRUCTURED_REVIEW_FIELDS.filter((path) =>
+  path === "max_stage" || path === "max_stage_id" || path === "attempt_count" || path.startsWith("stage_transitions."));
+export const STAGE_OUTCOME_REVIEW_FIELDS = [...STAGE_REVIEW_FIELDS, "task_success", "final_state"] as const;
+export const CURRENT_REVIEW_PROTOCOL = "stages-outcome-v2" as const;
+export const STAGE_OUTCOME_FAILURE_REVIEW_FIELDS = [...STAGE_OUTCOME_REVIEW_FIELDS, "failure_mode"] as const;
+export const SUPPORTED_REVIEW_PROTOCOLS = ["structured-v1", "stages-v1", "stages-outcome-v1", CURRENT_REVIEW_PROTOCOL] as const;
+export const reviewProtocolValidator = v.union(v.literal("structured-v1"), v.literal("stages-v1"), v.literal("stages-outcome-v1"), v.literal(CURRENT_REVIEW_PROTOCOL));
 export const reviewCoverageValidator = v.object({
   protocol: reviewProtocolValidator,
   reviewed_fields: v.array(v.string()),
@@ -37,14 +49,42 @@ export const reviewCoverageValidator = v.object({
 });
 
 export function stageReviewCoverage(
-  protocol: "structured-v1" | undefined, status: string, trajectory: boolean,
+  protocol: typeof SUPPORTED_REVIEW_PROTOCOLS[number] | undefined, status: string, trajectory: boolean,
 ) {
   if (protocol === undefined) return undefined;
-  if (!trajectory) throw new Error("structured-v1 review protocol requires a trajectory schema");
+  if (!trajectory) throw new Error(`${protocol} review protocol requires a trajectory schema`);
   if (status === "cleared") throw new Error("A cleared review must not carry a review protocol");
+  const fields: readonly string[] = protocol === "stages-v1" ? STAGE_REVIEW_FIELDS
+    : protocol === "stages-outcome-v1" ? STAGE_OUTCOME_REVIEW_FIELDS
+    : protocol === CURRENT_REVIEW_PROTOCOL ? STAGE_OUTCOME_FAILURE_REVIEW_FIELDS : STRUCTURED_REVIEW_FIELDS;
   return {
     protocol,
-    reviewed_fields: status === "confirmed" || status === "corrected" ? [...STRUCTURED_REVIEW_FIELDS] : [],
-    excluded_fields: [...EXCLUDED_REVIEW_FIELDS],
+    reviewed_fields: status === "confirmed" || status === "corrected"
+      ? [...fields] : [],
+    excluded_fields: [...EXCLUDED_REVIEW_FIELDS, ...STRUCTURED_REVIEW_FIELDS.filter((path) => !fields.includes(path))],
   };
+}
+
+/** Compare jointly attested judgments and stage timing, never retained hidden
+ * fields. Callers surface unknown historical coverage separately. */
+export function reviewedSummariesDisagree(
+  left: { label?: Record<string, unknown>; review_coverage?: { reviewed_fields: string[] } },
+  right: { label?: Record<string, unknown>; review_coverage?: { reviewed_fields: string[] } },
+  timeToleranceS = 0,
+) {
+  const covered = (field: string) => left.review_coverage?.reviewed_fields.includes(field) && right.review_coverage?.reviewed_fields.includes(field);
+  if (["max_stage", "max_stage_id", "final_state", "task_success", "failure_mode", "attempt_count"].some((field) =>
+    covered(field) && left.label?.[field] !== right.label?.[field])) return true;
+  const fields = STAGE_REVIEW_FIELDS.filter((field) => field.startsWith("stage_transitions.") && covered(field));
+  if (!fields.length) return false;
+  const leftMarks = left.label?.stage_transitions;
+  const rightMarks = right.label?.stage_transitions;
+  if (!Array.isArray(leftMarks) || !Array.isArray(rightMarks)) return JSON.stringify(leftMarks) !== JSON.stringify(rightMarks);
+  if (leftMarks.length !== rightMarks.length) return true;
+  return leftMarks.some((mark, index) => fields.some((field) => {
+    const key = field.slice("stage_transitions.*.".length);
+    const a = mark?.[key]; const b = rightMarks[index]?.[key];
+    return key === "time_s" && typeof a === "number" && typeof b === "number"
+      ? Math.abs(a - b) > timeToleranceS + 1e-9 : a !== b;
+  }));
 }

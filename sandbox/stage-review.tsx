@@ -1,0 +1,95 @@
+import { useSyncExternalStore } from "react";
+import { createRoot } from "react-dom/client";
+import { ConvexProvider, ConvexReactClient, useQuery, usePaginatedQuery } from "convex/react";
+import { getFunctionName, type FunctionArgs } from "convex/server";
+import { convexToJson, jsonToConvex, type Value } from "convex/values";
+import { api } from "../convex/_generated/api";
+import type { Doc } from "../convex/_generated/dataModel";
+import StageReview from "../src/components/StageReview";
+import { stageReviewDataSource, type StageReviewDataSource } from "../src/lib/stageReviewDataSource";
+import { stageReviewCoverage, SUPPORTED_REVIEW_PROTOCOLS } from "../convex/stageReviewCoverage";
+import ReviewTaskNavigation from "./ReviewTaskNavigation";
+import { reviewSamples, reviewSampleHref, latestReviewSearch } from "./stageReviewSamples";
+import { withLocalStagePreviews, latestStagePreviews } from "./localStagePreviews";
+import StagePreviewNotice from "./StagePreviewNotice";
+import "../src/index.css";
+
+// Browser-local entry: available in development and preview builds, not shared production.
+// Reads use the public query API. There is deliberately no mutation client.
+const client = new ConvexReactClient("https://grandiose-rook-292.convex.cloud");
+const storageKey = "policy-arena-stage-playground-v1";
+type Saved = FunctionArgs<typeof api.stageReviews.save> & {
+  _id: string; reviewer: string; reviewer_user_id: string; saved_at: number;
+  review_coverage?: ReturnType<typeof stageReviewCoverage>;
+};
+const stored = localStorage.getItem(storageKey);
+let reviews: Saved[] = [];
+let storageError: string | null = null;
+try { reviews = stored ? jsonToConvex(JSON.parse(stored)) as unknown as Saved[] : []; }
+catch { storageError = "Saved playground data could not be read. Export browser storage before resetting it."; }
+const listeners = new Set<() => void>();
+let revision = 0;
+const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
+const refresh = () => { revision++; listeners.forEach((listener) => listener()); };
+const params = new URLSearchParams(window.location.search);
+const sample = reviewSamples.find((s) => s.dataset === params.get("dataset")) ?? reviewSamples[0];
+const latestSearch = latestReviewSearch(sample, window.location.search);
+if (latestSearch !== window.location.search) history.replaceState(null, "", `${location.pathname}${latestSearch}`);
+const dataSource: StageReviewDataSource = {
+  ...stageReviewDataSource,
+  useQuery: ((query, args) => {
+    useSyncExternalStore(subscribe, () => revision);
+    const name = getFunctionName(query);
+    const local = name === "users:viewer" || name === "stageReviews:latestForRepo";
+    // The I/O boundary already supplies each query's matching argument type.
+    const remote = useQuery(query, (local ? "skip" : args) as never);
+    if (args === "skip") return undefined;
+    if (name === "stageTaskSpecs:forTask") return withLocalStagePreviews(
+      (args as { task: string }).task, remote as Doc<"stageTaskSpecs">[] | undefined);
+    if (name === "users:viewer") return { userId: "local-reviewer", username: "Local playground", isEditor: true };
+    if (name === "stageReviews:latestForRepo") {
+      const filter = args as { dataset_repo: string; taxonomy_version: string };
+      const latest = new Map<string, Saved>();
+      for (const review of reviews) if (review.dataset_repo === filter.dataset_repo && review.taxonomy_version === filter.taxonomy_version) latest.set(String(review.episode_index), review);
+      const episodes = [...latest.values()];
+      return { episodes, supported_review_protocols: [...SUPPORTED_REVIEW_PROTOCOLS], num_confirmed: episodes.filter((r) => r.status === "confirmed").length, num_corrected: 0 };
+    }
+    return remote;
+  }) as StageReviewDataSource["useQuery"],
+  usePaginatedQuery,
+  useMutation: ((mutation) => {
+    if (getFunctionName(mutation) !== "stageReviews:save") throw new Error("Only local stage-review saves are supported in the playground.");
+    return async (args: FunctionArgs<typeof api.stageReviews.save>) => {
+      if (storageError) throw new Error(storageError);
+      const coverage = stageReviewCoverage(args.review_protocol, args.status, args.review_protocol !== undefined);
+      const review: Saved = { ...args, ...(coverage ? { review_coverage: coverage } : {}), _id: `local-${crypto.randomUUID()}`, reviewer: "Local playground", reviewer_user_id: "local-reviewer", saved_at: Date.now() };
+      const next = [...reviews, review];
+      localStorage.setItem(storageKey, JSON.stringify(convexToJson(next as unknown as Value)));
+      reviews = next; refresh();
+      return review._id;
+    };
+  }) as StageReviewDataSource["useMutation"],
+};
+
+export default function Playground() {
+  useSyncExternalStore(subscribe, () => revision);
+  return <main className="max-w-[1900px] mx-auto p-4 md:p-6">
+    <div className="rounded-xl border border-teal/30 bg-teal/5 p-4 mb-4 flex flex-wrap items-center gap-4">
+      <div className="flex-1 min-w-60"><h1 className="font-display text-xl">Stage Review · Local playground</h1>
+        <p className="text-sm text-ink-muted">Saves stay in this browser. Shared labels are unchanged.</p></div>
+      <ReviewTaskNavigation current={sample} onSelect={(next) => { window.location.href = reviewSampleHref(next); }} />
+      <button className="text-sm text-teal underline" onClick={() => {
+        const url = URL.createObjectURL(new Blob([JSON.stringify(convexToJson(reviews as unknown as Value), null, 2)], { type: "application/json" }));
+        const anchor = document.createElement("a"); anchor.href = url; anchor.download = "stage-review-playground.json"; anchor.click(); URL.revokeObjectURL(url);
+      }}>Export {reviews.length} local saves</button>
+    </div>
+    {storageError && <p role="alert" className="text-coral">{storageError}</p>}
+    <StagePreviewNotice task={sample.task} />
+    <StageReview repoId={sample.dataset} task={sample.task} dataSource={dataSource}
+      fixedTaxonomyVersion={latestStagePreviews[sample.task].taxonomy_version}
+      onExit={() => { window.location.href = "/sandbox/stage-review.html"; }}
+      onOpenOutcomeReview={() => window.open(`https://policy-eval.ankile.com/?tab=explorer&dataset=${encodeURIComponent(sample.dataset)}&view=outcome`, "_blank", "noopener")} />
+  </main>;
+}
+
+createRoot(document.getElementById("root")!).render(<ConvexProvider client={client}><Playground /></ConvexProvider>);

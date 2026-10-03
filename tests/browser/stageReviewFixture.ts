@@ -3,6 +3,7 @@ import { api } from "../../convex/_generated/api";
 import type { EpisodeFrameSignals } from "../../src/lib/hf-api";
 import type { StageReviewDataSource } from "../../src/lib/stageReviewDataSource";
 import trajectoryFixtures from "../fixtures/trajectory-review-fixtures.json";
+import { stageReviewCoverage, SUPPORTED_REVIEW_PROTOCOLS } from "../../convex/stageReviewCoverage";
 import fixtureDoc from "../../src/lib/stage-consistency-fixtures.json";
 
 /** Synthetic I/O only. Shared by DOM regression tests and the local visual fixture. */
@@ -36,6 +37,7 @@ export function createStageReviewFixture(
     reviews: initialReviews,
     outcome: "success",
     ready: true,
+    supportedProtocols: [...SUPPORTED_REVIEW_PROTOCOLS] as string[],
     saves: [] as SaveArgs[],
     loadMore: [] as number[],
     save: (async () => {}) as (args: SaveArgs) => Promise<void>,
@@ -54,7 +56,7 @@ export function createStageReviewFixture(
     "stageTaskSpecs:forTask": state.specRows,
     "taskSpecs:forTask": null,
     "reviews:latestForRepo": { episodes: [0, 1].map((ep) => ({ episode_index: BigInt(ep), status: "confirmed", new_outcome: state.outcome })) },
-    "stageReviews:latestForRepo": { episodes: state.reviews, num_confirmed: 0, num_corrected: 0 },
+    "stageReviews:latestForRepo": { episodes: state.reviews, num_confirmed: 0, num_corrected: 0, supported_review_protocols: state.supportedProtocols },
     "stagePrefills:forRepo": [0, 1].map((ep) => ({
       _id: `legacy-${ep}`, episode_index: BigInt(ep),
       label: prediction("legacy", ep, 2).label,
@@ -68,6 +70,7 @@ export function createStageReviewFixture(
     await state.save(args);
     state.reviews = state.reviews.filter((row) => row.episode_index !== args.episode_index);
     state.reviews.push({ ...args, _id: `human-review-${state.saves.length}`,
+      review_coverage: stageReviewCoverage(args.review_protocol, args.status, !!state.specRows[0]?.spec.trajectory),
       reviewer_user_id: state.viewerUserId, reviewer: state.viewerUsername, saved_at: 1_700_000_100_000 });
     onChange();
     return "saved-review";
