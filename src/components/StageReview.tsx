@@ -149,7 +149,8 @@ export default function StageReview({
   const saveReview = useMutation(api.stageReviews.save);
   // Stage labeling is gated on the outcome-editor flow: every episode must
   // carry an outcome decision (web review, or the applied HF record) before it
-  // may be stage-labeled. Only legacy forms inherit successful outcomes.
+  // may be stage-labeled. Structured forms inherit only the binary result;
+  // legacy forms retain their older success-to-stage behavior.
   const outcomeReviews = useQuery(api.reviews.latestForRepo, { dataset_repo: repoId });
 
   // -- Taxonomy (schema) selection: live by default, candidates addressable --

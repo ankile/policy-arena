@@ -46,19 +46,25 @@ const state = (view: ReturnType<typeof render>) => JSON.parse(view.getByTestId("
 
 const positiveTasks = [{ source_name: "marker_d2_v5", spec: markerV5 }, { source_name: "square_d2_v4", spec: squareV4 }, { source_name: "marker_d2_v6", spec: markerV6 }, { source_name: "square_d2_v5", spec: squareV5 }];
 const editorTasks = [...fixtures.synthetic.tasks, { source_name: "routing_d1_v2", spec: routingV2 }, { source_name: "routing_d1_v3", spec: routingV3 }, { source_name: "routing_d1_v4", spec: routingV4 }, ...positiveTasks];
-for (const schema of [markerV6, squareV5, routingV4]) test(`${schema.taxonomy_version}: pinned playground uses only the latest definition and hides version navigation`, async () => {
+for (const schema of [markerV6, squareV5, routingV4]) for (const [source, outcome] of [["review", "success"], ["applied", "failure"], ["kept", "timeout"]] as const) test(`${schema.taxonomy_version}: latest-only review inherits ${source} ${outcome} without inheriting old stages`, async () => {
   window.history.replaceState(null, "", "/?episode=0&prediction=legacy&schema=older-definition");
   const fixture = createStageReviewFixture();
   fixture.props.task = schema.task;
+  fixture.state.outcome = outcome;
   fixture.state.specRows.push({ taxonomy_version: schema.taxonomy_version, live: false, spec: schema });
   fixture.state.otherSchemas = [{ taxonomy_version: "older-definition", run_id: "old-run", expected_count: 2, published_at: 1 }];
-  fixture.state.fetchSignals = async () => ({ detectedOutcome: "failure", validLength: 120, lastValidFrame: 119, doneOnsetFrame: null, rewardSpikeFrames: [] });
+  fixture.state.fetchSignals = async () => ({ detectedOutcome: outcome, validLength: 120, lastValidFrame: 119, doneOnsetFrame: null, rewardSpikeFrames: [] });
+  if (source !== "review") fixture.props.dataSource.fetchAppliedProgress = async () => ({
+    changed: source === "applied" ? new Map([[0, { newOutcome: outcome, outcomeFrame: 119, softTruncate: false, subtaskFrames: null }]]) : new Map(),
+    skipped: source === "kept" ? new Set([0]) : new Set(),
+  });
   const query = fixture.props.dataSource.useQuery;
   const versions: string[] = [];
   fixture.props.dataSource.useQuery = ((reference, args) => {
     if (args === "skip") return undefined;
     if (args && typeof args === "object" && "taxonomy_version" in args) versions.push(String(args.taxonomy_version));
     const name = getFunctionName(reference);
+    if (source !== "review" && name === "reviews:latestForRepo") return { episodes: [] };
     if (name === "stagePrefills:forRepo") return [];
     if (name === "stagePredictions:listForRepo") return { runs: [], active_run_id: null, legacy_count: 0 };
     return query(reference, args as never);
@@ -71,12 +77,18 @@ for (const schema of [markerV6, squareV5, routingV4]) test(`${schema.taxonomy_ve
   expect(view.container.textContent).not.toContain("candidate taxonomy");
   expect(view.container.textContent).not.toContain("separate taxonomy");
   expect(fixture.state.queries).not.toContain("stagePredictions:otherSchemasForEpisode");
+  expect((view.getByRole("radio", { name: outcome === "success" ? "Success" : "Failure", exact: true }) as HTMLInputElement).checked).toBe(true);
+  expect((view.getByRole("combobox", { name: "End state" }) as HTMLSelectElement).value).toBe("");
   const stages = view.getByRole("combobox", { name: "Stage reached" }) as HTMLSelectElement;
   expect([...stages.options].filter((option) => option.value).map((option) => option.value)).toEqual(schema.trajectory.task_definition.stages.slice(1).map((stage) => stage.id));
   expect(fixture.state.saves).toHaveLength(0);
   await act(async () => fireEvent.keyDown(window, { key: "u" }));
   expect(fixture.state.saves[0].taxonomy_version).toBe(schema.taxonomy_version);
   expect(fixture.state.saves[0].prediction_id).toBeUndefined();
+  expect(fixture.state.saves[0].label!.task_success).toBe(outcome === "success");
+  expect(fixture.state.saves[0].label!.stage_transitions).toEqual([]);
+  expect(fixture.state.saves[0].label!.max_stage).toBeNull();
+  expect(fixture.state.saves[0].label!.final_state).toBe("");
 });
 
 test("an unavailable pinned definition fails closed instead of falling back to an older live version", async () => {
@@ -297,6 +309,8 @@ test("removal and chronological repair preserve hidden pipeline records and supp
 async function setup(source = "routing_d1_v1", caseName = "real_routing_d1_valid", withVideo = false) {
   window.history.replaceState(null, "", "/?episode=0&prediction=A");
   const fixture = createStageReviewFixture(); const contract = configureTrajectoryFixture(fixture, source, caseName);
+  // Ordinary editing fixtures agree with the human outcome; disagreement is tested separately.
+  fixture.state.outcome = contract.selected.review_label!.task_success ? "success" : "failure";
   if (withVideo) fixture.props.dataSource.fetchReviewEpisodes = async () => [0, 1].map((episodeIndex) => ({
     episodeIndex, rawLength: 450, dataPath: "test.parquet",
     perCamera: { side: { fileIndex: 0, fromTimestamp: 0, toTimestamp: 30 } },
@@ -432,7 +446,7 @@ for (const task of fixtures.synthetic.tasks) test(`${task.source_name}: source-f
   expect(view.container.textContent).toContain("policy 8.0s / raw 450f");
   await act(async () => fireEvent.keyDown(window, { key: "u" }));
   expect(fixture.state.saves[0].episode_duration_s).toBe(8);
-  expect(fixture.state.saves[0].label!.task_success).toBeNull();
+  expect(fixture.state.saves[0].label!.task_success).toBe(true);
   expect(fixture.state.saves[0].label!.stage_transitions).toEqual([]);
   expect(fixture.state.saves[0].label!.max_stage).toBeNull();
   expect(fixture.state.saves[0].taxonomy_version).toBe(task.spec.taxonomy_version);

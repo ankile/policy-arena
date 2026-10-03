@@ -54,8 +54,13 @@ a copy before changing origins; automatic import/sync is not provided.
    stage, or remove it. **Next stage** returns to marking the next milestone.
    **Undo last edit** restores the exact previous label. No action or detailed
    failure-event editor is shown for the structured trajectory tasks.
-5. In the separate **Episode review** panel, choose **Success** or **Failure**
-   and select **How did the episode end?** The task-specific end states use
+5. In the separate **Episode review** panel, **Success** or **Failure** is
+   prefilled from the episode's existing human outcome, across task-definition
+   versions. Timeout counts as binary failure. This changes only the new review's
+   result, not stage progress, end state, failure cause or the original model
+   response. Your saved reviews and in-progress edits are preserved. Unknown
+   outcomes are not guessed. Check the result and select **How did the episode
+   end?** The task-specific end states use
    readable names and show the selected state's definition.
    Selecting **Success** narrows the menu to the task's successful end states,
    including supported cutoff endings. A conflicting existing value remains
