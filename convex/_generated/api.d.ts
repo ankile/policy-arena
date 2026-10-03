@@ -46,6 +46,8 @@ import type * as roundResults from "../roundResults.js";
 import type * as seed from "../seed.js";
 import type * as stageConsistency from "../stageConsistency.js";
 import type * as stageCoverage from "../stageCoverage.js";
+import type * as stageOnlyReview from "../stageOnlyReview.js";
+import type * as stageOutcomeReview from "../stageOutcomeReview.js";
 import type * as stagePredictionContract from "../stagePredictionContract.js";
 import type * as stagePredictions from "../stagePredictions.js";
 import type * as stagePrefills from "../stagePrefills.js";
@@ -58,6 +60,7 @@ import type * as taskSpecs from "../taskSpecs.js";
 import type * as trajectoryContract from "../trajectoryContract.js";
 import type * as trajectoryEventLinks from "../trajectoryEventLinks.js";
 import type * as trajectoryReview from "../trajectoryReview.js";
+import type * as trajectoryTime from "../trajectoryTime.js";
 import type * as trajectoryTimeline from "../trajectoryTimeline.js";
 import type * as users from "../users.js";
 
@@ -106,6 +109,8 @@ declare const fullApi: ApiFromModules<{
   seed: typeof seed;
   stageConsistency: typeof stageConsistency;
   stageCoverage: typeof stageCoverage;
+  stageOnlyReview: typeof stageOnlyReview;
+  stageOutcomeReview: typeof stageOutcomeReview;
   stagePredictionContract: typeof stagePredictionContract;
   stagePredictions: typeof stagePredictions;
   stagePrefills: typeof stagePrefills;
@@ -118,6 +123,7 @@ declare const fullApi: ApiFromModules<{
   trajectoryContract: typeof trajectoryContract;
   trajectoryEventLinks: typeof trajectoryEventLinks;
   trajectoryReview: typeof trajectoryReview;
+  trajectoryTime: typeof trajectoryTime;
   trajectoryTimeline: typeof trajectoryTimeline;
   users: typeof users;
 }>;
