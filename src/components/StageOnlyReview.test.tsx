@@ -16,9 +16,9 @@ import routingV2 from "../../sandbox/data/routing_d1_v2.spec.json";
 import routingV3 from "../../sandbox/data/routing_d1_v3.spec.json";
 import markerV5 from "../../sandbox/data/marker_d2_v5.spec.json";
 import squareV4 from "../../sandbox/data/square_d2_v4.spec.json";
-import routingV4 from "../../sandbox/data/routing_d1_v4.spec.json";
-import markerV6 from "../../sandbox/data/marker_d2_v6.spec.json";
-import squareV5 from "../../sandbox/data/square_d2_v5.spec.json";
+import routingV4 from "../../data/stage-review/routing_d1_v4.spec.json";
+import markerV6 from "../../data/stage-review/marker_d2_v6.spec.json";
+import squareV5 from "../../data/stage-review/square_d2_v5.spec.json";
 
 GlobalRegistrator.register({ url: "http://localhost/" });
 const { act, cleanup, fireEvent, render } = await import("@testing-library/react");

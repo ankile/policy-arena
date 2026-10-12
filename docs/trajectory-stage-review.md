@@ -228,3 +228,51 @@ uv run python scripts/build_stage_preview.py --sir-root /path/to/self-improving-
 Use explicit `--version` to verify older immutable candidates. The generator
 derives failure/end-state inventories and the canonical response schema from
 SIR, and fails if the adapter's preferred success endpoint becomes invalid.
+
+## Production release: latest definitions
+
+The shared Data Explorer → dataset → Stage review flow uses Marker v6 (S1–S6),
+Square nut v5 (S1–S6), and Routing v4 (S1–S10), plus S0. The dataset determines
+the task; this adds no task/dataset selector or combined queue. The version is
+shown as a read-only badge, not a selector.
+
+Release pins live in `shared/stageReviewTasks.ts`; exact exported definitions in
+`data/stage-review/` are also used by the playground. The SIR Python definitions
+remain the authoring source. `scripts/build_stage_preview.py --check` verifies
+these unchanged snapshots against SIR.
+
+Existing human success/failure outcomes still prefill new reviews. Old stage
+predictions/reviews are never translated into a new definition. Stale links open
+the latest definition without reusing incompatible model suggestions; compatible
+explicit prediction choices and saved human edits remain intact. Missing or
+inactive definitions block editing rather than silently falling back.
+
+### Publish before merging the frontend
+
+Merging code does **not** publish database definitions. No backend API/schema
+deployment is needed: the release command uses the existing service-only
+`stageTaskSpecs.upsert` mutation. With the reviewed artifacts:
+
+```sh
+# Read-only inspection (no credential required):
+bun run stage-review:release --url https://grandiose-rook-292.convex.cloud
+
+# Approved publication; existing ARENA_SERVICE_TOKEN must be in the environment:
+bun run stage-review:release --url https://grandiose-rook-292.convex.cloud --apply
+
+# Read-only gate: fails if any released definition is missing/inactive/different:
+bun run stage-review:release --url https://grandiose-rook-292.convex.cloud --verify
+```
+
+Keep the token out of git, command-line arguments, and all `VITE_*` variables.
+Preflight verifies all content hashes and rejects unexpected live versions.
+The command stages candidates before promoting tasks, then verifies readback.
+This is resumable, **not atomic across tasks**; do not run concurrent publishers.
+On interruption, inspect and rerun. Already completed tasks are skipped. Only
+task-spec rows/live flags change; no predictions, reviews, or human outcomes do.
+
+After verification, merge/deploy the frontend and sign in to check the definition
+badge, stage menu, inherited human outcome, and a scoped draft for each task.
+The playground remains browser-local and is not a shared labeling endpoint.
+Historical definitions/reviews remain stored; rollback must never delete labels
+or change the meaning of an existing version.

@@ -81,7 +81,8 @@ def main():
     }
     spec["taxonomy_hash"] = codec.canonical_digest(spec)
     if args.check:
-        saved = json.loads((root / f"sandbox/data/{args.task}_{version}.spec.json").read_text())
+        directory = "data/stage-review" if version == default_version else "sandbox/data"
+        saved = json.loads((root / f"{directory}/{args.task}_{version}.spec.json").read_text())
         if saved != spec:
             raise SystemExit(f"{args.task} preview differs from its source definition or response schema")
         print(f"{args.task}/{version} preview matches the SIR definition, generated response schema, and content hashes.")

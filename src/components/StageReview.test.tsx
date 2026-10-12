@@ -71,7 +71,7 @@ describe("stage prediction version review", () => {
     state.active = "B";
     await act(async () => rerender());
     expect((view.getByRole("combobox", { name: "Prediction version" }) as HTMLSelectElement).value).toBe("A");
-    expect(view.container.textContent).toContain("Historical prediction version: A");
+    expect(view.container.textContent).toContain("Historical imported prediction: A");
     expect(state.saves).toHaveLength(0);
   });
 
@@ -145,7 +145,7 @@ describe("stage prediction version review", () => {
   test("explicit historical selection changes selected evidence without writing reviews", async () => {
     const { state, view } = fixture("?episode=0&prediction=B");
     await settle();
-    expect(view.container.textContent).toContain("Historical prediction version: B");
+    expect(view.container.textContent).toContain("Historical imported prediction: B");
     fireEvent.click(view.getByRole("button", { name: /model evidence/ }));
     await act(async () => fireEvent.click(view.getAllByRole("button", { name: "Show provenance and unblind" })[0]));
     expect(view.container.textContent).toContain("raw-B");

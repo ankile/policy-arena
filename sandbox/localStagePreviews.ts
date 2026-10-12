@@ -3,11 +3,9 @@ import previousSpec from "./data/routing_d1_v2.spec.json";
 import previousRouting from "./data/routing_d1_v3.spec.json";
 import previousMarker from "./data/marker_d2_v5.spec.json";
 import previousSquare from "./data/square_d2_v4.spec.json";
-import routing from "./data/routing_d1_v4.spec.json";
-import marker from "./data/marker_d2_v6.spec.json";
-import square from "./data/square_d2_v5.spec.json";
+import { stageReviewRelease } from "../shared/stageReviewRelease";
 
-export const latestStagePreviews = { routing_d1: routing, marker_d2: marker, square_d2: square };
+export const latestStagePreviews = stageReviewRelease;
 export type PreviewTask = keyof typeof latestStagePreviews;
 const previewRows: Doc<"stageTaskSpecs">[] = [previousSpec, previousRouting, previousMarker, previousSquare, ...Object.values(latestStagePreviews)].map((candidate) => ({
   _id: `local-${candidate.taxonomy_version}` as Id<"stageTaskSpecs">,

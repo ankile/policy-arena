@@ -131,6 +131,7 @@ export default function StageReview({
   onOpenOutcomeReview,
   dataSource = stageReviewDataSource,
   fixedTaxonomyVersion,
+  requireLiveTaxonomy = false,
 }: {
   repoId: string;
   task?: string;
@@ -140,6 +141,7 @@ export default function StageReview({
   dataSource?: StageReviewDataSource;
   /** Pin a curated labeling surface to one definition, without version controls. */
   fixedTaxonomyVersion?: string;
+  requireLiveTaxonomy?: boolean;
 }) {
   const { useQuery, useMutation, usePaginatedQuery, fetchAppliedProgress,
     fetchEpisodeFrameSignals, fetchLabelHistory, fetchLedgerArms, fetchReviewEpisodes } = dataSource;
@@ -173,12 +175,14 @@ export default function StageReview({
   const specResult = useMemo<{ spec: ExportedStageSpec | null; error: string | null }>(() => {
     if (!specRow) return { spec: null, error: fixedTaxonomyVersion && specRowsLoaded
       ? `Required task definition ${fixedTaxonomyVersion} is unavailable.` : null };
+    if (requireLiveTaxonomy && !specRow.live) return { spec: null,
+      error: `Required task definition ${fixedTaxonomyVersion} has not been activated. Publish the stage-review release before labeling.` };
     try {
       return { spec: normalizeStageSpec(specRow.spec), error: null };
     } catch (err) {
       return { spec: null, error: (err as Error).message };
     }
-  }, [specRow, fixedTaxonomyVersion, specRowsLoaded]);
+  }, [specRow, fixedTaxonomyVersion, specRowsLoaded, requireLiveTaxonomy]);
   const spec = specResult.spec;
   const taxonomyVersion = spec?.taxonomy_version ?? null;
 
@@ -188,7 +192,10 @@ export default function StageReview({
   );
   const scopedReviewReady = !spec?.trajectory ||
     reviews?.supported_review_protocols?.includes(CURRENT_REVIEW_PROTOCOL) === true;
-  const [predictionParam, setPredictionParam] = useSearchParam("prediction", "");
+  const [rawPredictionParam, setPredictionParam] = useSearchParam("prediction", "");
+  const oldSchemaLink = Boolean(fixedTaxonomyVersion && schemaParam && schemaParam !== fixedTaxonomyVersion);
+  // Old bookmarks never seed the latest definition with old stage semantics.
+  const predictionParam = oldSchemaLink ? "" : rawPredictionParam;
   const legacyPrefillRows = useQuery(
     api.stagePrefills.forRepo,
     taxonomyVersion && predictionParam === "legacy"
@@ -202,9 +209,17 @@ export default function StageReview({
   // Capture the default once by writing its concrete identity into the URL.
   // A publication in another session must not switch an in-progress form.
   useEffect(() => {
-    if (predictionParam || predictionVersions === undefined) return;
+    if (predictionVersions === undefined) return;
+    if (fixedTaxonomyVersion && (schemaParam !== fixedTaxonomyVersion ||
+      (predictionParam && predictionParam !== "legacy" && !predictionVersions.runs.some((run) => run._id === predictionParam)))) {
+      const compatible = !oldSchemaLink && (predictionParam === "legacy" || predictionVersions.runs.some((run) => run._id === predictionParam));
+      setSearchParams({ schema: fixedTaxonomyVersion,
+        prediction: compatible ? predictionParam : predictionVersions.active_run_id ?? "legacy" });
+      return;
+    }
+    if (predictionParam) return;
     setPredictionParam(predictionVersions.active_run_id ?? "legacy");
-  }, [predictionParam, predictionVersions, setPredictionParam]);
+  }, [predictionParam, predictionVersions, setPredictionParam, fixedTaxonomyVersion, schemaParam, oldSchemaLink]);
   const predictionSelection = predictionVersions !== undefined && predictionParam
     ? resolvePredictionSelection(predictionParam, predictionVersions.runs)
     : null;
@@ -1266,9 +1281,9 @@ export default function StageReview({
         >
           &larr; Back to explorer
         </button>
-        <div className="rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-sm text-coral font-mono">
-          Stage spec for {task}@{specRow?.taxonomy_version} is malformed — re-run the
-          exporter: {specResult.error}
+        <div role="alert" className="rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-sm text-coral">
+          {specResult.error}
+          {fixedTaxonomyVersion && !specRow && <p className="mt-2">The latest definition has not been published to this server. An administrator must publish the stage-review release before labeling. Older labels are unchanged.</p>}
         </div>
       </div>
     );
@@ -1325,6 +1340,7 @@ export default function StageReview({
           <h2 className="font-display text-xl text-ink mt-1">Stage review</h2>
           <p className="text-xs text-ink-muted font-mono mt-0.5">
             {repoId} · {task} · S0–S{spec.ladder.max_stage}
+            {fixedTaxonomyVersion && <> · Definition {fixedTaxonomyVersion.split("/").at(-1)}</>}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 min-w-0">
@@ -1352,7 +1368,7 @@ export default function StageReview({
             </select>
           )}
           {(!fixedTaxonomyVersion || predictionVersions === undefined || predictionVersions.runs.length > 0 || predictionSelection?.error) && <label className="flex flex-col gap-1 text-[10px] font-mono text-ink-muted">
-            Prediction version
+            Model suggestions
             <select
               aria-label="Prediction version"
               value={predictionParam}
@@ -1366,10 +1382,10 @@ export default function StageReview({
             >
               {!predictionParam && <option value="">Loading versions…</option>}
               {predictionSelection?.error && <option value={predictionParam}>Unavailable version</option>}
-              <option value="legacy">Legacy predictions ({predictionVersions?.legacy_count ?? 0})</option>
+              <option value="legacy">{predictionVersions?.legacy_count ? `Earlier model suggestions (${predictionVersions.legacy_count})` : "No model suggestions"}</option>
               {predictionVersions?.runs.map((run) => (
                 <option key={run._id} value={run._id}>
-                  {blind ? run._id : run.run_key}{run._id === predictionVersions.active_run_id ? " (active)" : " (historical)"}
+                  {blind ? run._id : run.run_key}{run._id === predictionVersions.active_run_id ? " (default)" : " (historical)"}
                 </option>
               ))}
             </select>
@@ -1486,8 +1502,8 @@ export default function StageReview({
       )}
       {selectedRun && (
         <details className="px-6 py-2 border-b border-warm-100 text-[11px] font-mono text-ink-muted break-all">
-          <summary className="cursor-pointer">Prediction version details</summary>
-          {selectedRun._id === predictionVersions?.active_run_id ? "Active" : "Historical"} prediction version: {blind ? selectedRun._id : selectedRun.run_key}
+          <summary className="cursor-pointer">Model suggestion source · not human-verified</summary>
+          {selectedRun._id === predictionVersions?.active_run_id ? "Default" : "Historical"} imported prediction: {blind ? selectedRun._id : selectedRun.run_key}
           {!blind && <>{" · "}{selectedRun.pipeline.name}@{selectedRun.pipeline.version}</>}
           {" · published "}{new Date(selectedRun.published_at).toISOString()}
           {" · "}{selectedRun._id}
