@@ -28,7 +28,7 @@ describe("Routing v3 two-cycle preview", () => {
     expect(rows[1].taxonomy_version).toBe(previousSpec.taxonomy_version);
     expect(rows[1].spec).toBe(previousSpec);
     expect(rows[2].spec).toBe(spec);
-    expect(rows[3].taxonomy_version).toBe(latestStagePreviews.routing_d1.taxonomy_version);
+    expect(rows.at(-1)!.taxonomy_version).toBe(latestStagePreviews.routing_d1.taxonomy_version);
     expect(withLocalStagePreviews("routing_d1", original)![2]).toBe(rows[2]);
     expect(withLocalStagePreviews("routing_d1", rows)).toBe(rows);
     expect(withLocalStagePreviews("unknown", original)).toBe(original);

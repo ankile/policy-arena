@@ -28,7 +28,7 @@ a copy before changing origins; automatic import/sync is not provided.
 ## Try the workflow
 
 1. Choose a task and episode. The playground always uses the latest bundled
-   definition (Marker v6, Square nut v5, Routing v4), without a version selector
+   definition (Marker v7, Square nut v6, Routing v5), without a version selector
    or links to older definitions. Older URLs keep their episode but open the
    latest definition without reusing an incompatible model prediction. Earlier
    saved annotations remain intact under their original definition and in local
@@ -57,15 +57,10 @@ a copy before changing origins; automatic import/sync is not provided.
 5. In the separate **Episode review** panel, **Success** or **Failure** is
    prefilled from the episode's existing human outcome, across task-definition
    versions. Timeout counts as binary failure. This changes only the new review's
-   result, not stage progress, end state, failure cause or the original model
+   result, not stage progress, failure cause or the original model
    response. Your saved reviews and in-progress edits are preserved. Unknown
-   outcomes are not guessed. Check the result and select **How did the episode
-   end?** The task-specific end states use
-   readable names and show the selected state's definition.
-   Selecting **Success** narrows the menu to the task's successful end states,
-   including supported cutoff endings. A conflicting existing value remains
-   visible and flagged until explicitly corrected; filtering never changes labels.
-   Failed or undecided results keep all end states available. **Watch ending**
+   outcomes are not guessed. No end-state annotation is requested. Correct full
+   placement is success even while held; release is optional. **Watch ending**
    jumps to the last policy frame, before reset footage; **What counts as
    success?** explains the task's criteria. If undecided, select **Not sure yet**
    and save as uncertain. For **Failure**, choose **Why did it fail?** from the
@@ -78,7 +73,7 @@ a copy before changing origins; automatic import/sync is not provided.
    **Retries and timeline settings** lets you start or select another attempt
    and explicitly reorder stage records after a time correction.
 6. Add optional review notes, **Save draft**, or **Confirm review & next**.
-   Confirmation checks stages/times, the binary task result, end state, and primary failure mode;
+   Confirmation checks stages/times, the binary task result, and primary failure mode;
    hidden pipeline fields
    remain untouched and are not human-verified. **Export local saves**
    downloads your trial review history (Convex JSON encoding, including int64).
@@ -90,37 +85,39 @@ marks by time** next to the marking controls. The checklist blocks invalid stage
 confirmations, including global time/attempt order and contradictory outcomes.
 Previous-stage references are derived only within the explicitly edited attempt(s);
 other retries remain untouched. No intermediate stages or
-actions are invented. This does not change the model prediction schema.
+actions are invented. Current machine predictions use `trajectory-label/v2`,
+which removes `final_state_id` while preserving the generic event ledgers.
 Digit and `-`/`=` stage shortcuts are disabled for trajectory tasks; they remain
 available in the legacy editor. M ignores typing, modifiers and held-key repeats.
 
 ## Review scope and rollout
 
-Structured task reviews now use `review_protocol: stages-outcome-v2`. Completed
+Structured task reviews now use `review_protocol: stages-outcome-v3`. Completed
 `review_coverage.reviewed_fields` covers the furthest stage, attempt count, and
-stage transitions, plus `task_success`, `failure_mode` and `final_state` (the lossless review
-projection of canonical `final_state_id`). Actions, failure times/secondary events,
+stage transitions, plus `task_success` and `failure_mode`. There is no end-state
+field in the new review or machine label. Actions, failure times/secondary events,
 source prose and confidence are retained but excluded. Drafts and uncertain
-reviews have no completed coverage. Existing `stages-v1`, `stages-outcome-v1`,
+reviews have no completed coverage. Existing `stages-v1`, `stages-outcome-v1`, `stages-outcome-v2`,
 `structured-v1` and historical reviews retain their previous semantics; nothing
 is migrated in place. The older scoped protocols are retained for existing
 playground histories/exports, not emitted by the new UI. In particular, v1 is
 not redefined to imply that a reviewer supervised a previously hidden failure mode.
 
 The new validator checks stage identities, attempts, ordering, maximum stage,
-policy-time bounds, a boolean result, and a declared end state. It checks the
-reviewed result against the task-defined successful stages/end states, including
-the task's cutoff-success states, without consulting hidden action/event fields.
+policy-time bounds, a boolean result, and a declared primary failure. Known human
+success does not fabricate a missing completion timestamp at the recording cutoff.
 Later failures may retain a previously reached completed stage. Unresolved
 judgments can be saved as drafts/uncertain, not confirmed. The separate dataset
 outcome-review records are not overwritten by this review.
 It does not require a model action to agree with a human correction.
 A scoped saved row is **not** a
-fully validated model response. Consumers must honor coverage; the existing
-full-summary benchmark excludes these rows rather than scoring unreviewed
-failure fields as gold. A coverage-aware partial benchmark is future work.
+fully validated model response. Consumers must honor coverage. The v2 summary
+benchmark scores only attested maximum stage, attempt count, outcome and primary
+failure. It does not score end states or hidden events/actions. Existing baseline
+prediction/media attribution requirements still apply; source-free manual rows
+are not automatically admitted to that benchmark.
 Before superseding their own full `structured-v1` review, a reviewer must
-acknowledge that the latest row will lose full-summary gold eligibility. The
+acknowledge the narrower review scope. The
 older row stays in history. The new UI cannot create new full structured gold.
 The disagreement query compares jointly reviewed summary fields (including
 primary failure mode) and stage transitions, allowing one frame of timing
@@ -129,7 +126,7 @@ difference. Rows with unknown historical coverage are returned separately via
 Scoped saves discard stale `event_links`; original prediction events remain intact.
 
 The local playground needs no backend deployment. Before deploying the shared
-frontend, the backend must support the additive `stages-outcome-v2` protocol and its
+frontend, the backend must support the additive `stages-outcome-v3` protocol and its
 coverage validator. The normal frontend checks the capability returned by
 `stageReviews.latestForRepo`; an older backend leaves editing/saving disabled
 with a visible explanation rather than trapping an unsavable draft.
@@ -137,7 +134,7 @@ with a visible explanation rather than trapping an unsavable draft.
 Deployment is a separate, coordinated action: from the reviewed branch, push
 the compatible backend with `npx convex dev --once` to the shared
 `grandiose-rook-292` deployment **before merging this PR**, because Vercel
-automatically deploys main. Verify `supported_review_protocols` includes v2,
+automatically deploys main. Verify `supported_review_protocols` includes v3,
 then merge/deploy the frontend. Never use `convex deploy`. No shared deployment
 was performed as part of this fix.
 

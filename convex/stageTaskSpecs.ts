@@ -60,7 +60,13 @@ export const upsert = mutation({
       throw new Error("spec payload must be a serialized stage-spec object");
     }
     const spec = args.spec as Record<string, unknown>;
+    const trajectory = spec.trajectory === undefined ? undefined : normalizeTrajectoryReviewSpec(spec.trajectory, args.task, args.taxonomy_version);
+    const noEndState = trajectory?.task_definition.definitionSchemaVersion === "trajectory-task/v2";
     for (const key of REQUIRED_SPEC_KEYS) {
+      if (noEndState && ["final_states", "success_final_state", "final_state_field"].includes(key)) {
+        if (key in spec) throw new Error(`v2 spec must not include ${key}`);
+        continue;
+      }
       if (!(key in spec)) {
         throw new Error(`spec payload missing required key "${key}"`);
       }

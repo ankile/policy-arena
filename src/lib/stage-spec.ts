@@ -15,6 +15,11 @@ export function normalizeStageSpec(raw: unknown): ExportedStageSpec {
     throw new Error("stage spec payload is not an object");
   }
   const spec = raw as Record<string, unknown>;
+  const trajectory = spec.trajectory === undefined ? undefined : normalizeTrajectoryReviewSpec(spec.trajectory, String(spec.task), String(spec.taxonomy_version));
+  const noEndState = trajectory?.task_definition.definitionSchemaVersion === "trajectory-task/v2";
+  if (noEndState && ["final_states", "success_final_state", "final_state_field"].some((key) => key in spec)) {
+    throw new Error("trajectory-task/v2 review specs must not define end-state fields");
+  }
   const fail = (detail: string): never => {
     throw new Error(`malformed stage spec (${String(spec.task)}): ${detail}`);
   };
@@ -52,8 +57,7 @@ export function normalizeStageSpec(raw: unknown): ExportedStageSpec {
   for (const key of [
     "failure_mode_forbidden_stages",
     "historical_event_failure_modes",
-    "final_state_requires_gates",
-    "final_state_requires_min_stage",
+    ...(!noEndState ? ["final_state_requires_gates", "final_state_requires_min_stage"] : []),
   ]) {
     if (!constraints || typeof constraints[key] !== "object" || constraints[key] === null) {
       fail(`constraints.${key} missing`);
@@ -70,12 +74,12 @@ export function normalizeStageSpec(raw: unknown): ExportedStageSpec {
   for (const [mode, bf] of Object.entries(con.historical_event_failure_modes)) {
     if (typeof bf !== "string") fail(`historical bool for ${mode} is not a string`);
   }
-  for (const [state, gates] of Object.entries(con.final_state_requires_gates)) {
+  for (const [state, gates] of Object.entries(noEndState ? {} : con.final_state_requires_gates)) {
     if (!Array.isArray(gates) || gates.some((g) => typeof g !== "string")) {
       fail(`gate requirements for ${state} is not a string array`);
     }
   }
-  for (const [state, minStage] of Object.entries(con.final_state_requires_min_stage)) {
+  for (const [state, minStage] of Object.entries(noEndState ? {} : con.final_state_requires_min_stage)) {
     if (typeof minStage !== "number") fail(`min stage for ${state} is not a number`);
   }
 
@@ -106,11 +110,11 @@ export function normalizeStageSpec(raw: unknown): ExportedStageSpec {
       levels,
     },
     failure_modes: strArray(spec.failure_modes, "failure_modes"),
-    final_states: strArray(spec.final_states, "final_states"),
-    success_final_state: str("success_final_state"),
+    final_states: noEndState ? [] : strArray(spec.final_states, "final_states"),
+    success_final_state: noEndState ? "" : str("success_final_state"),
     released_field: str("released_field"),
     stage_field: str("stage_field"),
-    final_state_field: str("final_state_field"),
+    final_state_field: noEndState ? "" : str("final_state_field"),
     failure_mode_field: str("failure_mode_field"),
     event_fields: (eventFields as { name: string; kind: string; description?: string }[]).map(
       (f) => ({ name: f.name, kind: f.kind, description: f.description ?? "" })
@@ -118,14 +122,14 @@ export function normalizeStageSpec(raw: unknown): ExportedStageSpec {
     bool_fields: strArray(spec.bool_fields, "bool_fields"),
     time_fields: strArray(spec.time_fields, "time_fields"),
     editable_fields: strArray(spec.editable_fields, "editable_fields"),
-    constraints: spec.constraints as ExportedStageSpec["constraints"],
+    constraints: { ...spec.constraints as ExportedStageSpec["constraints"], ...(noEndState ? { final_state_requires_gates: {}, final_state_requires_min_stage: {} } : {}) },
     fps: spec.fps as number,
   };
   if (spec.trajectory !== undefined) {
     out.trajectory = normalizeTrajectoryReviewSpec(spec.trajectory, out.task, out.taxonomy_version);
   }
   if (!out.trajectory && !out.failure_modes.includes("none")) fail("failure_modes lacks 'none'");
-  if (!out.final_states.includes(out.success_final_state)) {
+  if (!noEndState && !out.final_states.includes(out.success_final_state)) {
     fail("success_final_state not in final_states");
   }
   return out;

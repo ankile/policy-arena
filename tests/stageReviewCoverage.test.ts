@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { convexTest } from "convex-test";
 import { api } from "../convex/_generated/api";
 import schema from "../convex/schema";
-import { CURRENT_REVIEW_PROTOCOL, SUPPORTED_REVIEW_PROTOCOLS, STAGE_OUTCOME_FAILURE_REVIEW_FIELDS, EXCLUDED_REVIEW_FIELDS, stageReviewCoverage, STRUCTURED_REVIEW_FIELDS, STAGE_REVIEW_FIELDS, STAGE_OUTCOME_REVIEW_FIELDS } from "../convex/stageReviewCoverage";
+import { SUPPORTED_REVIEW_PROTOCOLS, STAGE_OUTCOME_FAILURE_REVIEW_FIELDS, EXCLUDED_REVIEW_FIELDS, stageReviewCoverage, STRUCTURED_REVIEW_FIELDS, STAGE_REVIEW_FIELDS, STAGE_OUTCOME_REVIEW_FIELDS } from "../convex/stageReviewCoverage";
+// These immutable fixtures exercise the previous, end-state-bearing protocol.
+const CURRENT_REVIEW_PROTOCOL = "stages-outcome-v2" as const;
 import { manifestDigest, predictionDigest } from "../convex/stagePredictionContract";
 import { trajectoryFromReview } from "../convex/trajectoryReview";
 import { validateStageLabel, type ExportedStageSpec } from "../convex/stageConsistency";

@@ -4,7 +4,11 @@ import { blankTrajectoryReview, trajectoryTaskDefinitionDigest } from "../convex
 import { prepareStageOutcomeLabel, validateStageOutcomeReview } from "../convex/stageOutcomeReview";
 import { normalizeStageSpec } from "../src/lib/stage-spec";
 import { patchStageMark } from "../src/lib/stageTimeline";
-import { latestStagePreviews } from "./localStagePreviews";
+// Freeze this regression suite to the v1 failure-only release.
+import marker from "../data/stage-review/marker_d2_v6.spec.json";
+import square from "../data/stage-review/square_d2_v5.spec.json";
+import routing from "../data/stage-review/routing_d1_v4.spec.json";
+const latestStagePreviews = { marker_d2: marker, square_d2: square, routing_d1: routing };
 import previousMarker from "./data/marker_d2_v5.spec.json";
 import previousSquare from "./data/square_d2_v4.spec.json";
 import previousRouting from "./data/routing_d1_v3.spec.json";

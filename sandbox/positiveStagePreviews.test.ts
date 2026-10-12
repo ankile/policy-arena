@@ -6,9 +6,11 @@ import { prepareStageOutcomeLabel, validateStageOutcomeReview } from "../convex/
 import { normalizeStageSpec } from "../src/lib/stage-spec";
 import { patchStageMark } from "../src/lib/stageTimeline";
 import { latestStagePreviews, stagePreviewHref, withLocalStagePreviews } from "./localStagePreviews";
+import marker from "../data/stage-review/marker_d2_v6.spec.json";
+import square from "../data/stage-review/square_d2_v5.spec.json";
 
 for (const task of ["marker_d2", "square_d2"] as const) describe(`${task} positive milestones`, () => {
-  const spec = latestStagePreviews[task];
+  const spec = { marker_d2: marker, square_d2: square }[task];
   const schema = normalizeStageSpec(spec).trajectory!;
   test("six stages, original output format, and matching immutable hashes", async () => {
     expect(schema.task_definition.stages.map((stage) => stage.index)).toEqual([0, 1, 2, 3, 4, 5, 6]);
@@ -22,16 +24,15 @@ for (const task of ["marker_d2", "square_d2"] as const) describe(`${task} positi
   test("candidate is scoped to its task and never replaces the live spec or remaps predictions", () => {
     const original = [{ task, taxonomy_version: "earlier", live: true }] as Doc<"stageTaskSpecs">[];
     const rows = withLocalStagePreviews(task, original)!;
-    expect(rows).toHaveLength(3);
     expect(rows[0]).toBe(original[0]);
-    expect(rows[2].spec).toBe(spec);
-    expect(rows[2].live).toBe(false);
+    expect(rows.find((row) => row.taxonomy_version === spec.taxonomy_version)?.spec).toBe(spec);
+    expect(rows.slice(1).every((row) => !row.live)).toBe(true);
     expect(withLocalStagePreviews(task, rows)).toBe(rows);
     expect(withLocalStagePreviews(task, undefined)).toBeUndefined();
     const link = new URLSearchParams(stagePreviewHref(task, "?dataset=org%2Fdata&episode=11&prediction=old-run"));
     expect(link.get("dataset")).toBe("org/data");
     expect(link.get("episode")).toBe("11");
-    expect(link.get("schema")).toBe(spec.taxonomy_version);
+    expect(link.get("schema")).toBe(latestStagePreviews[task].taxonomy_version);
     expect(link.get("prediction")).toBe("legacy");
   });
   test("human stage/outcome review preserves hidden actions and distinguishes held from released", () => {

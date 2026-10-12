@@ -26,7 +26,7 @@ import {
 } from "../lib/stagePredictionReview";
 import { useStageReviewDraft } from "../lib/useStageReviewDraft";
 import { prepareStageOutcomeLabel, validateStageOutcomeReview } from "../../convex/stageOutcomeReview";
-import { CURRENT_REVIEW_PROTOCOL } from "../../convex/stageReviewCoverage";
+import { CURRENT_REVIEW_PROTOCOL, reviewProtocolForTask } from "../../convex/stageReviewCoverage";
 import { isPolicyFrame, policyFrameCount } from "../../convex/trajectoryTime";
 import { stageReviewDataSource, type StageReviewDataSource } from "../lib/stageReviewDataSource";
 import { useSearchParam, useSearchParamNumber, useSearchParamNavigationGuard, setSearchParams } from "../lib/useSearchParam";
@@ -115,7 +115,7 @@ const HELP_KEYS: [string, string][] = [
   ["space", "play / pause"],
   ["0–9", "set the furthest stage (does not mark a time)"],
   ["- / =", "decrement / increment the stage (covers S10)"],
-  ["c", "confirm stages, result and end state + next episode"],
+  ["c", "confirm review + next episode"],
   ["u", "uncertain: reviewed but not gold-eligible + advance"],
   ["e", "toggle the model-evidence rail"],
   ["n", "next episode (drafts unsaved edits)"],
@@ -184,6 +184,7 @@ export default function StageReview({
     }
   }, [specRow, fixedTaxonomyVersion, specRowsLoaded, requireLiveTaxonomy]);
   const spec = specResult.spec;
+  const reviewProtocol = spec?.trajectory ? reviewProtocolForTask(spec.trajectory.task_definition) : CURRENT_REVIEW_PROTOCOL;
   const taxonomyVersion = spec?.taxonomy_version ?? null;
 
   const reviews = useQuery(
@@ -191,7 +192,7 @@ export default function StageReview({
     taxonomyVersion ? { dataset_repo: repoId, taxonomy_version: taxonomyVersion } : "skip"
   );
   const scopedReviewReady = !spec?.trajectory ||
-    reviews?.supported_review_protocols?.includes(CURRENT_REVIEW_PROTOCOL) === true;
+    reviews?.supported_review_protocols?.includes(reviewProtocol) === true;
   const [rawPredictionParam, setPredictionParam] = useSearchParam("prediction", "");
   const oldSchemaLink = Boolean(fixedTaxonomyVersion && schemaParam && schemaParam !== fixedTaxonomyVersion);
   // Old bookmarks never seed the latest definition with old stage semantics.
@@ -903,7 +904,7 @@ export default function StageReview({
           status,
           label: label && spec.trajectory ? prepareStageOutcomeLabel(spec.trajectory, label) : label ?? undefined,
           ...(spec.trajectory && status !== "cleared" ? {
-            review_protocol: CURRENT_REVIEW_PROTOCOL,
+            review_protocol: reviewProtocol,
             notes: draft.humanNotes ?? "",
           } : {}),
           ...draft.attribution,
@@ -918,7 +919,7 @@ export default function StageReview({
         return false;
       }
     },
-    [spec, task, saveReview, repoId, draft, predictionsReady, blind, episodeDurationS, scopedReviewReady, priorFullReviewId, scopeAcknowledgment]
+    [spec, task, saveReview, repoId, draft, predictionsReady, blind, episodeDurationS, scopedReviewReady, priorFullReviewId, scopeAcknowledgment, reviewProtocol]
   );
 
   const advance = useCallback(
@@ -1786,12 +1787,12 @@ export default function StageReview({
                     <p className="font-mono break-all">Review source: {attributionDescription(draft.attribution)}</p>
                   </details></div>
                   {inheritedSuccess && <p className="mt-1">Legacy form fields inherit the human success outcome. The original prediction remains in model evidence.</p>}
-                  {spec.trajectory && currentOwn?.reviewCoverage && !["structured-v1", CURRENT_REVIEW_PROTOCOL].includes(currentOwn.reviewCoverage.protocol) && <p className="mt-2 text-sm text-ink">Your earlier review had a narrower scope. Check the task result, end state and primary failure mode before confirming this review.</p>}
+                  {spec.trajectory && currentOwn?.reviewCoverage && !["structured-v1", reviewProtocol].includes(currentOwn.reviewCoverage.protocol) && <p className="mt-2 text-sm text-ink">Check the current review fields before confirming. Your earlier review remains in history.</p>}
                   {priorFullReviewId && <label className="mt-2 flex gap-2 text-sm text-ink">
                     <input type="checkbox" aria-label="Accept narrower review scope" disabled={formDisabled}
                       checked={scopeAcknowledgment === priorFullReviewId}
                       onChange={(event) => setScopeAcknowledgment(event.target.checked ? priorFullReviewId : null)} />
-                    <span>Replace my full structured review with a stages, result, end state and primary failure review. The original stays in history, but my latest review will no longer qualify as full-summary gold (actions and detailed failures are not reviewed here).</span>
+                    <span>Review only the visible fields. The original stays in history; hidden actions and failure details are not human-confirmed.</span>
                   </label>}
                 </div>
               )}
@@ -1876,8 +1877,11 @@ export default function StageReview({
                             {other.reviewCoverage?.reviewed_fields.includes("task_success")
                               ? other.label.task_success === true ? "Success" : other.label.task_success === false ? "Failure" : "Result unset"
                               : "Result not reviewed"} ·{" "}
-                            {other.reviewCoverage?.reviewed_fields.includes("final_state")
-                              ? spec.trajectory.task_definition.finalStates.find((state) => state.id === other.label?.final_state)?.description ?? "End state unset"
+                            {spec.trajectory.task_definition.definitionSchemaVersion === "trajectory-task/v2"
+                              ? other.reviewCoverage?.reviewed_fields.includes("failure_mode")
+                                ? String(other.label.failure_mode ?? "Failure category unset") : "Failure category not reviewed"
+                              : other.reviewCoverage?.reviewed_fields.includes("final_state")
+                              ? spec.trajectory.task_definition.finalStates?.find((state) => state.id === other.label?.final_state)?.description ?? "End state unset"
                               : "End state not reviewed"}
                           </> : <>{blind && !spec.failure_modes.includes(String(other.label[spec.failure_mode_field]))
                             ? "invalid failure value" : String(other.label[spec.failure_mode_field] ?? "—")} →{" "}

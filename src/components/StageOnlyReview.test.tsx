@@ -8,7 +8,9 @@ import { TrajectoryStageRail } from "./review/TrajectoryStageRail";
 import { blankTrajectoryReview } from "../../convex/trajectoryReview";
 import { validateStageOnlyReview } from "../../convex/stageOnlyReview";
 import { prepareStageOutcomeLabel, validateStageOutcomeReview } from "../../convex/stageOutcomeReview";
-import { CURRENT_REVIEW_PROTOCOL, stageReviewCoverage } from "../../convex/stageReviewCoverage";
+import { stageReviewCoverage } from "../../convex/stageReviewCoverage";
+// Pin historical editor tests; the current release is covered separately.
+const CURRENT_REVIEW_PROTOCOL = "stages-outcome-v2" as const;
 import type { StageLabelRow, ExportedStageSpec } from "../../convex/stageConsistency";
 import { createStageReviewFixture, configureTrajectoryFixture } from "../../tests/browser/stageReviewFixture";
 import fixtures from "../../tests/fixtures/trajectory-review-fixtures.json";
@@ -589,7 +591,7 @@ test("superseding full structured coverage requires explicit scope acknowledgmen
     label: selected.review_label, episode_duration_s: selected.duration_s,
     review_coverage: stageReviewCoverage("structured-v1", "confirmed", true) }];
   const view = render(<StageReview {...fixture.props} />); await act(async () => {});
-  expect(view.container.textContent).toContain("will no longer qualify as full-summary gold");
+  expect(view.container.textContent).toContain("hidden actions and failure details are not human-confirmed");
   await act(async () => fireEvent.keyDown(window, { key: "u" }));
   expect(fixture.state.saves).toHaveLength(0);
   fireEvent.click(view.getByRole("checkbox", { name: "Accept narrower review scope" }));

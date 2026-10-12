@@ -16,6 +16,10 @@ function setup(task: typeof stageReviewTasks[number], live: boolean | "missing" 
   const fixture = createStageReviewFixture();
   fixture.props.task = task.task;
   fixture.state.outcome = outcome;
+  fixture.props.dataSource.fetchReviewEpisodes = async () => [0, 1].map((episodeIndex) => ({
+    episodeIndex, rawLength: 450, dataPath: "test.parquet",
+    perCamera: { side: { fileIndex: 0, fromTimestamp: 0, toTimestamp: 30 } },
+  }));
   const spec = stageReviewRelease[task.task];
   if (live !== "missing") fixture.state.specRows.unshift({ taxonomy_version: task.version, live, spec });
   fixture.state.fetchSignals = async () => ({ detectedOutcome: outcome, validLength: 120, lastValidFrame: 119, doneOnsetFrame: null, rewardSpikeFrames: [] });
@@ -55,7 +59,7 @@ for (const task of stageReviewTasks) {
     expect(params.get("prediction")).toBe("legacy");
     expect(params.get("episode")).toBe("0");
     expect((view.getByRole("radio", { name: outcome === "success" ? "Success" : "Failure", exact: true }) as HTMLInputElement).checked).toBe(true);
-    expect((view.getByRole("combobox", { name: "End state" }) as HTMLSelectElement).value).toBe("");
+    expect(view.queryByRole("combobox", { name: "End state" })).toBeNull();
     const stages = view.getByRole("combobox", { name: "Stage reached" }) as HTMLSelectElement;
     expect([...stages.options].filter((option) => option.value).map((option) => option.value))
       .toEqual(spec.trajectory.task_definition.stages.slice(1).map((stage) => stage.id));
@@ -65,6 +69,8 @@ for (const task of stageReviewTasks) {
     expect(state.saves[0].prediction_id).toBeUndefined();
     expect(state.saves[0].label!.task_success).toBe(outcome === "success");
     expect(state.saves[0].label!.stage_transitions).toEqual([]);
+    expect(state.saves[0].label).not.toHaveProperty("final_state");
+    expect(state.saves[0].review_protocol).toBe("stages-outcome-v3");
   });
 
   for (const live of [false, "missing"] as const) test(`${task.name}: ${live === false ? "candidate" : "missing"} definition blocks labeling rather than falling back`, async () => {
@@ -73,5 +79,23 @@ for (const task of stageReviewTasks) {
     expect(view.getByRole("alert").textContent).toContain(task.version);
     expect(view.queryByRole("combobox", { name: "Stage reached" })).toBeNull();
     expect(state.saves).toHaveLength(0);
+  });
+
+  for (const outcome of ["success", "failure"]) test(`${task.name}: confirm the no-end-state review without supervising hidden actions`, async () => {
+    const { view, state, spec } = setup(task, true, outcome);
+    await act(async () => {});
+    const index = outcome === "failure" ? 3 : task.task === "routing_d1" ? 9 : 6;
+    fireEvent.change(view.getByRole("combobox", { name: "Stage reached" }), { target: { value: spec.trajectory.task_definition.stages[index].id } });
+    fireEvent.keyDown(window, { key: "m" });
+    if (outcome === "failure") fireEvent.change(view.getByRole("combobox", { name: "Primary failure mode" }), { target: { value: "grasp_lost" } });
+    await act(async () => fireEvent.keyDown(window, { key: "c" }));
+    expect(state.saves).toHaveLength(1);
+    const saved = state.saves[0];
+    expect(saved.status).toBe("confirmed");
+    expect(saved.review_protocol).toBe("stages-outcome-v3");
+    expect(saved.label).not.toHaveProperty("final_state");
+    expect(saved.label!.max_stage).toBe(index);
+    expect(saved.label!.failure_mode).toBe(outcome === "success" ? "none" : "grasp_lost");
+    expect(saved.label!.key_action_observations.every((action: { occurred: boolean }) => !action.occurred)).toBe(true);
   });
 }

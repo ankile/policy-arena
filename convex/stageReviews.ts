@@ -121,6 +121,11 @@ export const save = mutation({
       throw new Error("event_links require a non-cleared trajectory review");
     }
     const reviewCoverage = stageReviewCoverage(args.review_protocol, args.status, !!spec.trajectory);
+    if (spec.trajectory && args.status !== "cleared" &&
+      (spec.trajectory.task_definition.definitionSchemaVersion === "trajectory-task/v2") !==
+      (args.review_protocol === CURRENT_REVIEW_PROTOCOL)) {
+      throw new Error("The review protocol must match the task definition; old annotations cannot be silently upgraded.");
+    }
 
     // Pin exactly the prediction the reviewer saw. An active-run change must
     // never alter the validation duration or attribution of an in-flight form.
@@ -233,7 +238,7 @@ export const save = mutation({
         if (linkErrors.length > 0) throw new Error(linkErrors.join("; "));
         const violations = scopedReview ? (args.review_protocol === "stages-v1"
           ? validateStageOnlyReview(spec.trajectory!, label, resolvedDuration)
-          : validateStageOutcomeReview(spec.trajectory!, label, resolvedDuration, args.review_protocol === CURRENT_REVIEW_PROTOCOL))
+          : validateStageOutcomeReview(spec.trajectory!, label, resolvedDuration, ["stages-outcome-v2", CURRENT_REVIEW_PROTOCOL].includes(args.review_protocol!)))
           : validateStageLabel(spec, label, resolvedDuration);
         if (violations.length > 0) {
           throw new Error(

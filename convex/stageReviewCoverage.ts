@@ -11,6 +11,8 @@ import { v } from "convex/values";
  * not upgrade old stage-only reviews or attest hidden actions/failure details.
  * stages-outcome-v2 also attests the primary failure_mode, but never its time
  * or secondary failure events. Earlier scopes retain their original meaning.
+ * stages-outcome-v3 removes final_state for trajectory-label/v2; stage,
+ * outcome, primary failure and attempt judgments remain human-supervised.
  * Missing coverage on historical rows means unknown coverage, never all fields.
  */
 export const STRUCTURED_REVIEW_FIELDS = [
@@ -38,10 +40,14 @@ export const EXCLUDED_REVIEW_FIELDS = [
 export const STAGE_REVIEW_FIELDS = STRUCTURED_REVIEW_FIELDS.filter((path) =>
   path === "max_stage" || path === "max_stage_id" || path === "attempt_count" || path.startsWith("stage_transitions."));
 export const STAGE_OUTCOME_REVIEW_FIELDS = [...STAGE_REVIEW_FIELDS, "task_success", "final_state"] as const;
-export const CURRENT_REVIEW_PROTOCOL = "stages-outcome-v2" as const;
+export const CURRENT_REVIEW_PROTOCOL = "stages-outcome-v3" as const;
 export const STAGE_OUTCOME_FAILURE_REVIEW_FIELDS = [...STAGE_OUTCOME_REVIEW_FIELDS, "failure_mode"] as const;
-export const SUPPORTED_REVIEW_PROTOCOLS = ["structured-v1", "stages-v1", "stages-outcome-v1", CURRENT_REVIEW_PROTOCOL] as const;
-export const reviewProtocolValidator = v.union(v.literal("structured-v1"), v.literal("stages-v1"), v.literal("stages-outcome-v1"), v.literal(CURRENT_REVIEW_PROTOCOL));
+export const CURRENT_REVIEW_FIELDS = [...STAGE_REVIEW_FIELDS, "task_success", "failure_mode"] as const;
+export const SUPPORTED_REVIEW_PROTOCOLS = ["structured-v1", "stages-v1", "stages-outcome-v1", "stages-outcome-v2", CURRENT_REVIEW_PROTOCOL] as const;
+export const reviewProtocolValidator = v.union(v.literal("structured-v1"), v.literal("stages-v1"), v.literal("stages-outcome-v1"), v.literal("stages-outcome-v2"), v.literal(CURRENT_REVIEW_PROTOCOL));
+export function reviewProtocolForTask(task: { definitionSchemaVersion: string }) {
+  return task.definitionSchemaVersion === "trajectory-task/v2" ? CURRENT_REVIEW_PROTOCOL : "stages-outcome-v2" as const;
+}
 export const reviewCoverageValidator = v.object({
   protocol: reviewProtocolValidator,
   reviewed_fields: v.array(v.string()),
@@ -56,7 +62,8 @@ export function stageReviewCoverage(
   if (status === "cleared") throw new Error("A cleared review must not carry a review protocol");
   const fields: readonly string[] = protocol === "stages-v1" ? STAGE_REVIEW_FIELDS
     : protocol === "stages-outcome-v1" ? STAGE_OUTCOME_REVIEW_FIELDS
-    : protocol === CURRENT_REVIEW_PROTOCOL ? STAGE_OUTCOME_FAILURE_REVIEW_FIELDS : STRUCTURED_REVIEW_FIELDS;
+    : protocol === "stages-outcome-v2" ? STAGE_OUTCOME_FAILURE_REVIEW_FIELDS
+    : protocol === CURRENT_REVIEW_PROTOCOL ? CURRENT_REVIEW_FIELDS : STRUCTURED_REVIEW_FIELDS;
   return {
     protocol,
     reviewed_fields: status === "confirmed" || status === "corrected"
