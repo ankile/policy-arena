@@ -4,9 +4,7 @@ import { api } from "../convex/_generated/api";
 import schema from "../convex/schema";
 import { stageReviewTasks } from "../shared/stageReviewTasks";
 import { stageReviewRelease } from "../shared/stageReviewRelease";
-import marker from "../data/stage-review/marker_d2_v6.spec.json";
-import square from "../data/stage-review/square_d2_v5.spec.json";
-import routing from "../data/stage-review/routing_d1_v4.spec.json";
+import fixtures from "./fixtures/trajectory-review-fixtures.json";
 import { blankTrajectoryReview } from "../convex/trajectoryReview";
 import { CURRENT_REVIEW_PROTOCOL } from "../convex/stageReviewCoverage";
 
@@ -26,7 +24,7 @@ beforeEach(() => {
 afterEach(() => { if (oldToken === undefined) delete process.env.ARENA_SERVICE_TOKEN; else process.env.ARENA_SERVICE_TOKEN = oldToken; });
 
 for (const task of stageReviewTasks) test(`${task.name}: existing API publishes the exact release, preserves history, and accepts new scoped reviews`, async () => {
-  const prior = { spec: [marker, square, routing].find((item) => item.taxonomy_version === task.previousVersion)! };
+  const prior = fixtures.synthetic.tasks.find((item) => item.spec.taxonomy_version === task.previousVersion)!;
   const current = stageReviewRelease[task.task];
   const publish = (spec: typeof prior.spec | typeof current, live: boolean) =>
     t.mutation(api.stageTaskSpecs.upsert, { ...service, task: task.task, taxonomy_version: spec.taxonomy_version,
