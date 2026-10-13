@@ -103,12 +103,14 @@
     "first_clip_grasp_not_established",
     "first_clip_grasp_lost",
     "first_clip_not_attempted",
+    "first_clip_wrong_approach_angle",
     "first_clip_engagement_missed",
     "first_clip_seating_incomplete",
     "first_clip_retention_lost",
     "second_clip_grasp_not_established",
     "second_clip_grasp_lost",
     "second_clip_not_attempted",
+    "second_clip_wrong_approach_angle",
     "second_clip_engagement_missed",
     "second_clip_seating_incomplete",
     "second_clip_retention_lost",
@@ -576,8 +578,13 @@
           "name": "Left clip · not attempted"
         },
         {
+          "id": "first_clip_wrong_approach_angle",
+          "name": "Left clip · wrong approach angle",
+          "description": "A deliberate LEFT-clip insertion attempt presents or pushes the rope along a clearly wrong direction relative to the clip opening, such as roughly 45 or 90 degrees off. This is a gross misreading of the clip's intended insertion direction, not a small alignment error. Require visible local rope/approach geometry, primarily in WRIST-L; do not infer it just from failure or gripper yaw. The rope may span the target at S3, but this wrong-direction attempt does not achieve S4. Use this instead of first_clip_engagement_missed for the same gross-angle attempt. Later direction-correct entrance contact or seating recovers the angle error; any remaining zero-entry blockage is a separate entry-missed event. Mere hovering or a transient angle during transport is not this failure."
+        },
+        {
           "id": "first_clip_engagement_missed",
-          "description": "A deliberate insertion attempt at the LEFT clip is visibly blocked at or misses its entrance with zero entry beneath/into its retaining feature. Includes a 90-degree-off push (S3 may be achieved, but not S4), or correctly directed entrance contact that is blocked before any entry (S4 may be achieved). Mere spanning, approach, or overlap is insufficient evidence of failure. Any verified partial entry rules out this mode for that event; stuck advancement after entry belongs to first_clip_seating_incomplete. Subsequent actual entry or seating recovers this event; direction-correct contact alone does not.",
+          "description": "A deliberate insertion attempt at the LEFT clip is visibly blocked at or misses its entrance with zero entry beneath/into its retaining feature, without a clearly gross wrong approach angle. Includes small positional/angular errors or correctly directed entrance contact that is blocked before any entry (S4 may be achieved). A clearly 45- or 90-degree-off attempt belongs to first_clip_wrong_approach_angle instead; do not label the same push twice. Mere spanning, approach, or overlap is insufficient evidence of failure. Any verified partial entry rules out this mode for that event; stuck advancement after entry belongs to first_clip_seating_incomplete. Subsequent actual entry or seating recovers this event; direction-correct contact alone does not.",
           "name": "Left clip · entry missed"
         },
         {
@@ -606,8 +613,13 @@
           "name": "Right clip · not attempted"
         },
         {
+          "id": "second_clip_wrong_approach_angle",
+          "name": "Right clip · wrong approach angle",
+          "description": "A deliberate RIGHT-clip insertion attempt presents or pushes the rope along a clearly wrong direction relative to the clip opening, such as roughly 45 or 90 degrees off. This is a gross misreading of the clip's intended insertion direction, not a small alignment error. Require visible local rope/approach geometry, primarily in WRIST-L; do not infer it just from failure or gripper yaw. The rope may span the target at S8, but this wrong-direction attempt does not achieve S9. Use this instead of second_clip_engagement_missed for the same gross-angle attempt. Later direction-correct entrance contact or seating recovers the angle error; any remaining zero-entry blockage is a separate entry-missed event. Mere hovering or a transient angle during transport is not this failure. A right-first insertion attempt still makes wrong_clip_order the terminal primary failure."
+        },
+        {
           "id": "second_clip_engagement_missed",
-          "description": "A deliberate insertion attempt at the RIGHT clip is visibly blocked at or misses its entrance with zero entry beneath/into its retaining feature. Includes a 90-degree-off push (S8 may be achieved, but not S9), or correctly directed entrance contact that is blocked before any entry (S9 may be achieved). Mere spanning, approach, or overlap is insufficient evidence of failure. Any verified partial entry rules out this mode for that event; stuck advancement after entry belongs to second_clip_seating_incomplete. Subsequent actual entry or seating recovers this event; direction-correct contact alone does not.",
+          "description": "A deliberate insertion attempt at the RIGHT clip is visibly blocked at or misses its entrance with zero entry beneath/into its retaining feature, without a clearly gross wrong approach angle. Includes small positional/angular errors or correctly directed entrance contact that is blocked before any entry (S9 may be achieved). A clearly 45- or 90-degree-off attempt belongs to second_clip_wrong_approach_angle instead; do not label the same push twice. Mere spanning, approach, or overlap is insufficient evidence of failure. Any verified partial entry rules out this mode for that event; stuck advancement after entry belongs to second_clip_seating_incomplete. Subsequent actual entry or seating recovers this event; direction-correct contact alone does not.",
           "name": "Right clip · entry missed"
         },
         {
@@ -663,6 +675,10 @@
           "rule": "S4/S9 require the rope itself touching the clip entrance with insertion-compatible local orientation AND approach direction. Correctly directed contact is sufficient even before any entry. A 90-degree-off push does not qualify, even after valid S3/S8 positional spanning. Use WRIST-L for direction/contact and both side views for clip identity; request review if geometry is unresolved. Engagement, actual entry, and persistent seating are separate physical facts. A blocked zero-entry attempt can reach S4/S9 and still fail with engagement_missed; only actual partial entry plus stuck advancement supports seating_incomplete. Later release/second-cycle milestones remain independent; do not cap the historical maximum at S3/S8 solely because engagement failed."
         },
         {
+          "id": "gross_wrong_clip_angle",
+          "rule": "Use first_clip_wrong_approach_angle or second_clip_wrong_approach_angle only for a deliberate insertion attempt with a visibly gross mismatch to the physical clip's intended direction, exemplified by roughly 45 or 90 degrees off. These angles are qualitative examples, not a calibrated numerical cutoff; do not estimate precise degrees from a perspective image. Judge the local rope segment and attempted push relative to the opening using WRIST-L and both side views, not gripper orientation alone. Small alignment errors remain engagement_missed. For the same failed push, choose wrong_approach_angle rather than also emitting engagement_missed when gross direction is clearly established. Do not guess gross angle from a failed entry or missing S4/S9; unresolved cause uses unknown_failure_cause with review. Correcting orientation without touching the entrance is insufficient to demonstrate recovery; direction-correct entrance contact recovers the angle error, while later failed zero-entry progress is a new engagement_missed event. Actual partial entry followed by stuck advancement is seating_incomplete, not a fresh wrong-angle event. Keep historical stages, including later releases; no failure enum caps progress. Terminal wrong_clip_order always has primary priority."
+        },
+        {
           "id": "cycle_owned_releases",
           "rule": "S5 is the first-cycle release after work at the FIRST clip; S10 is the final release after work at the SECOND clip. Credit actual relinquishment from opening or separating jaws, not an accidental slip or an empty-gripper opening. The first release does not become S10 merely because recording ends. Either release can occur after an unsuccessful placement; never infer seating from release."
         },
@@ -692,7 +708,7 @@
         },
         {
           "id": "uncertainty",
-          "rule": "Occlusion is not evidence of failed grasp, absent engagement, or a drop. Use unknown_failure_cause and request review for unresolved failure evidence. Position and rotation misalignment are not separate categories."
+          "rule": "Occlusion is not evidence of failed grasp, absent engagement, or a drop. Use unknown_failure_cause and request review for unresolved failure evidence. Small position and rotation errors are not separate categories; only a positively visible gross wrong clip-approach angle has its own clip-specific category."
         },
         {
           "id": "attempts",
@@ -711,6 +727,7 @@
         "Identify the fixed LEFT/FIRST and RIGHT/SECOND clips using both side views before labeling stages.",
         "Record achieved milestones and supported timestamps; later loss does not erase history.",
         "Separate rope spanning the clip position (S3/S8) from direction-correct entrance contact (S4/S9), actual entry, and seating. A 90-degree-off attempted push can achieve spanning but not engagement.",
+        "For each failed clip attempt, distinguish a gross wrong approach direction (roughly 45/90 degrees) from a small-offset or blocked zero-entry miss and from a partial-entry stall. Do not duplicate wrong-angle and entry-missed events for the same push.",
         "Record independent key actions, including optional releases.",
         "Assign grasp-not-established and grasp-lost events to LEFT or RIGHT work using the observed manipulation phase, including retries and continuous transfers; do not guess from the maximum stage.",
         "Check LEFT seating before every deliberate RIGHT insertion attempt. Record terminal wrong_clip_order first in primary-failure priority; otherwise select the earliest unrecovered specific failure.",
@@ -718,7 +735,7 @@
         "Return trajectory-label/v2 without end-state fields. Check IDs, timing, stage/action consistency, and primary/event agreement."
       ]
     },
-    "task_definition_sha256": "cf728a36c41ed9e869d46262cc61c39277ddb3d6b315ebe1338792be847c2af2",
+    "task_definition_sha256": "3bcb31bbff1a59390302005a786219baca51ab23d3833075e445bfd407b47a6d",
     "response_schema": {
       "type": "OBJECT",
       "properties": {
@@ -967,12 +984,14 @@
                   "first_clip_grasp_not_established",
                   "first_clip_grasp_lost",
                   "first_clip_not_attempted",
+                  "first_clip_wrong_approach_angle",
                   "first_clip_engagement_missed",
                   "first_clip_seating_incomplete",
                   "first_clip_retention_lost",
                   "second_clip_grasp_not_established",
                   "second_clip_grasp_lost",
                   "second_clip_not_attempted",
+                  "second_clip_wrong_approach_angle",
                   "second_clip_engagement_missed",
                   "second_clip_seating_incomplete",
                   "second_clip_retention_lost",
@@ -1021,12 +1040,14 @@
                 "first_clip_grasp_not_established",
                 "first_clip_grasp_lost",
                 "first_clip_not_attempted",
+                "first_clip_wrong_approach_angle",
                 "first_clip_engagement_missed",
                 "first_clip_seating_incomplete",
                 "first_clip_retention_lost",
                 "second_clip_grasp_not_established",
                 "second_clip_grasp_lost",
                 "second_clip_not_attempted",
+                "second_clip_wrong_approach_angle",
                 "second_clip_engagement_missed",
                 "second_clip_seating_incomplete",
                 "second_clip_retention_lost",
@@ -1091,5 +1112,5 @@
       "description": "Canonical task-generic trajectory label"
     }
   },
-  "taxonomy_hash": "45959274b0b1326c89e6ff2d064fc037b9bf2c51d5798d55d90de7b168ce3759"
+  "taxonomy_hash": "2f4c0e83b38e6f77f2fde9874fe5ec112e1a14ee9dcc1434d4c46369b33330e5"
 }

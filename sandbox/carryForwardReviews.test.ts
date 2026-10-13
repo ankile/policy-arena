@@ -181,11 +181,11 @@ test("routing's prior insertion refinement is preserved while changed stage timi
 
 for (const success of [true, false]) test(`routing stage clarification preserves ${success ? "success" : "failure"} and marks without silently certifying timing`, () => {
   const pin = failureDefinitionCorrections.routing_d1;
-  const old = planCarryForward([review(routing, 9, "first_clip_engagement_missed")]).additions[0];
+  const old = planCarryForward([review(routing, 9, "first_clip_retention_lost")]).additions[0];
   old.local_task_definition_sha256 = pin.additionalSources![1].definitionSha256;
   old.status = "confirmed";
   old.label!.task_success = success;
-  old.label!.failure_mode = success ? "none" : "first_clip_engagement_missed";
+  old.label!.failure_mode = success ? "none" : "first_clip_retention_lost";
   old.review_coverage = stageReviewCoverage("stages-outcome-v3", "confirmed", true);
   delete old.local_migration;
   const snapshot = structuredClone(old);
@@ -203,6 +203,47 @@ for (const success of [true, false]) test(`routing stage clarification preserves
   expect(planCarryForward([old, next]).additions).toEqual([]);
   expect(planCarryForward([{ ...old, status: "cleared" }]).additions).toEqual([]);
   expect(planCarryForward([{ ...old, local_task_definition_sha256: "unknown-source" }]).additions).toEqual([]);
+});
+
+for (const clip of ["first", "second"]) test(`${clip} clip: old entry misses need a cause-only recheck after the gross-angle split`, () => {
+  const pin = failureDefinitionCorrections.routing_d1;
+  const old = planCarryForward([review(routing, 8, `${clip}_clip_engagement_missed`)]).additions[0];
+  old.status = "confirmed";
+  old.label!.failure_mode = `${clip}_clip_engagement_missed`;
+  old.local_task_definition_sha256 = pin.additionalSources![2].definitionSha256;
+  old.review_coverage = stageReviewCoverage("stages-outcome-v3", "confirmed", true);
+  delete old.local_migration;
+  const snapshot = structuredClone(old);
+  const next = planCarryForward([old]).additions[0];
+  expect(next.status).toBe("draft");
+  expect(next.label!.stage_transitions).toEqual(old.label!.stage_transitions);
+  expect(next.label!.task_success).toBe(false);
+  expect(next.label!.max_stage).toBe(8);
+  expect(next.label!.failure_mode).toBe("");
+  expect(next.local_migration!.issues).toHaveLength(1);
+  expect(next.local_migration!.issues[0]).toContain("Choose the new failure category");
+  expect(next.local_migration!.issues.join()).not.toContain("timing");
+  expect(old).toEqual(snapshot);
+  expect(planCarryForward([old, next]).additions).toEqual([]);
+});
+
+for (const mode of ["none", "first_clip_grasp_lost", "second_clip_seating_incomplete"]) test(`failure-only split preserves compatible ${mode} review without reopening stages`, () => {
+  const pin = failureDefinitionCorrections.routing_d1;
+  const old = planCarryForward([review(routing, 9, mode)]).additions[0];
+  old.status = "confirmed";
+  old.label!.task_success = mode === "none";
+  old.label!.failure_mode = mode;
+  old.local_task_definition_sha256 = pin.additionalSources![2].definitionSha256;
+  old.review_coverage = stageReviewCoverage("stages-outcome-v3", "confirmed", true);
+  delete old.local_migration;
+  const next = planCarryForward([old]).additions[0];
+  expect(next.status).toBe("confirmed");
+  expect(next.label!.stage_transitions).toEqual(old.label!.stage_transitions);
+  expect(next.label!.task_success).toBe(old.label!.task_success);
+  expect(next.label!.failure_mode).toBe(mode);
+  expect(next.local_migration!.issues).toEqual([]);
+  expect(next.local_task_definition_sha256).toBe(pin.targetDefinitionSha256);
+  expect(planCarryForward([old, next]).additions).toEqual([]);
 });
 
 test("old stage ladders, cleared sources, mismatching identities, and malformed timelines are not relabeled", () => {

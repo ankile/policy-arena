@@ -24,8 +24,10 @@ describe("Routing v5 two-cycle preview", () => {
     const expected = [
       ["first_clip_grasp_not_established", "Left clip · grasp not established"],
       ["first_clip_grasp_lost", "Left clip · grasp lost"],
+      ["first_clip_wrong_approach_angle", "Left clip · wrong approach angle"],
       ["second_clip_grasp_not_established", "Right clip · grasp not established"],
       ["second_clip_grasp_lost", "Right clip · grasp lost"],
+      ["second_clip_wrong_approach_angle", "Right clip · wrong approach angle"],
     ];
     const row = patchStageMark(schema, blankTrajectoryReview(schema, "org/routing", 0), null, "final_rope_released", 10, 1);
     for (const [id, name] of expected) {

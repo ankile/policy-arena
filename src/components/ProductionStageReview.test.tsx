@@ -43,8 +43,8 @@ test("routing human review names both physical clips and saves wrong order witho
   const choices = view.getByRole("combobox", { name: "Primary failure mode" }) as HTMLSelectElement;
   expect([...choices.options].map((option) => option.textContent)).toEqual([
     "Choose the main reason…", "Wrong clip order (right before left)", "Left clip · grasp not established", "Left clip · grasp lost",
-    "Left clip · not attempted", "Left clip · entry missed", "Left clip · not fully seated", "Left clip · seated rope came out",
-    "Right clip · grasp not established", "Right clip · grasp lost", "Right clip · not attempted", "Right clip · entry missed", "Right clip · not fully seated", "Right clip · seated rope came out", "Unknown failure cause",
+    "Left clip · not attempted", "Left clip · wrong approach angle", "Left clip · entry missed", "Left clip · not fully seated", "Left clip · seated rope came out",
+    "Right clip · grasp not established", "Right clip · grasp lost", "Right clip · not attempted", "Right clip · wrong approach angle", "Right clip · entry missed", "Right clip · not fully seated", "Right clip · seated rope came out", "Unknown failure cause",
   ]);
   fireEvent.change(view.getByRole("combobox", { name: "Stage reached" }), { target: { value: "second_clip_engaged" } });
   fireEvent.keyDown(window, { key: "m" });
@@ -54,6 +54,20 @@ test("routing human review names both physical clips and saves wrong order witho
   expect(state.saves[0].label).toMatchObject({ task_success: false, failure_mode: "wrong_clip_order", max_stage: 9 });
   expect(state.saves[0].label!.key_action_observations.every((action: { occurred: boolean }) => !action.occurred)).toBe(true);
 });
+
+for (const [clip, stage] of [["first", "first_clip_aligned"], ["second", "second_clip_aligned"]]) {
+  test(`routing saves ${clip}-clip gross angle failure without inventing engagement`, async () => {
+    const { view, state } = setup(stageReviewTasks.find((task) => task.task === "routing_d1")!, true, "failure");
+    await act(async () => {});
+    fireEvent.change(view.getByRole("combobox", { name: "Stage reached" }), { target: { value: stage } });
+    fireEvent.keyDown(window, { key: "m" });
+    fireEvent.change(view.getByRole("combobox", { name: "Primary failure mode" }), { target: { value: `${clip}_clip_wrong_approach_angle` } });
+    await act(async () => fireEvent.keyDown(window, { key: "c" }));
+    expect(state.saves).toHaveLength(1);
+    expect(state.saves[0].label).toMatchObject({ task_success: false, failure_mode: `${clip}_clip_wrong_approach_angle`, max_stage: clip === "first" ? 3 : 8 });
+    expect(state.saves[0].label!.stage_transitions.some((event: { to_stage_id: string }) => event.to_stage_id === `${clip}_clip_engaged`)).toBe(false);
+  });
+}
 
 for (const task of stageReviewTasks) {
   if (task.task !== "routing_d1") test(`${task.name}: human can save a blocked-entry failure separately from false or partial insertion`, async () => {

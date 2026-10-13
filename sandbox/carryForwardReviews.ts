@@ -26,7 +26,7 @@ function failureMapping(task: Task, failure: string, maxStage: number): string {
   }
   if (["none", "grasp_lost", "unknown_failure_cause"].includes(failure)) return failure;
   if (task === "routing_d1") {
-    if (/^(first|second)_clip_(not_attempted|engagement_missed)$/.test(failure)) return failure;
+    if (/^(first|second)_clip_not_attempted$/.test(failure)) return failure;
     if (/^(first|second)_clip_seat_lost$/.test(failure)) return failure.replace("_seat_lost", "_retention_lost");
   } else {
     // The retained Marker v6 false-insertion category already meant SIDE/TABLE.
@@ -52,16 +52,20 @@ export function planCarryForward(reviews: LocalReview[], now = Date.now()) {
     const task = source.task as Task;
     const current = stageReviewRelease[task];
     const correction = failureDefinitionCorrections[task];
-    const correctionFailures = source.local_task_definition_sha256 === undefined ||
+    const correctionSource = source.local_task_definition_sha256 === undefined ||
       source.local_task_definition_sha256 === correction.previousDefinitionSha256
-      ? correction.recheckFailures
-      : correction.additionalSources?.find((entry) => entry.definitionSha256 === source.local_task_definition_sha256)?.recheckFailures;
+      ? correction
+      : correction.additionalSources?.find((entry) => entry.definitionSha256 === source.local_task_definition_sha256);
+    const correctionFailures = correctionSource?.recheckFailures;
     const knownCorrection = source.taxonomy_version === current.taxonomy_version &&
       current.trajectory.task_definition_sha256 === correction.targetDefinitionSha256 && correctionFailures !== undefined;
     const failureCorrection = knownCorrection &&
       source.label?.task_success === false && correctionFailures?.includes(String(source.label.failure_mode));
-    const stageCorrection = knownCorrection && !!correction.stageReviewIssue;
-    const sameVersionCorrection = failureCorrection || stageCorrection;
+    const stageCorrection = knownCorrection && !!correction.stageReviewIssue && correctionSource?.recheckStages !== false;
+    // A pinned failure-only split can retain compatible reviews as confirmed
+    // while updating their content pin, without re-certifying affected causes.
+    const compatibleRepin = knownCorrection && correctionSource?.recheckStages === false;
+    const sameVersionCorrection = failureCorrection || stageCorrection || compatibleRepin;
     const previous = sameVersionCorrection ? current : predecessors[task];
     if (source.taxonomy_version !== previous.taxonomy_version || source.status === "cleared" || !source.label ||
       (!sameVersionCorrection && latest.has(`${identity(source)}|${current.taxonomy_version}`))) continue;

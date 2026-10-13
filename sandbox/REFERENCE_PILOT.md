@@ -99,3 +99,11 @@ entry. Seating is still independently required for success. Existing Routing
 reviews carry to drafts with their marks, outcomes, and compatible failure
 choices preserved, requesting a timing check rather than silently certifying
 the changed criteria. Marker and Square gold references are unchanged.
+
+Routing now separates a gross wrong approach angle for each physical clip
+(`first_clip_wrong_approach_angle` / `second_clip_wrong_approach_angle`) from
+ordinary missed entry. Roughly 45/90 degrees are illustrative, not numeric
+thresholds inferred from camera projection. Stages are unchanged by this split.
+Older entry-missed reviews need a cause-only recheck; compatible reviews under
+the spanning/contact definition keep their confirmation when carried forward.
+No saved review is overwritten, and wrong clip order remains terminal priority.

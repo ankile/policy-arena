@@ -1,11 +1,14 @@
 /** Same-version corrections with stable stage IDs and explicit review checks.
  * Older browser saves predate local content pins; unknown nonempty pins are not
  * accepted. These pins deliberately stop matching if a later definition changes. */
-type Correction = {
+type CorrectionSource = {
+  recheckFailures: string[];
+  recheckStages?: boolean;
+};
+type Correction = CorrectionSource & {
   previousDefinitionSha256: string;
   targetDefinitionSha256: string;
-  recheckFailures: string[];
-  additionalSources?: { definitionSha256: string; recheckFailures: string[] }[];
+  additionalSources?: (CorrectionSource & { definitionSha256: string })[];
   stageReviewIssue?: string;
 };
 export const failureDefinitionCorrections: Record<"marker_d2" | "square_d2" | "routing_d1", Correction> = {
@@ -27,20 +30,26 @@ export const failureDefinitionCorrections: Record<"marker_d2" | "square_d2" | "r
   },
   "routing_d1": {
     "previousDefinitionSha256": "32d3e8f5cd163f03cd93c3a6a099421485edcef6964185c53ef50cf1629b2449",
-    "targetDefinitionSha256": "cf728a36c41ed9e869d46262cc61c39277ddb3d6b315ebe1338792be847c2af2",
+    "targetDefinitionSha256": "3bcb31bbff1a59390302005a786219baca51ab23d3833075e445bfd407b47a6d",
     "stageReviewIssue": "Check S3/S8 and S4/S9 timing: spanning the clip now needs no insertion-direction alignment; engagement is correctly directed entrance contact, even before entry. Saved marks and outcome are preserved, not re-certified.",
     "recheckFailures": [
       "first_clip_seating_incomplete",
       "second_clip_seating_incomplete",
       "grasp_not_established",
-      "grasp_lost"
+      "grasp_lost",
+      "first_clip_engagement_missed",
+      "second_clip_engagement_missed"
     ],
     "additionalSources": [{
       "definitionSha256": "e545f73ed433024839bf6ed2f51cb9db0f997a1577dbc586c029d820bba2ae12",
-      "recheckFailures": ["grasp_not_established", "grasp_lost"]
+      "recheckFailures": ["grasp_not_established", "grasp_lost", "first_clip_engagement_missed", "second_clip_engagement_missed"]
     }, {
       "definitionSha256": "ddf423c02e069c5fd959b4a9e98b874bb25be03f4e12d36905b800093a8e9bb0",
-      "recheckFailures": []
+      "recheckFailures": ["first_clip_engagement_missed", "second_clip_engagement_missed"]
+    }, {
+      "definitionSha256": "cf728a36c41ed9e869d46262cc61c39277ddb3d6b315ebe1338792be847c2af2",
+      "recheckFailures": ["first_clip_engagement_missed", "second_clip_engagement_missed"],
+      "recheckStages": false
     }]
   }
 };
