@@ -40,7 +40,7 @@ function failureMapping(task: Task, failure: string, maxStage: number): string {
 }
 
 /** Explicit, browser-local, append-only transfer. Only named predecessors and
- * the pinned, stage-preserving failure correction are supported. Existing
+ * the pinned same-version corrections are supported. Existing
  * current-content reviews (including cleared/draft) always win. */
 export function planCarryForward(reviews: LocalReview[], now = Date.now()) {
   const latest = new Map<string, LocalReview>();
@@ -56,12 +56,15 @@ export function planCarryForward(reviews: LocalReview[], now = Date.now()) {
       source.local_task_definition_sha256 === correction.previousDefinitionSha256
       ? correction.recheckFailures
       : correction.additionalSources?.find((entry) => entry.definitionSha256 === source.local_task_definition_sha256)?.recheckFailures;
-    const failureCorrection = source.taxonomy_version === current.taxonomy_version &&
-      current.trajectory.task_definition_sha256 === correction.targetDefinitionSha256 &&
+    const knownCorrection = source.taxonomy_version === current.taxonomy_version &&
+      current.trajectory.task_definition_sha256 === correction.targetDefinitionSha256 && correctionFailures !== undefined;
+    const failureCorrection = knownCorrection &&
       source.label?.task_success === false && correctionFailures?.includes(String(source.label.failure_mode));
-    const previous = failureCorrection ? current : predecessors[task];
+    const stageCorrection = knownCorrection && !!correction.stageReviewIssue;
+    const sameVersionCorrection = failureCorrection || stageCorrection;
+    const previous = sameVersionCorrection ? current : predecessors[task];
     if (source.taxonomy_version !== previous.taxonomy_version || source.status === "cleared" || !source.label ||
-      (!failureCorrection && latest.has(`${identity(source)}|${current.taxonomy_version}`))) continue;
+      (!sameVersionCorrection && latest.has(`${identity(source)}|${current.taxonomy_version}`))) continue;
     const previousTag = normalizeTrajectoryReviewSpec(previous.trajectory, task, previous.taxonomy_version);
     const currentTag = normalizeTrajectoryReviewSpec(current.trajectory, task, current.taxonomy_version);
     const old = source.label;
@@ -73,7 +76,7 @@ export function planCarryForward(reviews: LocalReview[], now = Date.now()) {
     // Old prediction/action ledgers are preserved in the original, not passed off
     // as new-schema machine output or attached to a mismatching prediction ID.
     const label = blankTrajectoryReview(currentTag, source.dataset_repo, source.episode_index);
-    const issues: string[] = failureCorrection && !committed(source.status) ? [...source.local_migration?.issues ?? []] : [];
+    const issues: string[] = sameVersionCorrection && !committed(source.status) ? [...source.local_migration?.issues ?? []] : [];
     if (committed(source.status) && !CURRENT_REVIEW_FIELDS.every((field) => source.review_coverage?.reviewed_fields.includes(field))) {
       issues.push("Confirm the carried review: its earlier supervision did not cover every current review field.");
     }
@@ -96,13 +99,17 @@ export function planCarryForward(reviews: LocalReview[], now = Date.now()) {
         to_stage_id: stageId(event.to_stage_id as string, event.to_stage_index as number),
       })),
     });
-    if (!failureCorrection && task !== "routing_d1" && old.max_stage === 6) {
+    if (!sameVersionCorrection && task !== "routing_d1" && old.max_stage === 6) {
       issues.push("Check S6 timing: the saved release timestamp is preserved; full seating may have occurred earlier.");
     }
-    if (!failureCorrection && task === "routing_d1") {
+    if (!sameVersionCorrection && task === "routing_d1") {
       issues.push("Check clip identity and order: first means LEFT, second means RIGHT. A right-clip insertion attempt before left seating is a terminal failure. Stage marks and the human outcome were preserved for review.");
     }
-    const mapped = failureCorrection ? "" : failureMapping(task, String(old.failure_mode ?? ""), Number(old.max_stage));
+    if ((stageCorrection || !sameVersionCorrection) && correction.stageReviewIssue && !issues.includes(correction.stageReviewIssue)) {
+      issues.push(correction.stageReviewIssue);
+    }
+    const mapped = failureCorrection ? "" : sameVersionCorrection
+      ? String(old.failure_mode ?? "") : failureMapping(task, String(old.failure_mode ?? ""), Number(old.max_stage));
     label.failure_mode = old.task_success === true ? "none" : mapped;
     if (old.task_success === false && (!mapped || mapped === "none")) {
       label.failure_mode = "";

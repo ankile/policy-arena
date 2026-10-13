@@ -33,7 +33,7 @@
       },
       {
         "sid": 3,
-        "text": "The held rope is brought into an insertion-ready orientation at the LEFT (FIRST) clip.\nThe controlled rope is at the LEFT (FIRST) clip mouth region.\nThe local rope segment is visibly oriented with that clip's insertion axis, primarily verified in WRIST-L.\nAlignment far from the clip, empty-gripper alignment, and side-view overlap are insufficient.\nNo separate reach-the-clip stage or unengaged dwell interval is required.",
+        "text": "A controlled rope segment spans the LEFT clip's target location in the work-surface plane; this is positional placement, not insertion-direction alignment.\nThe rope itself, not just the gripper, extends across or over the LEFT clip's target footprint when projected onto the work-surface plane, in the clip's local vicinity.\nThe gripper positions or stretches the controlled segment across that location. Contact, entry, and the correct insertion direction are not required; a segment presented 90 degrees off can still achieve S3.\nA nearby gripper without rope spanning the target, a rope segment passing beside the footprint, or accidental overlap in one oblique camera is insufficient. Infer work-surface position using both side views and WRIST-L.\nNo separate reach-the-clip stage or dwell interval is required. Spanning the target does not imply engagement or seating.",
         "gate_field": null,
         "gate_time_field": null,
         "gate_any_of": [],
@@ -41,7 +41,7 @@
       },
       {
         "sid": 4,
-        "text": "The rope itself engages the LEFT (FIRST) clip mouth in an insertion-directed interaction.\nThe rope visibly contacts and begins entering under or into the LEFT (FIRST) clip lip, including partial insertion.\nContact with the table, the clip exterior, or the gripper alone does not establish engagement.\nEngagement does not prove a persistent seat; seating remains a separate physical judgment.",
+        "text": "The rope contacts the LEFT clip entrance with insertion-compatible local orientation and an approach directed into its opening.\nThe rope itself visibly touches the LEFT clip entrance, and its local orientation and approach direction match the clip's insertion opening, primarily verified in WRIST-L.\nCorrectly directed entrance contact is enough for S4; actual entry, partial insertion, and full seating are not required. Timestamp that contact, not later entry.\nA 90-degree-off push, wrong-side/exterior contact, table contact, gripper-only contact, or hovering does not establish S4 even if the rope spans the clip at S3.\nContact without visible insertion-compatible direction is not confirmed engagement; preserve the supported stage and flag unresolved geometry. Engagement does not prove entry or a persistent seat.",
         "gate_field": null,
         "gate_time_field": null,
         "gate_any_of": [],
@@ -73,7 +73,7 @@
       },
       {
         "sid": 8,
-        "text": "The held rope is brought into an insertion-ready orientation at the RIGHT (SECOND) clip.\nThe controlled rope is at the RIGHT (SECOND) clip mouth region.\nWRIST-L positively establishes insertion-compatible orientation of the local rope segment relative to this clip.\nThe FIRST clip need not remain seated; second-cycle progress and first-clip outcome are separate.\nOrientation while far from the clip, empty-gripper alignment, or projection overlap is insufficient.\nIf the rope was carried continuously between clips, do not invent S6 or S7.",
+        "text": "A controlled rope segment spans the RIGHT clip's target location in the work-surface plane; this is positional placement, not insertion-direction alignment.\nThe rope itself, not just the gripper, extends across or over the RIGHT clip's target footprint when projected onto the work-surface plane, in the clip's local vicinity.\nThe gripper positions or stretches the controlled segment across that location. Contact, entry, and the correct insertion direction are not required; a segment presented 90 degrees off can still achieve S8.\nThe FIRST clip need not remain seated; second-cycle progress and first-clip outcome are separate.\nA nearby gripper without rope spanning the target, a rope segment passing beside the footprint, or accidental overlap in one oblique camera is insufficient. Infer work-surface position using both side views and WRIST-L.\nIf the rope was carried continuously between clips, do not invent S6 or S7.",
         "gate_field": null,
         "gate_time_field": null,
         "gate_any_of": [],
@@ -81,7 +81,7 @@
       },
       {
         "sid": 9,
-        "text": "The rope itself engages the RIGHT (SECOND) clip mouth in an insertion-directed interaction.\nThe rope visibly contacts and begins entering under or into the RIGHT (SECOND) clip lip, including partial insertion.\nEngagement is not proof that either clip is fully seated.\nGripper-only contact, table contact, and merely hovering over the mouth are insufficient.\nDo not require a successful first-clip seat to record an observed second-clip engagement.",
+        "text": "The rope contacts the RIGHT clip entrance with insertion-compatible local orientation and an approach directed into its opening.\nThe rope itself visibly touches the RIGHT clip entrance, and its local orientation and approach direction match the clip's insertion opening, primarily verified in WRIST-L.\nCorrectly directed entrance contact is enough for S9; actual entry, partial insertion, and full seating are not required. Timestamp that contact, not later entry.\nA 90-degree-off push, wrong-side/exterior contact, table contact, gripper-only contact, or hovering does not establish S9 even if the rope spans the clip at S8.\nContact without visible insertion-compatible direction is not confirmed engagement; preserve the supported stage and flag unresolved geometry. Engagement does not prove entry or that either clip is seated.\nDo not require a successful first-clip seat to record an observed second-clip engagement.",
         "gate_field": null,
         "gate_time_field": null,
         "gate_any_of": [],
@@ -325,28 +325,29 @@
         {
           "index": 3,
           "id": "first_clip_aligned",
-          "name": "Align with the left clip (first)",
-          "description": "The held rope is brought into an insertion-ready orientation at the LEFT (FIRST) clip.",
+          "name": "Span the left clip with the rope",
+          "description": "A controlled rope segment spans the LEFT clip's target location in the work-surface plane; this is positional placement, not insertion-direction alignment.",
           "entryCriteria": [
-            "The controlled rope is at the LEFT (FIRST) clip mouth region.",
-            "The local rope segment is visibly oriented with that clip's insertion axis, primarily verified in WRIST-L."
+            "The rope itself, not just the gripper, extends across or over the LEFT clip's target footprint when projected onto the work-surface plane, in the clip's local vicinity.",
+            "The gripper positions or stretches the controlled segment across that location. Contact, entry, and the correct insertion direction are not required; a segment presented 90 degrees off can still achieve S3."
           ],
           "exclusions": [
-            "Alignment far from the clip, empty-gripper alignment, and side-view overlap are insufficient.",
-            "No separate reach-the-clip stage or unengaged dwell interval is required."
+            "A nearby gripper without rope spanning the target, a rope segment passing beside the footprint, or accidental overlap in one oblique camera is insufficient. Infer work-surface position using both side views and WRIST-L.",
+            "No separate reach-the-clip stage or dwell interval is required. Spanning the target does not imply engagement or seating."
           ]
         },
         {
           "index": 4,
           "id": "first_clip_engaged",
-          "name": "Engage the left clip (first)",
-          "description": "The rope itself engages the LEFT (FIRST) clip mouth in an insertion-directed interaction.",
+          "name": "Engage the left clip in the correct direction",
+          "description": "The rope contacts the LEFT clip entrance with insertion-compatible local orientation and an approach directed into its opening.",
           "entryCriteria": [
-            "The rope visibly contacts and begins entering under or into the LEFT (FIRST) clip lip, including partial insertion."
+            "The rope itself visibly touches the LEFT clip entrance, and its local orientation and approach direction match the clip's insertion opening, primarily verified in WRIST-L.",
+            "Correctly directed entrance contact is enough for S4; actual entry, partial insertion, and full seating are not required. Timestamp that contact, not later entry."
           ],
           "exclusions": [
-            "Contact with the table, the clip exterior, or the gripper alone does not establish engagement.",
-            "Engagement does not prove a persistent seat; seating remains a separate physical judgment."
+            "A 90-degree-off push, wrong-side/exterior contact, table contact, gripper-only contact, or hovering does not establish S4 even if the rope spans the clip at S3.",
+            "Contact without visible insertion-compatible direction is not confirmed engagement; preserve the supported stage and flag unresolved geometry. Engagement does not prove entry or a persistent seat."
           ]
         },
         {
@@ -397,29 +398,30 @@
         {
           "index": 8,
           "id": "second_clip_aligned",
-          "name": "Align with the right clip (second)",
-          "description": "The held rope is brought into an insertion-ready orientation at the RIGHT (SECOND) clip.",
+          "name": "Span the right clip with the rope",
+          "description": "A controlled rope segment spans the RIGHT clip's target location in the work-surface plane; this is positional placement, not insertion-direction alignment.",
           "entryCriteria": [
-            "The controlled rope is at the RIGHT (SECOND) clip mouth region.",
-            "WRIST-L positively establishes insertion-compatible orientation of the local rope segment relative to this clip."
+            "The rope itself, not just the gripper, extends across or over the RIGHT clip's target footprint when projected onto the work-surface plane, in the clip's local vicinity.",
+            "The gripper positions or stretches the controlled segment across that location. Contact, entry, and the correct insertion direction are not required; a segment presented 90 degrees off can still achieve S8."
           ],
           "exclusions": [
             "The FIRST clip need not remain seated; second-cycle progress and first-clip outcome are separate.",
-            "Orientation while far from the clip, empty-gripper alignment, or projection overlap is insufficient.",
+            "A nearby gripper without rope spanning the target, a rope segment passing beside the footprint, or accidental overlap in one oblique camera is insufficient. Infer work-surface position using both side views and WRIST-L.",
             "If the rope was carried continuously between clips, do not invent S6 or S7."
           ]
         },
         {
           "index": 9,
           "id": "second_clip_engaged",
-          "name": "Engage the right clip (second)",
-          "description": "The rope itself engages the RIGHT (SECOND) clip mouth in an insertion-directed interaction.",
+          "name": "Engage the right clip in the correct direction",
+          "description": "The rope contacts the RIGHT clip entrance with insertion-compatible local orientation and an approach directed into its opening.",
           "entryCriteria": [
-            "The rope visibly contacts and begins entering under or into the RIGHT (SECOND) clip lip, including partial insertion."
+            "The rope itself visibly touches the RIGHT clip entrance, and its local orientation and approach direction match the clip's insertion opening, primarily verified in WRIST-L.",
+            "Correctly directed entrance contact is enough for S9; actual entry, partial insertion, and full seating are not required. Timestamp that contact, not later entry."
           ],
           "exclusions": [
-            "Engagement is not proof that either clip is fully seated.",
-            "Gripper-only contact, table contact, and merely hovering over the mouth are insufficient.",
+            "A 90-degree-off push, wrong-side/exterior contact, table contact, gripper-only contact, or hovering does not establish S9 even if the rope spans the clip at S8.",
+            "Contact without visible insertion-compatible direction is not confirmed engagement; preserve the supported stage and flag unresolved geometry. Engagement does not prove entry or that either clip is seated.",
             "Do not require a successful first-clip seat to record an observed second-clip engagement."
           ]
         },
@@ -460,8 +462,8 @@
         {
           "id": "first_clip_contact",
           "name": "Reach left clip mouth region",
-          "description": "The controlled rope itself first reaches the canonical LEFT (FIRST) clip mouth region. Arrival does not by itself prove alignment, engagement, or seating.",
-          "stageRelation": "Supports first-clip alignment or engagement; clip arrival remains a key action, not an extra human stage.",
+          "description": "The controlled rope itself first reaches the canonical LEFT (FIRST) clip mouth region. Nearby arrival does not by itself prove that the rope spans the target footprint, contacts the entrance in the correct direction, or is seated.",
+          "stageRelation": "Supports spanning or engaging the left clip; clip arrival remains a key action, not an extra human stage.",
           "stageLinks": [
             {
               "stageId": "first_clip_aligned",
@@ -495,8 +497,8 @@
         {
           "id": "second_clip_contact",
           "name": "Reach right clip mouth region",
-          "description": "The controlled rope itself first reaches the canonical RIGHT (SECOND) clip mouth region. Arrival does not by itself prove alignment, engagement, or seating.",
-          "stageRelation": "Supports second-clip alignment or engagement; clip arrival remains a key action, not an extra human stage.",
+          "description": "The controlled rope itself first reaches the canonical RIGHT (SECOND) clip mouth region. Nearby arrival does not by itself prove that the rope spans the target footprint, contacts the entrance in the correct direction, or is seated.",
+          "stageRelation": "Supports spanning or engaging the right clip; clip arrival remains a key action, not an extra human stage.",
           "stageLinks": [
             {
               "stageId": "second_clip_aligned",
@@ -511,7 +513,7 @@
         {
           "id": "second_clip_insertion_attempt",
           "name": "Attempt insertion at the right clip",
-          "description": "The controlled rope begins a deliberate insertion-directed movement into or against the RIGHT clip mouth. Includes missed entry. Mere arrival, alignment, passing nearby, accidental brushing, and screen overlap are not an insertion attempt. Record even if it precedes LEFT seating.",
+          "description": "The controlled rope begins a deliberate insertion attempt into or against the RIGHT clip. Includes a visibly attempted push presented 90 degrees off or otherwise missing entry; an attempt does not require S9 engagement. Mere arrival, spanning the target, passing nearby, accidental brushing, and screen overlap are not an insertion attempt. Record even if it precedes LEFT seating.",
           "stageRelation": "Independent action for the left-before-right rule. Right-clip engagement necessarily involves an insertion attempt; do not rename it as work at the left clip.",
           "stageLinks": [
             {
@@ -575,7 +577,7 @@
         },
         {
           "id": "first_clip_engagement_missed",
-          "description": "An insertion-directed attempt at the LEFT clip is visibly blocked at or misses its entrance; the rope never enters beneath/into its retaining feature. Includes misaligned entrance contact with zero entry. Mere approach or overlap is insufficient. Any verified partial entry rules out this mode for that event; stuck advancement after entry belongs to first_clip_seating_incomplete. Subsequent real engagement recovers this event.",
+          "description": "A deliberate insertion attempt at the LEFT clip is visibly blocked at or misses its entrance with zero entry beneath/into its retaining feature. Includes a 90-degree-off push (S3 may be achieved, but not S4), or correctly directed entrance contact that is blocked before any entry (S4 may be achieved). Mere spanning, approach, or overlap is insufficient evidence of failure. Any verified partial entry rules out this mode for that event; stuck advancement after entry belongs to first_clip_seating_incomplete. Subsequent actual entry or seating recovers this event; direction-correct contact alone does not.",
           "name": "Left clip · entry missed"
         },
         {
@@ -605,7 +607,7 @@
         },
         {
           "id": "second_clip_engagement_missed",
-          "description": "An insertion-directed attempt at the RIGHT clip is visibly blocked at or misses its entrance; the rope never enters beneath/into its retaining feature. Includes misaligned entrance contact with zero entry. Mere approach or overlap is insufficient. Any verified partial entry rules out this mode for that event; stuck advancement after entry belongs to second_clip_seating_incomplete. Subsequent real engagement recovers this event.",
+          "description": "A deliberate insertion attempt at the RIGHT clip is visibly blocked at or misses its entrance with zero entry beneath/into its retaining feature. Includes a 90-degree-off push (S8 may be achieved, but not S9), or correctly directed entrance contact that is blocked before any entry (S9 may be achieved). Mere spanning, approach, or overlap is insufficient evidence of failure. Any verified partial entry rules out this mode for that event; stuck advancement after entry belongs to second_clip_seating_incomplete. Subsequent actual entry or seating recovers this event; direction-correct contact alone does not.",
           "name": "Right clip · entry missed"
         },
         {
@@ -638,7 +640,7 @@
         },
         {
           "id": "two_cycle_sequence",
-          "rule": "The nominal stage sequence is S1 reach rope, S2 hold rope, S3 align at FIRST clip, S4 engage FIRST clip, S5 first-cycle release, then S6 reach rope again, S7 hold rope again, S8 align at SECOND clip, S9 engage SECOND clip, S10 final release. These are workflow milestones, not counts of seated clips. A failed first placement does not prevent credit for genuinely observed second-cycle milestones."
+          "rule": "The nominal stage sequence is S1 reach rope, S2 hold rope, S3 span LEFT clip with rope, S4 contact LEFT entrance in the correct insertion direction, S5 first-cycle release, then S6 reach rope again, S7 hold rope again, S8 span RIGHT clip with rope, S9 contact RIGHT entrance in the correct insertion direction, S10 final release. These are workflow milestones, not counts of seated clips. A failed first placement does not prevent credit for genuinely observed second-cycle milestones."
         },
         {
           "id": "reach_is_arrival",
@@ -653,12 +655,12 @@
           "rule": "Attribute each grasp failure to the physical clip being worked toward at the time of failure: first_clip_* is LEFT work, second_clip_* is RIGHT work. Initial acquisition belongs to LEFT unless the observed sequence positively establishes a different target; the planned pickup after LEFT work belongs to RIGHT even if LEFT seating failed. Pickup retries do not switch clip ownership; returning to repair LEFT is LEFT work again. A continuously held transfer can suffer second_clip_grasp_lost without S6/S7. Use observed clip identity and manipulation history, not raw screen position, number of grasps, attempt number, or furthest stage alone. If ownership is genuinely ambiguous, use unknown_failure_cause and request review. A failed pickup or accidental gripper slip is distinct from rope leaving an already seated clip, which uses the physical clip's retention_lost category. Restored control in an unrelated clip phase does not by itself recover the earlier failure. Right-first insertion still takes terminal wrong_clip_order priority over any grasp category."
         },
         {
-          "id": "alignment_at_clip",
-          "rule": "For S3/S8, require the held rope at the named clip mouth region with insertion-compatible local orientation. Use WRIST-L for fine geometry and both side views for clip identity and actual rope control. Do not add a separate clip-reach stage or require an unengaged dwell before crediting alignment."
+          "id": "rope_spans_clip_position",
+          "rule": "S3/S8 mean the controlled rope segment spans the named clip's target footprint in the work-surface plane, not alignment with its insertion axis. Infer the physical work-surface projection using both side views and WRIST-L, not overlap in one oblique image. Rope above or across the local target can qualify without contact; a segment beside it or an empty gripper cannot. A 90-degree-off presentation can qualify. Timestamp the earliest supported spanning, without requiring dwell. Stable stage IDs first_clip_aligned/second_clip_aligned name this positional milestone, not a hidden orientation gate."
         },
         {
           "id": "engagement_not_seating",
-          "rule": "For S4/S9, require positive rope entry or insertion-directed engagement under or into the named clip mouth. Table contact, clip exterior contact, empty-gripper proximity, or projection overlap is insufficient. Engagement is a stage even if it never becomes a persistent seat."
+          "rule": "S4/S9 require the rope itself touching the clip entrance with insertion-compatible local orientation AND approach direction. Correctly directed contact is sufficient even before any entry. A 90-degree-off push does not qualify, even after valid S3/S8 positional spanning. Use WRIST-L for direction/contact and both side views for clip identity; request review if geometry is unresolved. Engagement, actual entry, and persistent seating are separate physical facts. A blocked zero-entry attempt can reach S4/S9 and still fail with engagement_missed; only actual partial entry plus stuck advancement supports seating_incomplete. Later release/second-cycle milestones remain independent; do not cap the historical maximum at S3/S8 solely because engagement failed."
         },
         {
           "id": "cycle_owned_releases",
@@ -708,6 +710,7 @@
       "auditProcedure": [
         "Identify the fixed LEFT/FIRST and RIGHT/SECOND clips using both side views before labeling stages.",
         "Record achieved milestones and supported timestamps; later loss does not erase history.",
+        "Separate rope spanning the clip position (S3/S8) from direction-correct entrance contact (S4/S9), actual entry, and seating. A 90-degree-off attempted push can achieve spanning but not engagement.",
         "Record independent key actions, including optional releases.",
         "Assign grasp-not-established and grasp-lost events to LEFT or RIGHT work using the observed manipulation phase, including retries and continuous transfers; do not guess from the maximum stage.",
         "Check LEFT seating before every deliberate RIGHT insertion attempt. Record terminal wrong_clip_order first in primary-failure priority; otherwise select the earliest unrecovered specific failure.",
@@ -715,7 +718,7 @@
         "Return trajectory-label/v2 without end-state fields. Check IDs, timing, stage/action consistency, and primary/event agreement."
       ]
     },
-    "task_definition_sha256": "ddf423c02e069c5fd959b4a9e98b874bb25be03f4e12d36905b800093a8e9bb0",
+    "task_definition_sha256": "cf728a36c41ed9e869d46262cc61c39277ddb3d6b315ebe1338792be847c2af2",
     "response_schema": {
       "type": "OBJECT",
       "properties": {
@@ -1088,5 +1091,5 @@
       "description": "Canonical task-generic trajectory label"
     }
   },
-  "taxonomy_hash": "7bdd1f2f2225f2474a692dee86ab515ab528058ac28a890cf5ebee4dee589bbe"
+  "taxonomy_hash": "45959274b0b1326c89e6ff2d064fc037b9bf2c51d5798d55d90de7b168ce3759"
 }

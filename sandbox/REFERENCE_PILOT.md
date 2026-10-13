@@ -90,3 +90,12 @@ stage. Existing unqualified Routing grasp failures carry to a draft requiring
 only that failure choice; stages, binary outcome, notes, and originals remain
 intact. Previously rechecked partial-entry categories are not reopened. The
 left-before-right terminal rule and all stage definitions are unchanged.
+
+The subsequent Routing clarification keeps stage IDs but changes the S3/S8 and
+S4/S9 boundaries: span the clip's work-surface position, then touch its entrance
+in the correct insertion direction. A 90-degree-off push can achieve spanning
+without engagement; correctly directed contact can achieve engagement without
+entry. Seating is still independently required for success. Existing Routing
+reviews carry to drafts with their marks, outcomes, and compatible failure
+choices preserved, requesting a timing check rather than silently certifying
+the changed criteria. Marker and Square gold references are unchanged.

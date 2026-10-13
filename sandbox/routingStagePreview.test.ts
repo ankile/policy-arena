@@ -69,8 +69,8 @@ describe("Routing v5 two-cycle preview", () => {
   test("plain-language stage names support blank human reviews and skipped milestones", () => {
     const schema = normalizeStageSpec(spec).trajectory!;
     expect(schema.task_definition.stages.slice(1).map(stageTitle)).toEqual([
-      "S1 · Reach the rope", "S2 · Hold the rope", "S3 · Align with the left clip (first)", "S4 · Engage the left clip (first)", "S5 · First release",
-      "S6 · Reach the rope again", "S7 · Hold the rope again", "S8 · Align with the right clip (second)", "S9 · Engage the right clip (second)", "S10 · Final release",
+      "S1 · Reach the rope", "S2 · Hold the rope", "S3 · Span the left clip with the rope", "S4 · Engage the left clip in the correct direction", "S5 · First release",
+      "S6 · Reach the rope again", "S7 · Hold the rope again", "S8 · Span the right clip with the rope", "S9 · Engage the right clip in the correct direction", "S10 · Final release",
     ]);
     let row = blankTrajectoryReview(schema, "org/routing", 116);
     const actions = structuredClone(row.key_action_observations);
