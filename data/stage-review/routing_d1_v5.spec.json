@@ -33,7 +33,7 @@
       },
       {
         "sid": 3,
-        "text": "The held rope is brought into an insertion-ready orientation at the FIRST clip.\nThe controlled rope is at the FIRST clip mouth region.\nThe local rope segment is visibly oriented with that clip's insertion axis, primarily verified in WRIST-L.\nAlignment far from the clip, empty-gripper alignment, and side-view overlap are insufficient.\nNo separate reach-the-clip stage or unengaged dwell interval is required.",
+        "text": "The held rope is brought into an insertion-ready orientation at the LEFT (FIRST) clip.\nThe controlled rope is at the LEFT (FIRST) clip mouth region.\nThe local rope segment is visibly oriented with that clip's insertion axis, primarily verified in WRIST-L.\nAlignment far from the clip, empty-gripper alignment, and side-view overlap are insufficient.\nNo separate reach-the-clip stage or unengaged dwell interval is required.",
         "gate_field": null,
         "gate_time_field": null,
         "gate_any_of": [],
@@ -41,7 +41,7 @@
       },
       {
         "sid": 4,
-        "text": "The rope itself engages the FIRST clip mouth in an insertion-directed interaction.\nThe rope visibly contacts and begins entering under or into the FIRST clip lip, including partial insertion.\nContact with the table, the clip exterior, or the gripper alone does not establish engagement.\nEngagement does not prove a persistent seat; seating remains a separate physical judgment.",
+        "text": "The rope itself engages the LEFT (FIRST) clip mouth in an insertion-directed interaction.\nThe rope visibly contacts and begins entering under or into the LEFT (FIRST) clip lip, including partial insertion.\nContact with the table, the clip exterior, or the gripper alone does not establish engagement.\nEngagement does not prove a persistent seat; seating remains a separate physical judgment.",
         "gate_field": null,
         "gate_time_field": null,
         "gate_any_of": [],
@@ -49,7 +49,7 @@
       },
       {
         "sid": 5,
-        "text": "The gripper lets go of the rope after the first-clip placement attempt.\nA previously held rope segment becomes free of the jaws as they open or separate from it after work at the FIRST clip.\nTimestamp the first supported loss of gripper retention, not merely the start of jaw opening.\nThe FIRST clip need not be successfully seated; this milestone records release, not placement quality.\nAn accidental slip from closed jaws or opening empty jaws is not a release.\nA release during an initial pickup retry, before work at the FIRST clip, is not S5.\nIf this is also the episode's last release, it is still S5, not S10.",
+        "text": "The gripper lets go of the rope after the first-clip placement attempt.\nA previously held rope segment becomes free of the jaws as they open or separate from it after work at the LEFT (FIRST) clip.\nTimestamp the first supported loss of gripper retention, not merely the start of jaw opening.\nThe FIRST clip need not be successfully seated; this milestone records release, not placement quality.\nAn accidental slip from closed jaws or opening empty jaws is not a release.\nA release during an initial pickup retry, before work at the FIRST clip, is not S5.\nIf this is also the episode's last release, it is still S5, not S10.",
         "gate_field": null,
         "gate_time_field": null,
         "gate_any_of": [],
@@ -57,7 +57,7 @@
       },
       {
         "sid": 6,
-        "text": "After the first-clip attempt, the gripper returns to the rope for the second pickup cycle.\nA distinct return to the rope after work at the FIRST clip brings the gripper within grasping range of the segment to be acquired for the SECOND clip.\nThe first clip does not need to be seated for the second cycle to begin.\nRepeated grasp attempts before work at the FIRST clip remain first-cycle retries, not S6.\nContinuing to transport the original held segment is not a new reach-to-pickup milestone.\nDo not fabricate an earlier first-release timestamp if it was occluded.",
+        "text": "After the first-clip attempt, the gripper returns to the rope for the second pickup cycle.\nA distinct return to the rope after work at the LEFT (FIRST) clip brings the gripper within grasping range of the segment to be acquired for the RIGHT (SECOND) clip.\nThe first clip does not need to be seated for the second cycle to begin.\nRepeated grasp attempts before work at the FIRST clip remain first-cycle retries, not S6.\nContinuing to transport the original held segment is not a new reach-to-pickup milestone.\nDo not fabricate an earlier first-release timestamp if it was occluded.",
         "gate_field": null,
         "gate_time_field": null,
         "gate_any_of": [],
@@ -73,7 +73,7 @@
       },
       {
         "sid": 8,
-        "text": "The held rope is brought into an insertion-ready orientation at the SECOND clip.\nThe controlled rope is at the SECOND clip mouth region.\nWRIST-L positively establishes insertion-compatible orientation of the local rope segment relative to this clip.\nThe FIRST clip need not remain seated; second-cycle progress and first-clip outcome are separate.\nOrientation while far from the clip, empty-gripper alignment, or projection overlap is insufficient.\nIf the rope was carried continuously between clips, do not invent S6 or S7.",
+        "text": "The held rope is brought into an insertion-ready orientation at the RIGHT (SECOND) clip.\nThe controlled rope is at the RIGHT (SECOND) clip mouth region.\nWRIST-L positively establishes insertion-compatible orientation of the local rope segment relative to this clip.\nThe FIRST clip need not remain seated; second-cycle progress and first-clip outcome are separate.\nOrientation while far from the clip, empty-gripper alignment, or projection overlap is insufficient.\nIf the rope was carried continuously between clips, do not invent S6 or S7.",
         "gate_field": null,
         "gate_time_field": null,
         "gate_any_of": [],
@@ -81,7 +81,7 @@
       },
       {
         "sid": 9,
-        "text": "The rope itself engages the SECOND clip mouth in an insertion-directed interaction.\nThe rope visibly contacts and begins entering under or into the SECOND clip lip, including partial insertion.\nEngagement is not proof that either clip is fully seated.\nGripper-only contact, table contact, and merely hovering over the mouth are insufficient.\nDo not require a successful first-clip seat to record an observed second-clip engagement.",
+        "text": "The rope itself engages the RIGHT (SECOND) clip mouth in an insertion-directed interaction.\nThe rope visibly contacts and begins entering under or into the RIGHT (SECOND) clip lip, including partial insertion.\nEngagement is not proof that either clip is fully seated.\nGripper-only contact, table contact, and merely hovering over the mouth are insufficient.\nDo not require a successful first-clip seat to record an observed second-clip engagement.",
         "gate_field": null,
         "gate_time_field": null,
         "gate_any_of": [],
@@ -89,7 +89,7 @@
       },
       {
         "sid": 10,
-        "text": "The gripper lets go of the rope at the end of the second-clip placement attempt.\nA previously held rope segment becomes free of the opening or separating jaws after work at the SECOND clip.\nThis is the final relinquishment of the routing attempt, not a temporary release followed by another pickup in that attempt.\nRelease does not establish success: either clip may still be unseated.\nOpening empty jaws or an accidental slip from closed jaws does not establish S10.\nEnding the episode after only the first-clip release remains S5, not S10.\nTimestamp actual loss of retention; do not wait for the gripper to retreat fully.",
+        "text": "The gripper lets go of the rope at the end of the second-clip placement attempt.\nA previously held rope segment becomes free of the opening or separating jaws after work at the RIGHT (SECOND) clip.\nThis is the final relinquishment of the routing attempt, not a temporary release followed by another pickup in that attempt.\nRelease does not establish success: either clip may still be unseated.\nOpening empty jaws or an accidental slip from closed jaws does not establish S10.\nEnding the episode after only the first-clip release remains S5, not S10.\nTimestamp actual loss of retention; do not wait for the gripper to retreat fully.",
         "gate_field": null,
         "gate_time_field": null,
         "gate_any_of": [],
@@ -99,6 +99,7 @@
   },
   "failure_modes": [
     "none",
+    "wrong_clip_order",
     "grasp_not_established",
     "grasp_lost",
     "first_clip_not_attempted",
@@ -210,9 +211,10 @@
       "definitionSchemaVersion": "trajectory-task/v2",
       "taskId": "routing_d1",
       "taxonomyVersion": "routing_d1/v5",
-      "displayName": "Routing · two pickup-and-release cycles",
-      "objective": "Seat and retain the rope in both designated clips. Gripper release is optional.",
+      "displayName": "Routing · left clip, then right clip",
+      "objective": "Seat and retain the rope in the LEFT clip first, then the RIGHT clip. A deliberate right-clip insertion attempt before left-clip seating is a terminal failure. Release is optional.",
       "successCriteria": [
+        "The LEFT physical clip must be fully seated before the first deliberate insertion attempt at the RIGHT physical clip. Right-first attempts are terminal wrong_clip_order failures even if both clips are later seated.",
         "The rope is seated beneath the retaining features of both designated physical clips and remains captured in both at the end.",
         "Gripper retention or release does not affect success. Contact or partial engagement is insufficient.",
         "A high stage or final release does not prove both clips remain seated. First-clip loss during second-clip work is still failure."
@@ -239,11 +241,11 @@
         },
         {
           "id": "first_clip",
-          "description": "The first pegboard clip in the canonical left-to-right routing order, independent of where it appears in either opposing camera image."
+          "description": "The fixed LEFT physical clip in the canonical workspace frame; always the first required target. Identify it jointly from the two opposing side views, not screen-left in an arbitrary camera."
         },
         {
           "id": "second_clip",
-          "description": "The second pegboard clip in the canonical left-to-right routing order, independent of where it appears in either opposing camera image."
+          "description": "The fixed RIGHT physical clip in the canonical workspace frame; always the second required target, regardless of visitation order or camera reversal."
         },
         {
           "id": "pegboard_workspace",
@@ -321,10 +323,10 @@
         {
           "index": 3,
           "id": "first_clip_aligned",
-          "name": "Align with the first clip",
-          "description": "The held rope is brought into an insertion-ready orientation at the FIRST clip.",
+          "name": "Align with the left clip (first)",
+          "description": "The held rope is brought into an insertion-ready orientation at the LEFT (FIRST) clip.",
           "entryCriteria": [
-            "The controlled rope is at the FIRST clip mouth region.",
+            "The controlled rope is at the LEFT (FIRST) clip mouth region.",
             "The local rope segment is visibly oriented with that clip's insertion axis, primarily verified in WRIST-L."
           ],
           "exclusions": [
@@ -335,10 +337,10 @@
         {
           "index": 4,
           "id": "first_clip_engaged",
-          "name": "Engage the first clip",
-          "description": "The rope itself engages the FIRST clip mouth in an insertion-directed interaction.",
+          "name": "Engage the left clip (first)",
+          "description": "The rope itself engages the LEFT (FIRST) clip mouth in an insertion-directed interaction.",
           "entryCriteria": [
-            "The rope visibly contacts and begins entering under or into the FIRST clip lip, including partial insertion."
+            "The rope visibly contacts and begins entering under or into the LEFT (FIRST) clip lip, including partial insertion."
           ],
           "exclusions": [
             "Contact with the table, the clip exterior, or the gripper alone does not establish engagement.",
@@ -351,7 +353,7 @@
           "name": "First release",
           "description": "The gripper lets go of the rope after the first-clip placement attempt.",
           "entryCriteria": [
-            "A previously held rope segment becomes free of the jaws as they open or separate from it after work at the FIRST clip.",
+            "A previously held rope segment becomes free of the jaws as they open or separate from it after work at the LEFT (FIRST) clip.",
             "Timestamp the first supported loss of gripper retention, not merely the start of jaw opening."
           ],
           "exclusions": [
@@ -367,7 +369,7 @@
           "name": "Reach the rope again",
           "description": "After the first-clip attempt, the gripper returns to the rope for the second pickup cycle.",
           "entryCriteria": [
-            "A distinct return to the rope after work at the FIRST clip brings the gripper within grasping range of the segment to be acquired for the SECOND clip."
+            "A distinct return to the rope after work at the LEFT (FIRST) clip brings the gripper within grasping range of the segment to be acquired for the RIGHT (SECOND) clip."
           ],
           "exclusions": [
             "The first clip does not need to be seated for the second cycle to begin.",
@@ -393,10 +395,10 @@
         {
           "index": 8,
           "id": "second_clip_aligned",
-          "name": "Align with the second clip",
-          "description": "The held rope is brought into an insertion-ready orientation at the SECOND clip.",
+          "name": "Align with the right clip (second)",
+          "description": "The held rope is brought into an insertion-ready orientation at the RIGHT (SECOND) clip.",
           "entryCriteria": [
-            "The controlled rope is at the SECOND clip mouth region.",
+            "The controlled rope is at the RIGHT (SECOND) clip mouth region.",
             "WRIST-L positively establishes insertion-compatible orientation of the local rope segment relative to this clip."
           ],
           "exclusions": [
@@ -408,10 +410,10 @@
         {
           "index": 9,
           "id": "second_clip_engaged",
-          "name": "Engage the second clip",
-          "description": "The rope itself engages the SECOND clip mouth in an insertion-directed interaction.",
+          "name": "Engage the right clip (second)",
+          "description": "The rope itself engages the RIGHT (SECOND) clip mouth in an insertion-directed interaction.",
           "entryCriteria": [
-            "The rope visibly contacts and begins entering under or into the SECOND clip lip, including partial insertion."
+            "The rope visibly contacts and begins entering under or into the RIGHT (SECOND) clip lip, including partial insertion."
           ],
           "exclusions": [
             "Engagement is not proof that either clip is fully seated.",
@@ -425,7 +427,7 @@
           "name": "Final release",
           "description": "The gripper lets go of the rope at the end of the second-clip placement attempt.",
           "entryCriteria": [
-            "A previously held rope segment becomes free of the opening or separating jaws after work at the SECOND clip.",
+            "A previously held rope segment becomes free of the opening or separating jaws after work at the RIGHT (SECOND) clip.",
             "This is the final relinquishment of the routing attempt, not a temporary release followed by another pickup in that attempt."
           ],
           "exclusions": [
@@ -455,8 +457,8 @@
         },
         {
           "id": "first_clip_contact",
-          "name": "Reach first clip mouth region",
-          "description": "The controlled rope itself first reaches the canonical FIRST clip mouth region. Arrival does not by itself prove alignment, engagement, or seating.",
+          "name": "Reach left clip mouth region",
+          "description": "The controlled rope itself first reaches the canonical LEFT (FIRST) clip mouth region. Arrival does not by itself prove alignment, engagement, or seating.",
           "stageRelation": "Supports first-clip alignment or engagement; clip arrival remains a key action, not an extra human stage.",
           "stageLinks": [
             {
@@ -471,8 +473,8 @@
         },
         {
           "id": "first_clip_seated",
-          "name": "Seat rope in first clip",
-          "description": "The rope is first positively captured under or into the FIRST clip mouth and the capture persists long enough to establish a genuine seat; preserve this historical occurrence if the seat is later lost.",
+          "name": "Seat rope in left clip",
+          "description": "The rope is first positively captured under or into the LEFT (FIRST) clip mouth and the capture persists long enough to establish a genuine seat; preserve this historical occurrence if the seat is later lost.",
           "stageRelation": "Independent seating judgment required for task success. No stage, including the first release, proves this action.",
           "stageLinks": []
         },
@@ -490,8 +492,8 @@
         },
         {
           "id": "second_clip_contact",
-          "name": "Reach second clip mouth region",
-          "description": "The controlled rope itself first reaches the canonical SECOND clip mouth region. Arrival does not by itself prove alignment, engagement, or seating.",
+          "name": "Reach right clip mouth region",
+          "description": "The controlled rope itself first reaches the canonical RIGHT (SECOND) clip mouth region. Arrival does not by itself prove alignment, engagement, or seating.",
           "stageRelation": "Supports second-clip alignment or engagement; clip arrival remains a key action, not an extra human stage.",
           "stageLinks": [
             {
@@ -505,9 +507,21 @@
           ]
         },
         {
+          "id": "second_clip_insertion_attempt",
+          "name": "Attempt insertion at the right clip",
+          "description": "The controlled rope begins a deliberate insertion-directed movement into or against the RIGHT clip mouth. Includes missed entry. Mere arrival, alignment, passing nearby, accidental brushing, and screen overlap are not an insertion attempt. Record even if it precedes LEFT seating.",
+          "stageRelation": "Independent action for the left-before-right rule. Right-clip engagement necessarily involves an insertion attempt; do not rename it as work at the left clip.",
+          "stageLinks": [
+            {
+              "stageId": "second_clip_engaged",
+              "relation": "required_for_entry"
+            }
+          ]
+        },
+        {
           "id": "second_clip_seated",
-          "name": "Seat rope in second clip",
-          "description": "The rope is first positively captured under or into the SECOND clip mouth and the capture persists long enough to establish a genuine seat; record it honestly even if it occurs before the first-clip seat.",
+          "name": "Seat rope in right clip",
+          "description": "The rope is first positively captured under or into the RIGHT (SECOND) clip mouth and the capture persists long enough to establish a genuine seat; record it honestly even if it occurs before the first-clip seat.",
           "stageRelation": "Independent seating judgment required for task success. Second-clip engagement or final release alone does not prove this action.",
           "stageLinks": []
         },
@@ -530,6 +544,19 @@
           "description": "No unresolved task failure; use for success. Recovered failure events may remain."
         },
         {
+          "id": "wrong_clip_order",
+          "name": "Wrong clip order (right before left)",
+          "description": "A deliberate insertion attempt at the fixed RIGHT clip begins before the LEFT clip has been fully seated. This is a terminal, unrecoverable episode failure; later seating of either or both clips does not repair it. Use as primary failure ahead of all other causes, at the first violating right-clip attempt. Mere approach or overlap is not enough. If left seating/order is occluded, request review rather than treating not observed as proven absent.",
+          "terminal": true,
+          "actionOrder": {
+            "prerequisiteActionId": "first_clip_seated",
+            "laterActionIds": [
+              "second_clip_insertion_attempt",
+              "second_clip_seated"
+            ]
+          }
+        },
+        {
           "id": "grasp_not_established",
           "description": "No secure control of the rope is established in the relevant grasp sequence. A missed close, momentary pinch, or immediate escape without sustained control belongs here, not grasp_lost. A later secure grasp recovers this event."
         },
@@ -539,35 +566,43 @@
         },
         {
           "id": "first_clip_not_attempted",
-          "description": "After acquisition, no interaction attempt at the first clip occurs before the recording ends. Use only when no more specific unrecovered grasp or clip failure is visible."
+          "description": "After acquisition, no interaction attempt at the LEFT (FIRST) clip occurs before the recording ends. Use only when no more specific unrecovered grasp or clip failure is visible.",
+          "name": "Left clip · not attempted"
         },
         {
           "id": "first_clip_engagement_missed",
-          "description": "An actual interaction attempt at the first clip does not enter beneath/into its retaining feature. Mere approach or overlap is insufficient. Subsequent real engagement recovers this event."
+          "description": "An actual interaction attempt at the LEFT (FIRST) clip does not enter beneath/into its retaining feature. Mere approach or overlap is insufficient. Subsequent real engagement recovers this event.",
+          "name": "Left clip · entry missed"
         },
         {
           "id": "first_clip_seating_incomplete",
-          "description": "Rope enters the first clip but does not become properly captured. Gripper release is not required. Subsequent secure seating recovers this event."
+          "description": "Rope enters the LEFT (FIRST) clip but does not become properly captured. Gripper release is not required. Subsequent secure seating recovers this event.",
+          "name": "Left clip · not fully seated"
         },
         {
           "id": "first_clip_retention_lost",
-          "description": "Rope is positively seated in the first clip, then visibly comes out. This is not a missed initial engagement. Subsequent restored seating recovers this event."
+          "description": "Rope is positively seated in the LEFT (FIRST) clip, then visibly comes out. This is not a missed initial engagement. Subsequent restored seating recovers this event.",
+          "name": "Left clip · seated rope came out"
         },
         {
           "id": "second_clip_not_attempted",
-          "description": "After acquisition, no interaction attempt at the second clip occurs before the recording ends. Use only when no more specific unrecovered grasp or clip failure is visible."
+          "description": "After acquisition, no interaction attempt at the RIGHT (SECOND) clip occurs before the recording ends. Use only when no more specific unrecovered grasp or clip failure is visible.",
+          "name": "Right clip · not attempted"
         },
         {
           "id": "second_clip_engagement_missed",
-          "description": "An actual interaction attempt at the second clip does not enter beneath/into its retaining feature. Mere approach or overlap is insufficient. Subsequent real engagement recovers this event."
+          "description": "An actual interaction attempt at the RIGHT (SECOND) clip does not enter beneath/into its retaining feature. Mere approach or overlap is insufficient. Subsequent real engagement recovers this event.",
+          "name": "Right clip · entry missed"
         },
         {
           "id": "second_clip_seating_incomplete",
-          "description": "Rope enters the second clip but does not become properly captured. Gripper release is not required. Subsequent secure seating recovers this event."
+          "description": "Rope enters the RIGHT (SECOND) clip but does not become properly captured. Gripper release is not required. Subsequent secure seating recovers this event.",
+          "name": "Right clip · not fully seated"
         },
         {
           "id": "second_clip_retention_lost",
-          "description": "Rope is positively seated in the second clip, then visibly comes out. This is not a missed initial engagement. Subsequent restored seating recovers this event."
+          "description": "Rope is positively seated in the RIGHT (SECOND) clip, then visibly comes out. This is not a missed initial engagement. Subsequent restored seating recovers this event.",
+          "name": "Right clip · seated rope came out"
         },
         {
           "id": "unknown_failure_cause",
@@ -577,7 +612,11 @@
       "decisionRules": [
         {
           "id": "canonical_clip_identity",
-          "rule": "FIRST and SECOND name the fixed physical clips in the intended routing order, not raw left/right in the opposing camera views. Follow the first-clip cycle and then the second-clip cycle. If the robot visits clips out of order or identity is uncertain, preserve the physical clip facts in the action ledger and notes, omit unsupported stage transitions, and request human review instead of renaming the clips."
+          "rule": "FIRST means the fixed LEFT physical clip and SECOND means the fixed RIGHT physical clip in the canonical workspace frame. Opposing side cameras reverse apparent screen positions. Establish identity jointly from both views; never relabel the clip visited first as FIRST. If identity is unresolved, request human review."
+        },
+        {
+          "id": "left_before_right",
+          "rule": "LEFT seating must be achieved before the first deliberate RIGHT insertion attempt. Record wrong_clip_order at the first violating attempt; it is terminal across the whole episode, including retries. Later completion cannot recover it. Merely approaching or aligning with RIGHT is not an attempt. Preserve true physical actions and supported stages but never credit RIGHT work as LEFT progress. Missing visibility of LEFT seating alone is not proof of wrong order; flag unresolved order."
         },
         {
           "id": "camera_authority_split",
@@ -621,11 +660,11 @@
         },
         {
           "id": "human_outcome",
-          "rule": "A supplied human binary outcome is authoritative, but proves no stage, action, or timestamp. If success is known but completion is unseen, including recording cutoff, preserve supported observations and request review. Never manufacture seating or automatically rewrite historical human outcomes."
+          "rule": "A supplied human binary outcome is authoritative, but proves no stage, action, or timestamp. If success is known but completion is unseen, including recording cutoff, preserve supported observations and request review. Never manufacture seating or automatically rewrite historical human outcomes. A supplied success that contradicts a positively observed terminal order violation is a data conflict requiring adjudication, not permission to erase that event or invent left-first evidence. Never mutate the source human record."
         },
         {
           "id": "failure_selection",
-          "rule": "Keep every distinct observable failure, including recovered events. For failure choose the earliest specific event that remains unrecovered. A subsequent positive achievement of the failed requirement recovers it; another attempt alone does not. Generic no-attempt/unknown categories apply only without a specific unrecovered event. Success uses none. Break equal-onset ties by failureModes order, never by guessed causality."
+          "rule": "Keep all distinct observable failures and recoveries. A wrong_clip_order event is terminal and always the primary failure, even if an earlier grasp/clip failure exists or both clips are eventually seated. Its primary time is the first violating RIGHT attempt. Otherwise select the earliest specific unrecovered failure; generic absence/unknown applies only without such an event. Success uses none only when no terminal violation occurred."
         },
         {
           "id": "failure_timing",
@@ -645,19 +684,19 @@
         },
         {
           "id": "no_end_state",
-          "rule": "No final-state enum or end-state output field exists in this protocol. Judge outcome from physical success criteria and any supplied human outcome. Release is optional. Later loss of correct placement before recording ends invalidates visually judged success."
+          "rule": "No final-state enum or end-state output field exists in this protocol. Judge outcome from physical success criteria and any supplied human outcome. Release is optional. Later loss of correct placement before recording ends invalidates visually judged success. Correct placement is necessary but not sufficient: left-before-right ordering is mandatory."
         }
       ],
       "auditProcedure": [
-        "Locate the object and target in synchronized views; keep physical clip identities fixed.",
+        "Identify the fixed LEFT/FIRST and RIGHT/SECOND clips using both side views before labeling stages.",
         "Record achieved milestones and supported timestamps; later loss does not erase history.",
         "Record independent key actions, including optional releases.",
-        "Record observable failures and positive recovery evidence; select the earliest unrecovered specific failure when unsuccessful.",
+        "Check LEFT seating before every deliberate RIGHT insertion attempt. Record terminal wrong_clip_order first in primary-failure priority; otherwise select the earliest unrecovered specific failure.",
         "Judge correct placement without requiring release. Preserve supplied human outcome and flag missing visual evidence.",
         "Return trajectory-label/v2 without end-state fields. Check IDs, timing, stage/action consistency, and primary/event agreement."
       ]
     },
-    "task_definition_sha256": "eab4ae334c9821cd04e595a47cd642a306eae58a97f3f7766cbc626532b05bdd",
+    "task_definition_sha256": "32d3e8f5cd163f03cd93c3a6a099421485edcef6964185c53ef50cf1629b2449",
     "response_schema": {
       "type": "OBJECT",
       "properties": {
@@ -822,6 +861,7 @@
                   "first_clip_seated",
                   "rope_regrasped",
                   "second_clip_contact",
+                  "second_clip_insertion_attempt",
                   "second_clip_seated",
                   "terminal_rope_release"
                 ],
@@ -901,6 +941,7 @@
                 "type": "STRING",
                 "enum": [
                   "none",
+                  "wrong_clip_order",
                   "grasp_not_established",
                   "grasp_lost",
                   "first_clip_not_attempted",
@@ -952,6 +993,7 @@
               "type": "STRING",
               "enum": [
                 "none",
+                "wrong_clip_order",
                 "grasp_not_established",
                 "grasp_lost",
                 "first_clip_not_attempted",
@@ -1023,5 +1065,5 @@
       "description": "Canonical task-generic trajectory label"
     }
   },
-  "taxonomy_hash": "ffc530cff70ef23b24bcccb6f69d22196836ee8473229cffbd4a3cbc1553f040"
+  "taxonomy_hash": "efe02227507e3245652e456d5315c8a6b9a0a7b126d1b76e07b2d5b63e71946a"
 }

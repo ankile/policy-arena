@@ -1,5 +1,5 @@
 import { type TrajectoryEventLink } from "../../convex/trajectoryEventLinks";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "../../convex/_generated/api";
 import { blankTrajectoryReview } from "../../convex/trajectoryReview";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
@@ -132,6 +132,7 @@ export default function StageReview({
   dataSource = stageReviewDataSource,
   fixedTaxonomyVersion,
   requireLiveTaxonomy = false,
+  renderQueueNavigation,
 }: {
   repoId: string;
   task?: string;
@@ -142,6 +143,8 @@ export default function StageReview({
   /** Pin a curated labeling surface to one definition, without version controls. */
   fixedTaxonomyVersion?: string;
   requireLiveTaxonomy?: boolean;
+  /** Optional curated queue; all navigation passes through draft protection. */
+  renderQueueNavigation?: (navigate: (next: () => void) => Promise<void>) => ReactNode;
 }) {
   const { useQuery, useMutation, usePaginatedQuery, fetchAppliedProgress,
     fetchEpisodeFrameSignals, fetchLabelHistory, fetchLedgerArms, fetchReviewEpisodes } = dataSource;
@@ -1321,6 +1324,9 @@ export default function StageReview({
 
   return (
     <div className="bg-white rounded-2xl border border-warm-200 shadow-sm overflow-clip">
+      {/* Only supplies an event callback; the navigation slot never reads refs while rendering. */}
+      {/* eslint-disable-next-line react-hooks/refs */}
+      {renderQueueNavigation?.((next) => leaveForm(next, true))}
       {showHelp && (
         <HelpOverlay
           title="Stage review shortcuts"

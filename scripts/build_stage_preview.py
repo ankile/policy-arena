@@ -14,9 +14,9 @@ from pathlib import Path
 import sys
 
 TASKS = {
-    "routing_d1": ("routing_d1_v1", "v5", ("v2", "v3", "v4", "v5")),
-    "marker_d2": ("marker_d2_v4", "v7", ("v5", "v6", "v7")),
-    "square_d2": ("square_d2_v3", "v6", ("v4", "v5", "v6")),
+    "routing_d1": ("routing_d1_v1", "v5", ("v4", "v5")),
+    "marker_d2": ("marker_d2_v4", "v7", ("v6", "v7")),
+    "square_d2": ("square_d2_v3", "v6", ("v5", "v6")),
 }
 
 

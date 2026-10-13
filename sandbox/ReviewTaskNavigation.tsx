@@ -1,4 +1,4 @@
-import { reviewSamples, type ReviewSample } from "./stageReviewSamples";
+import { allReviewSamples as reviewSamples, type ReviewSample } from "./stageReviewSamples";
 
 const tasks = reviewSamples.filter((sample, index) =>
   reviewSamples.findIndex((other) => other.task === sample.task) === index);

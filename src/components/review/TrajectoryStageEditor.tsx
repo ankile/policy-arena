@@ -148,7 +148,7 @@ export function TrajectoryStageEditor(props: StageLabelFormProps & { video?: Rea
           <select aria-label="Primary failure mode" aria-describedby={row.task_success === false && failureMode?.id !== noFailure && failureMode ? "primary-failure-description" : undefined} className={`${input} mt-2`} disabled={blocked || row.task_success !== false}
             value={row.task_success === false && failureMode?.id !== noFailure ? failureMode?.id ?? "" : ""}
             onChange={(event) => remember({ ...row, failure_mode: event.target.value }, props.selectedEventKey ?? null, "Primary failure mode updated.")}>
-            <option value="">Choose the main reason…</option>{task.failureModes.filter((item) => item.id !== noFailure).map((item) => <option key={item.id} value={item.id}>{endStateTitle(item.id)}</option>)}
+            <option value="">Choose the main reason…</option>{task.failureModes.filter((item) => item.id !== noFailure).map((item) => <option key={item.id} value={item.id}>{item.name ?? endStateTitle(item.id)}</option>)}
           </select>
         </label>
         {row.task_success === false && failureMode && failureMode.id !== noFailure && <details className="text-sm">

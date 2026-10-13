@@ -14,6 +14,12 @@ export function trajectoryLabelVersion(task: TrajectoryTaskDefinition) {
 export type TaskDefinitionItem = {
   id: string;
   description: string;
+  name?: string;
+};
+
+export type FailureModeDefinition = TaskDefinitionItem & {
+  terminal?: boolean;
+  actionOrder?: { prerequisiteActionId: string; laterActionIds: string[] };
 };
 
 export type StageDefinition = TaskDefinitionItem & {
@@ -49,7 +55,7 @@ export type TrajectoryTaskDefinition = {
   evidenceViews: Array<TaskDefinitionItem & { caveats: string[] }>;
   stages: StageDefinition[];
   keyActions: KeyActionDefinition[];
-  failureModes: TaskDefinitionItem[];
+  failureModes: FailureModeDefinition[];
   finalStates?: TaskDefinitionItem[];
   decisionRules: Array<{ id: string; rule: string }>;
   auditProcedure: string[];
@@ -274,6 +280,18 @@ export function validateTrajectoryTaskDefinition(value: unknown): string[] {
   const stageIds = new Set(collectionIds.get("stages") ?? []);
   const failureIds = new Set(collectionIds.get("failureModes") ?? []);
   const finalStateIds = new Set(collectionIds.get("finalStates") ?? []);
+  for (const item of Array.isArray(root.failureModes) ? root.failureModes : []) {
+    const mode = asRecord(item); if (!mode) continue;
+    if ("terminal" in mode && typeof mode.terminal !== "boolean") errors.push("failureModes.terminal must be boolean");
+    if (mode.actionOrder !== undefined) {
+      const order = asRecord(mode.actionOrder);
+      if (mode.terminal !== true || !order || typeof order.prerequisiteActionId !== "string" || !actionIds.has(order.prerequisiteActionId) ||
+        !Array.isArray(order.laterActionIds) || !order.laterActionIds.length ||
+        order.laterActionIds.some((id) => typeof id !== "string" || !actionIds.has(id) || id === order.prerequisiteActionId)) {
+        errors.push("failureModes.actionOrder must reference distinct declared actions on a terminal mode");
+      }
+    }
+  }
   const success = asRecord(root.successDefinition);
 
   const keyActions = Array.isArray(root.keyActions) ? root.keyActions : [];
@@ -483,6 +501,7 @@ export function validateTrajectoryLabel(value: unknown, task: TrajectoryTaskDefi
     (v2 || success.successfulFinalStateIds!.includes(String(root.final_state_id))) &&
     success.requiredKeyActionIds.every((id) => occurredIds.has(id));
   const primaryId = primary?.failure_mode_id;
+  errors.push(...terminalFailureErrors(root, task));
   if (v2 && primaryId === "unknown_failure_cause" && !(root.needs_human_review === true && Array.isArray(root.review_reasons) && root.review_reasons.length)) errors.push("unknown failure cause requires explicit human review");
   const primaryNoFailure = primaryId === noFailure;
   if (failureIds.has(String(primaryId))) {
@@ -498,6 +517,42 @@ export function validateTrajectoryLabel(value: unknown, task: TrajectoryTaskDefi
     if (!v2 && root.task_success !== (verifiedSuccess && primaryNoFailure)) errors.push("task_success conflicts with the task success definition");
     if (root.task_success === true && !primaryNoFailure) errors.push("a successful trajectory must use the no-failure ID");
     else if (root.task_success === false && primaryNoFailure) errors.push("an unsuccessful trajectory cannot use the no-failure ID");
+  }
+  return errors;
+}
+
+/** Positive chronology can prove a violation; unobserved is not proven absent. */
+function terminalFailureErrors(root: UnknownRecord, task: TrajectoryTaskDefinition): string[] {
+  const errors: string[] = [];
+  const events = (Array.isArray(root.failure_events) ? root.failure_events : []).map(asRecord).filter((item): item is UnknownRecord => item !== null);
+  const actions = new Map((Array.isArray(root.key_action_observations) ? root.key_action_observations : []).map(asRecord)
+    .filter((item): item is UnknownRecord => item !== null).map((item) => [item.action_id, item]));
+  const primary = asRecord(root.primary_failure);
+  const terminal: UnknownRecord[] = [];
+  for (const mode of task.failureModes.filter((item) => item.terminal === true)) {
+    const recorded = events.filter((item) => item.failure_mode_id === mode.id);
+    terminal.push(...recorded);
+    const order = mode.actionOrder;
+    if (order) {
+      const prerequisite = actions.get(order.prerequisiteActionId);
+      const earlier = prerequisite?.first_time_s;
+      for (const id of order.laterActionIds) {
+        const later = actions.get(id); const time = later?.first_time_s;
+        if (prerequisite?.occurred === true && later?.occurred === true && isFiniteNumber(earlier) && earlier >= 0 &&
+          isFiniteNumber(time) && time >= 0 && time < earlier - 1e-6 &&
+          !recorded.some((event) => isFiniteNumber(event.time_s) && event.time_s >= 0 && event.time_s <= time + 1e-6)) {
+          errors.push(`${mode.id} must be recorded: ${id} precedes ${order.prerequisiteActionId}`);
+        }
+      }
+    }
+  }
+  if (terminal.length) {
+    if (root.task_success !== false) errors.push("a terminal failure cannot be reported as success or recovered");
+    const timed = terminal.filter((event) => isFiniteNumber(event.time_s) && event.time_s >= 0).sort((a, b) => Number(a.time_s) - Number(b.time_s));
+    const first = timed[0];
+    if (first && (primary?.failure_mode_id !== first.failure_mode_id || !timesClose(primary?.time_s, first.time_s))) {
+      errors.push("primary_failure must be the first terminal failure, ahead of recoverable failures");
+    }
   }
   return errors;
 }

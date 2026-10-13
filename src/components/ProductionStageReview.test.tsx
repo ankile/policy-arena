@@ -37,6 +37,24 @@ function setup(task: typeof stageReviewTasks[number], live: boolean | "missing" 
   return { ...fixture, view, spec, queriedVersions };
 }
 
+test("routing human review names both physical clips and saves wrong order without certifying actions", async () => {
+  const { view, state } = setup(stageReviewTasks.find((task) => task.task === "routing_d1")!, true, "failure");
+  await act(async () => {});
+  const choices = view.getByRole("combobox", { name: "Primary failure mode" }) as HTMLSelectElement;
+  expect([...choices.options].map((option) => option.textContent)).toEqual([
+    "Choose the main reason…", "Wrong clip order (right before left)", "Grasp not established", "Grasp lost",
+    "Left clip · not attempted", "Left clip · entry missed", "Left clip · not fully seated", "Left clip · seated rope came out",
+    "Right clip · not attempted", "Right clip · entry missed", "Right clip · not fully seated", "Right clip · seated rope came out", "Unknown failure cause",
+  ]);
+  fireEvent.change(view.getByRole("combobox", { name: "Stage reached" }), { target: { value: "second_clip_engaged" } });
+  fireEvent.keyDown(window, { key: "m" });
+  fireEvent.change(choices, { target: { value: "wrong_clip_order" } });
+  await act(async () => fireEvent.keyDown(window, { key: "c" }));
+  expect(state.saves).toHaveLength(1);
+  expect(state.saves[0].label).toMatchObject({ task_success: false, failure_mode: "wrong_clip_order", max_stage: 9 });
+  expect(state.saves[0].label!.key_action_observations.every((action: { occurred: boolean }) => !action.occurred)).toBe(true);
+});
+
 for (const task of stageReviewTasks) {
   test(`${task.name}: an old prediction link without a schema cannot seed the latest form`, async () => {
     const { view, state } = setup(task, true, "success", "");

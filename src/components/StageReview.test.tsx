@@ -49,6 +49,26 @@ function chooseVersion(view: ReturnType<typeof render>, version: string) {
 }
 
 describe("stage prediction version review", () => {
+  test("curated queue navigation waits for draft save, and cannot leave after a failed save", async () => {
+    window.history.replaceState(null, "", "/?episode=0&prediction=A");
+    const {state, props} = createStageReviewFixture([]);
+    let navigations = 0;
+    const view = render(<StageReview {...props} renderQueueNavigation={(navigate) =>
+      <button onClick={() => navigate(() => { navigations++; })}>Next sampled dataset</button>} />);
+    await settle();
+    key("4");
+    state.save = async () => { throw new Error("disk full"); };
+    fireEvent.click(view.getByRole("button", {name: "Next sampled dataset"}));
+    await settle();
+    expect(navigations).toBe(0);
+    state.save = async () => {};
+    fireEvent.click(view.getByRole("button", {name: "Next sampled dataset"}));
+    await settle();
+    expect(navigations).toBe(1);
+    expect(state.saves.at(-1)?.status).toBe("draft");
+    expect(state.saves.at(-1)?.label?.max_stage).toBe(4);
+  });
+
   test("browsing and inspecting canonical predictions never saves or success-overlays them", async () => {
     const { state, view } = fixture();
     await settle();

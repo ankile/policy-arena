@@ -14,10 +14,6 @@ const CURRENT_REVIEW_PROTOCOL = "stages-outcome-v2" as const;
 import type { StageLabelRow, ExportedStageSpec } from "../../convex/stageConsistency";
 import { createStageReviewFixture, configureTrajectoryFixture } from "../../tests/browser/stageReviewFixture";
 import fixtures from "../../tests/fixtures/trajectory-review-fixtures.json";
-import routingV2 from "../../sandbox/data/routing_d1_v2.spec.json";
-import routingV3 from "../../sandbox/data/routing_d1_v3.spec.json";
-import markerV5 from "../../sandbox/data/marker_d2_v5.spec.json";
-import squareV4 from "../../sandbox/data/square_d2_v4.spec.json";
 import routingV4 from "../../data/stage-review/routing_d1_v4.spec.json";
 import markerV6 from "../../data/stage-review/marker_d2_v6.spec.json";
 import squareV5 from "../../data/stage-review/square_d2_v5.spec.json";
@@ -46,8 +42,8 @@ function Fixture({ schema = spec, initial = blankTrajectoryReview(schema.traject
 }
 const state = (view: ReturnType<typeof render>) => JSON.parse(view.getByTestId("state").textContent!);
 
-const positiveTasks = [{ source_name: "marker_d2_v5", spec: markerV5 }, { source_name: "square_d2_v4", spec: squareV4 }, { source_name: "marker_d2_v6", spec: markerV6 }, { source_name: "square_d2_v5", spec: squareV5 }];
-const editorTasks = [...fixtures.synthetic.tasks, { source_name: "routing_d1_v2", spec: routingV2 }, { source_name: "routing_d1_v3", spec: routingV3 }, { source_name: "routing_d1_v4", spec: routingV4 }, ...positiveTasks];
+const positiveTasks = [{ source_name: "marker_d2_v6", spec: markerV6 }, { source_name: "square_d2_v5", spec: squareV5 }];
+const editorTasks = [...fixtures.synthetic.tasks, { source_name: "routing_d1_v4", spec: routingV4 }, ...positiveTasks];
 for (const schema of [markerV6, squareV5, routingV4]) for (const [source, outcome] of [["review", "success"], ["applied", "failure"], ["kept", "timeout"]] as const) test(`${schema.taxonomy_version}: latest-only review inherits ${source} ${outcome} without inheriting old stages`, async () => {
   window.history.replaceState(null, "", "/?episode=0&prediction=legacy&schema=older-definition");
   const fixture = createStageReviewFixture();
