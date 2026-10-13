@@ -86,7 +86,7 @@ for (const spec of [marker, square]) test(`${spec.task}: preserve S6 time and ou
 test("only unambiguous category implications are carried", () => {
   expect(planCarryForward([review(marker, 5, "insertion_jammed")]).additions[0].label!.failure_mode).toBe("incomplete_insertion");
   expect(planCarryForward([review(marker, 0, "pregrasp_misalignment")]).additions[0].label!.failure_mode).toBe("grasp_not_established");
-  expect(planCarryForward([review(routing, 9, "first_clip_seat_lost")]).additions[0].label!.failure_mode).toBe("first_clip_retention_lost");
+  expect(planCarryForward([review(routing, 9, "first_clip_seat_lost")]).additions[0].label!.failure_mode).toBe("first_clip_seating_incomplete");
   const held = planCarryForward([review(marker, 5, "release_not_completed")]).additions[0];
   expect(held.label!.task_success).toBe(false); // Never rewrite the human binary outcome.
   expect(held.label!.failure_mode).toBe("");
@@ -194,7 +194,7 @@ for (const success of [true, false]) test(`routing stage clarification preserves
   expect(next.label!.stage_transitions).toEqual(old.label!.stage_transitions);
   expect(next.label!.max_stage).toBe(9);
   expect(next.label!.task_success).toBe(success);
-  expect(next.label!.failure_mode).toBe(old.label!.failure_mode);
+  expect(next.label!.failure_mode).toBe(success ? "none" : "first_clip_seating_incomplete");
   expect(next.notes).toBe(old.notes);
   expect(next.review_coverage!.reviewed_fields).toEqual([]);
   expect(next.local_migration!.issues).toEqual([pin.stageReviewIssue!]);
@@ -245,6 +245,33 @@ for (const mode of ["none", "first_clip_grasp_lost", "second_clip_seating_incomp
   expect(next.local_task_definition_sha256).toBe(pin.targetDefinitionSha256);
   expect(planCarryForward([old, next]).additions).toEqual([]);
 });
+
+for (const clip of ["first", "second"]) for (const maximum of [4, 9, 10]) {
+  test(`${clip} seated rope loss at S${maximum}: merge the cause and preserve confirmed history`, () => {
+    const pin = failureDefinitionCorrections.routing_d1;
+    const from = `${clip}_clip_retention_lost`, to = `${clip}_clip_seating_incomplete`;
+    const old = planCarryForward([review(routing, maximum, `${clip}_clip_seat_lost`)]).additions[0];
+    old.status = "confirmed";
+    old.label!.failure_mode = from;
+    old.local_task_definition_sha256 = pin.additionalSources![3].definitionSha256;
+    old.review_coverage = stageReviewCoverage("stages-outcome-v3", "confirmed", true);
+    delete old.local_migration;
+    const snapshot = structuredClone(old);
+    const next = planCarryForward([old]).additions[0];
+    expect(next.status).toBe("confirmed");
+    expect(next.label!.stage_transitions).toEqual(old.label!.stage_transitions);
+    expect(next.label!.max_stage).toBe(maximum);
+    expect(next.label!.task_success).toBe(false);
+    expect(next.label!.failure_mode).toBe(to);
+    expect(next.notes).toBe(old.notes);
+    expect(next.local_migration!.failure_mapping).toEqual({ from, to });
+    expect(next.local_migration!.issues).toEqual([]);
+    expect(next.local_task_definition_sha256).toBe(pin.targetDefinitionSha256);
+    expect(old).toEqual(snapshot);
+    expect(planCarryForward([old, next]).additions).toEqual([]);
+    expect(planCarryForward([{ ...old, local_task_definition_sha256: "unknown" }]).additions).toEqual([]);
+  });
+}
 
 test("old stage ladders, cleared sources, mismatching identities, and malformed timelines are not relabeled", () => {
   const old = review();

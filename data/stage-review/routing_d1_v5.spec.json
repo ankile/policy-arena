@@ -106,14 +106,12 @@
     "first_clip_wrong_approach_angle",
     "first_clip_engagement_missed",
     "first_clip_seating_incomplete",
-    "first_clip_retention_lost",
     "second_clip_grasp_not_established",
     "second_clip_grasp_lost",
     "second_clip_not_attempted",
     "second_clip_wrong_approach_angle",
     "second_clip_engagement_missed",
     "second_clip_seating_incomplete",
-    "second_clip_retention_lost",
     "unknown_failure_cause"
   ],
   "released_field": "__trajectory_unused_release__",
@@ -570,7 +568,7 @@
         {
           "id": "first_clip_grasp_lost",
           "name": "Left clip · grasp lost",
-          "description": "Sustained gripper control was established, then the rope visibly slips out during LEFT-clip acquisition, transport, or insertion work before correct LEFT placement. Excludes failed brief pinches, deliberate release, and rope escaping a seated clip (first_clip_retention_lost). Subsequent secure regrasp for LEFT work or successful LEFT seating recovers this event."
+          "description": "Sustained gripper control was established, then the rope visibly slips out during LEFT-clip acquisition, transport, or insertion work before correct LEFT placement. Excludes failed brief pinches, deliberate release, and rope escaping a seated clip (first_clip_seating_incomplete). Subsequent secure regrasp for LEFT work or successful LEFT seating recovers this event."
         },
         {
           "id": "first_clip_not_attempted",
@@ -589,13 +587,8 @@
         },
         {
           "id": "first_clip_seating_incomplete",
-          "description": "Rope visibly enters beneath/into the LEFT clip retaining feature at least partway, but gets stuck or stops advancing before secure capture. Require actual partial entry plus failed advancement; zero-entry contact belongs to first_clip_engagement_missed. A brief pause or continued insertion at recording cutoff does not establish stuckness. Gripper release is not required. Subsequent secure seating recovers this event.",
+          "description": "The rope enters the LEFT clip at least partly but fails to achieve or maintain secure seating: it gets stuck partway, or comes out after partial or previously full seating. These share one failure category; a prior successful seat does not exempt later loss. Require visible entry followed by a partial-entry stall or loss of seating. Zero-entry contact belongs to first_clip_engagement_missed (or first_clip_wrong_approach_angle for a gross wrong direction). A brief pause, ongoing insertion at recording cutoff, or occlusion alone does not establish failure. Gripper release is not required. Subsequent restored secure seating recovers this event; preserve any earlier seating action and achieved stages.",
           "name": "Left clip · not fully seated"
-        },
-        {
-          "id": "first_clip_retention_lost",
-          "description": "Rope is positively seated in the LEFT (FIRST) clip, then visibly comes out. This is not a missed initial engagement. Subsequent restored seating recovers this event.",
-          "name": "Left clip · seated rope came out"
         },
         {
           "id": "second_clip_grasp_not_established",
@@ -605,7 +598,7 @@
         {
           "id": "second_clip_grasp_lost",
           "name": "Right clip · grasp lost",
-          "description": "Sustained gripper control was established, then the rope visibly slips out during RIGHT-clip acquisition, transport, or insertion work before correct RIGHT placement. This includes losing a continuously held rope while transferring from LEFT to RIGHT; a separately observed second pickup is not required. Excludes failed brief pinches, deliberate release, and rope escaping a seated clip (use that physical clip's retention_lost mode). Subsequent secure regrasp for RIGHT work or successful RIGHT seating recovers this event."
+          "description": "Sustained gripper control was established, then the rope visibly slips out during RIGHT-clip acquisition, transport, or insertion work before correct RIGHT placement. This includes losing a continuously held rope while transferring from LEFT to RIGHT; a separately observed second pickup is not required. Excludes failed brief pinches, deliberate release, and rope escaping a seated clip (use that physical clip's seating_incomplete mode). Subsequent secure regrasp for RIGHT work or successful RIGHT seating recovers this event."
         },
         {
           "id": "second_clip_not_attempted",
@@ -624,13 +617,8 @@
         },
         {
           "id": "second_clip_seating_incomplete",
-          "description": "Rope visibly enters beneath/into the RIGHT clip retaining feature at least partway, but gets stuck or stops advancing before secure capture. Require actual partial entry plus failed advancement; zero-entry contact belongs to second_clip_engagement_missed. A brief pause or continued insertion at recording cutoff does not establish stuckness. Gripper release is not required. Subsequent secure seating recovers this event.",
+          "description": "The rope enters the RIGHT clip at least partly but fails to achieve or maintain secure seating: it gets stuck partway, or comes out after partial or previously full seating. These share one failure category; a prior successful seat does not exempt later loss. Require visible entry followed by a partial-entry stall or loss of seating. Zero-entry contact belongs to second_clip_engagement_missed (or second_clip_wrong_approach_angle for a gross wrong direction). A brief pause, ongoing insertion at recording cutoff, or occlusion alone does not establish failure. Gripper release is not required. Subsequent restored secure seating recovers this event; preserve any earlier seating action and achieved stages.",
           "name": "Right clip · not fully seated"
-        },
-        {
-          "id": "second_clip_retention_lost",
-          "description": "Rope is positively seated in the RIGHT (SECOND) clip, then visibly comes out. This is not a missed initial engagement. Subsequent restored seating recovers this event.",
-          "name": "Right clip · seated rope came out"
         },
         {
           "id": "unknown_failure_cause",
@@ -664,7 +652,7 @@
         },
         {
           "id": "clip_owned_grasp_failures",
-          "rule": "Attribute each grasp failure to the physical clip being worked toward at the time of failure: first_clip_* is LEFT work, second_clip_* is RIGHT work. Initial acquisition belongs to LEFT unless the observed sequence positively establishes a different target; the planned pickup after LEFT work belongs to RIGHT even if LEFT seating failed. Pickup retries do not switch clip ownership; returning to repair LEFT is LEFT work again. A continuously held transfer can suffer second_clip_grasp_lost without S6/S7. Use observed clip identity and manipulation history, not raw screen position, number of grasps, attempt number, or furthest stage alone. If ownership is genuinely ambiguous, use unknown_failure_cause and request review. A failed pickup or accidental gripper slip is distinct from rope leaving an already seated clip, which uses the physical clip's retention_lost category. Restored control in an unrelated clip phase does not by itself recover the earlier failure. Right-first insertion still takes terminal wrong_clip_order priority over any grasp category."
+          "rule": "Attribute each grasp failure to the physical clip being worked toward at the time of failure: first_clip_* is LEFT work, second_clip_* is RIGHT work. Initial acquisition belongs to LEFT unless the observed sequence positively establishes a different target; the planned pickup after LEFT work belongs to RIGHT even if LEFT seating failed. Pickup retries do not switch clip ownership; returning to repair LEFT is LEFT work again. A continuously held transfer can suffer second_clip_grasp_lost without S6/S7. Use observed clip identity and manipulation history, not raw screen position, number of grasps, attempt number, or furthest stage alone. If ownership is genuinely ambiguous, use unknown_failure_cause and request review. A failed pickup or accidental gripper slip is distinct from rope leaving an already seated clip, which uses that physical clip's seating_incomplete category, even if it comes out during work at the other clip. Restored control in an unrelated clip phase does not by itself recover the earlier failure. Right-first insertion still takes terminal wrong_clip_order priority over any grasp category."
         },
         {
           "id": "rope_spans_clip_position",
@@ -672,7 +660,7 @@
         },
         {
           "id": "engagement_not_seating",
-          "rule": "S4/S9 require the rope itself touching the clip entrance with insertion-compatible local orientation AND approach direction. Correctly directed contact is sufficient even before any entry. A 90-degree-off push does not qualify, even after valid S3/S8 positional spanning. Use WRIST-L for direction/contact and both side views for clip identity; request review if geometry is unresolved. Engagement, actual entry, and persistent seating are separate physical facts. A blocked zero-entry attempt can reach S4/S9 and still fail with engagement_missed; only actual partial entry plus stuck advancement supports seating_incomplete. Later release/second-cycle milestones remain independent; do not cap the historical maximum at S3/S8 solely because engagement failed."
+          "rule": "S4/S9 require the rope itself touching the clip entrance with insertion-compatible local orientation AND approach direction. Correctly directed contact is sufficient even before any entry. A 90-degree-off push does not qualify, even after valid S3/S8 positional spanning. Use WRIST-L for direction/contact and both side views for clip identity; request review if geometry is unresolved. Engagement, actual entry, and persistent seating are separate physical facts. A blocked zero-entry attempt can reach S4/S9 and still fail with engagement_missed. The merged seating_incomplete category requires actual entry followed by a partial-entry stall or loss of seating, including rope coming out after a full seat. Later release/second-cycle milestones remain independent; do not cap the historical maximum at S3/S8 solely because engagement failed."
         },
         {
           "id": "gross_wrong_clip_angle",
@@ -704,7 +692,7 @@
         },
         {
           "id": "failure_timing",
-          "rule": "Use first visible onset for a missed attempt or loss. For no-attempt, incomplete-placement, or unknown modes only established when recording ends, use the final decisive frame as assessment time, not causal onset. Primary mode/time must match an event."
+          "rule": "Use first visible onset for a missed attempt or loss. For seating_incomplete caused by rope coming out, timestamp the visible loss of seating, not the earlier successful entry or episode end. For no-attempt, partial-entry stall, or unknown modes only established when recording ends, use the final decisive frame as assessment time, not causal onset. Primary mode/time must match an event."
         },
         {
           "id": "uncertainty",
@@ -728,6 +716,7 @@
         "Record achieved milestones and supported timestamps; later loss does not erase history.",
         "Separate rope spanning the clip position (S3/S8) from direction-correct entrance contact (S4/S9), actual entry, and seating. A 90-degree-off attempted push can achieve spanning but not engagement.",
         "For each failed clip attempt, distinguish a gross wrong approach direction (roughly 45/90 degrees) from a small-offset or blocked zero-entry miss and from a partial-entry stall. Do not duplicate wrong-angle and entry-missed events for the same push.",
+        "Use each physical clip's single not-fully-seated category for both partial-entry stalls and later loss of seating. Keep previously achieved stages and seating actions, and timestamp a visible loss when it happens.",
         "Record independent key actions, including optional releases.",
         "Assign grasp-not-established and grasp-lost events to LEFT or RIGHT work using the observed manipulation phase, including retries and continuous transfers; do not guess from the maximum stage.",
         "Check LEFT seating before every deliberate RIGHT insertion attempt. Record terminal wrong_clip_order first in primary-failure priority; otherwise select the earliest unrecovered specific failure.",
@@ -735,7 +724,7 @@
         "Return trajectory-label/v2 without end-state fields. Check IDs, timing, stage/action consistency, and primary/event agreement."
       ]
     },
-    "task_definition_sha256": "3bcb31bbff1a59390302005a786219baca51ab23d3833075e445bfd407b47a6d",
+    "task_definition_sha256": "93268e7b15ded288f925cab87f48a1ddd865fedf6fd85abacab74bc69ed38e1b",
     "response_schema": {
       "type": "OBJECT",
       "properties": {
@@ -987,14 +976,12 @@
                   "first_clip_wrong_approach_angle",
                   "first_clip_engagement_missed",
                   "first_clip_seating_incomplete",
-                  "first_clip_retention_lost",
                   "second_clip_grasp_not_established",
                   "second_clip_grasp_lost",
                   "second_clip_not_attempted",
                   "second_clip_wrong_approach_angle",
                   "second_clip_engagement_missed",
                   "second_clip_seating_incomplete",
-                  "second_clip_retention_lost",
                   "unknown_failure_cause"
                 ],
                 "description": "Declared failure-mode ID"
@@ -1043,14 +1030,12 @@
                 "first_clip_wrong_approach_angle",
                 "first_clip_engagement_missed",
                 "first_clip_seating_incomplete",
-                "first_clip_retention_lost",
                 "second_clip_grasp_not_established",
                 "second_clip_grasp_lost",
                 "second_clip_not_attempted",
                 "second_clip_wrong_approach_angle",
                 "second_clip_engagement_missed",
                 "second_clip_seating_incomplete",
-                "second_clip_retention_lost",
                 "unknown_failure_cause"
               ]
             },
@@ -1112,5 +1097,5 @@
       "description": "Canonical task-generic trajectory label"
     }
   },
-  "taxonomy_hash": "2f4c0e83b38e6f77f2fde9874fe5ec112e1a14ee9dcc1434d4c46369b33330e5"
+  "taxonomy_hash": "35e6c6fad44be070dc64af6fa0d4c60589e88b77f462d62ef799a010cc445f21"
 }

@@ -43,8 +43,8 @@ test("routing human review names both physical clips and saves wrong order witho
   const choices = view.getByRole("combobox", { name: "Primary failure mode" }) as HTMLSelectElement;
   expect([...choices.options].map((option) => option.textContent)).toEqual([
     "Choose the main reason…", "Wrong clip order (right before left)", "Left clip · grasp not established", "Left clip · grasp lost",
-    "Left clip · not attempted", "Left clip · wrong approach angle", "Left clip · entry missed", "Left clip · not fully seated", "Left clip · seated rope came out",
-    "Right clip · grasp not established", "Right clip · grasp lost", "Right clip · not attempted", "Right clip · wrong approach angle", "Right clip · entry missed", "Right clip · not fully seated", "Right clip · seated rope came out", "Unknown failure cause",
+    "Left clip · not attempted", "Left clip · wrong approach angle", "Left clip · entry missed", "Left clip · not fully seated",
+    "Right clip · grasp not established", "Right clip · grasp lost", "Right clip · not attempted", "Right clip · wrong approach angle", "Right clip · entry missed", "Right clip · not fully seated", "Unknown failure cause",
   ]);
   fireEvent.change(view.getByRole("combobox", { name: "Stage reached" }), { target: { value: "second_clip_engaged" } });
   fireEvent.keyDown(window, { key: "m" });

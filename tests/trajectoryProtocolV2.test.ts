@@ -64,7 +64,7 @@ for (const [taskId, exported] of Object.entries(stageReviewRelease)) describe(`$
     expect(validateStageOutcomeReview(spec, { ...row, task_success: false }, 30).length).toBeGreaterThan(0);
     expect(validateStageOutcomeReview(spec, { ...row, final_state: "unclear" }, 30).length).toBeGreaterThan(0);
     const canonical = machineSuccess();
-    const mode = taskId === "routing_d1" ? "first_clip_retention_lost" : "placement_lost";
+    const mode = taskId === "routing_d1" ? "first_clip_seating_incomplete" : "placement_lost";
     const failed = { ...canonical, task_success: false, primary_failure: { failure_mode_id: mode, time_s: 11 },
       failure_events: [{ attempt_index: 1, time_s: 11, confidence: "high", evidence: "Placement lost", failure_mode_id: mode }] };
     expect(validateTrajectoryLabel(failed, task)).toEqual([]);

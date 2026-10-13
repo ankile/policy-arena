@@ -107,3 +107,10 @@ thresholds inferred from camera projection. Stages are unchanged by this split.
 Older entry-missed reviews need a cause-only recheck; compatible reviews under
 the spanning/contact definition keep their confirmation when carried forward.
 No saved review is overwritten, and wrong clip order remains terminal priority.
+
+The per-clip “seated rope came out” categories are merged into “not fully seated.”
+That category covers both partial-entry stalls and later loss of seating; an
+earlier seating action or high stage remains historical evidence, not success
+proof. Carry-forward maps the old loss category to the same physical clip's
+`seating_incomplete` without changing stages, timestamps, outcome, or notes.
+Compatible confirmed reviews keep confirmation; originals remain in the export.

@@ -25,9 +25,11 @@ describe("Routing v5 two-cycle preview", () => {
       ["first_clip_grasp_not_established", "Left clip · grasp not established"],
       ["first_clip_grasp_lost", "Left clip · grasp lost"],
       ["first_clip_wrong_approach_angle", "Left clip · wrong approach angle"],
+      ["first_clip_seating_incomplete", "Left clip · not fully seated"],
       ["second_clip_grasp_not_established", "Right clip · grasp not established"],
       ["second_clip_grasp_lost", "Right clip · grasp lost"],
       ["second_clip_wrong_approach_angle", "Right clip · wrong approach angle"],
+      ["second_clip_seating_incomplete", "Right clip · not fully seated"],
     ];
     const row = patchStageMark(schema, blankTrajectoryReview(schema, "org/routing", 0), null, "final_rope_released", 10, 1);
     for (const [id, name] of expected) {
@@ -36,8 +38,9 @@ describe("Routing v5 two-cycle preview", () => {
       expect(spec.trajectory.response_schema.properties.primary_failure.properties.failure_mode_id.enum).toContain(id);
       expect(validateStageOutcomeReview(schema, { ...row, task_success: false, failure_mode: id }, 30)).toEqual([]);
     }
-    for (const id of ["grasp_lost", "grasp_not_established"]) {
+    for (const id of ["grasp_lost", "grasp_not_established", "first_clip_retention_lost", "second_clip_retention_lost"]) {
       expect(spec.failure_modes).not.toContain(id);
+      expect(spec.trajectory.response_schema.properties.primary_failure.properties.failure_mode_id.enum).not.toContain(id);
       expect(validateStageOutcomeReview(schema, { ...row, task_success: false, failure_mode: id }, 30).length).toBeGreaterThan(0);
     }
   });

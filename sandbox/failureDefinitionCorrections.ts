@@ -10,6 +10,7 @@ type Correction = CorrectionSource & {
   targetDefinitionSha256: string;
   additionalSources?: (CorrectionSource & { definitionSha256: string })[];
   stageReviewIssue?: string;
+  failureMappings?: Record<string, string>;
 };
 export const failureDefinitionCorrections: Record<"marker_d2" | "square_d2" | "routing_d1", Correction> = {
   "marker_d2": {
@@ -30,7 +31,13 @@ export const failureDefinitionCorrections: Record<"marker_d2" | "square_d2" | "r
   },
   "routing_d1": {
     "previousDefinitionSha256": "32d3e8f5cd163f03cd93c3a6a099421485edcef6964185c53ef50cf1629b2449",
-    "targetDefinitionSha256": "3bcb31bbff1a59390302005a786219baca51ab23d3833075e445bfd407b47a6d",
+    "targetDefinitionSha256": "93268e7b15ded288f925cab87f48a1ddd865fedf6fd85abacab74bc69ed38e1b",
+    "failureMappings": {
+      "first_clip_retention_lost": "first_clip_seating_incomplete",
+      "second_clip_retention_lost": "second_clip_seating_incomplete",
+      "first_clip_seat_lost": "first_clip_seating_incomplete",
+      "second_clip_seat_lost": "second_clip_seating_incomplete"
+    },
     "stageReviewIssue": "Check S3/S8 and S4/S9 timing: spanning the clip now needs no insertion-direction alignment; engagement is correctly directed entrance contact, even before entry. Saved marks and outcome are preserved, not re-certified.",
     "recheckFailures": [
       "first_clip_seating_incomplete",
@@ -49,6 +56,10 @@ export const failureDefinitionCorrections: Record<"marker_d2" | "square_d2" | "r
     }, {
       "definitionSha256": "cf728a36c41ed9e869d46262cc61c39277ddb3d6b315ebe1338792be847c2af2",
       "recheckFailures": ["first_clip_engagement_missed", "second_clip_engagement_missed"],
+      "recheckStages": false
+    }, {
+      "definitionSha256": "3bcb31bbff1a59390302005a786219baca51ab23d3833075e445bfd407b47a6d",
+      "recheckFailures": [],
       "recheckStages": false
     }]
   }

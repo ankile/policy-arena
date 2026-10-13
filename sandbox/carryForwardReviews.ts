@@ -26,8 +26,9 @@ function failureMapping(task: Task, failure: string, maxStage: number): string {
   }
   if (["none", "grasp_lost", "unknown_failure_cause"].includes(failure)) return failure;
   if (task === "routing_d1") {
+    const merged = failureDefinitionCorrections.routing_d1.failureMappings?.[failure];
+    if (merged) return merged;
     if (/^(first|second)_clip_not_attempted$/.test(failure)) return failure;
-    if (/^(first|second)_clip_seat_lost$/.test(failure)) return failure.replace("_seat_lost", "_retention_lost");
   } else {
     // The retained Marker v6 false-insertion category already meant SIDE/TABLE.
     // Top contact alone does not prove a push; the Nut miss category spans both
@@ -112,8 +113,9 @@ export function planCarryForward(reviews: LocalReview[], now = Date.now()) {
     if ((stageCorrection || !sameVersionCorrection) && correction.stageReviewIssue && !issues.includes(correction.stageReviewIssue)) {
       issues.push(correction.stageReviewIssue);
     }
+    const previousFailure = String(old.failure_mode ?? "");
     const mapped = failureCorrection ? "" : sameVersionCorrection
-      ? String(old.failure_mode ?? "") : failureMapping(task, String(old.failure_mode ?? ""), Number(old.max_stage));
+      ? correction.failureMappings?.[previousFailure] ?? previousFailure : failureMapping(task, previousFailure, Number(old.max_stage));
     label.failure_mode = old.task_success === true ? "none" : mapped;
     if (old.task_success === false && (!mapped || mapped === "none")) {
       label.failure_mode = "";
