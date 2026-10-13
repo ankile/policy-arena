@@ -12,6 +12,36 @@ Open <http://127.0.0.1:5174/sandbox/stage-review.html>. Node users can run
 `npx --yes bun@1.3.6 install --frozen-lockfile` and `npm run dev -- --host
 127.0.0.1 --port 5174 --strictPort` instead.
 
+## Compare the 60 human references with Gemini
+
+Open <http://127.0.0.1:5174/sandbox/label-comparison.html>, or **Compare my labels
+with Gemini** from the annotation playground. This separate, read-only label
+view opens without disturbing an annotation draft. It defaults to the 28
+summary disagreements (8 Marker, 8 Nut, 12 Routing); task and outcome/reason/stage
+filters keep all 60 cases available. Each case compares success, primary failure
+reason, and furthest stage. Human and Gemini stage marks seek synchronized
+cameras; timing differences are visible but are not part of those three scores.
+
+The page verifies the SHA256-pinned S3 comparison bundle in
+`data/label-comparison-source.json`. Both sides are frozen evaluation snapshots,
+not live localStorage annotations. Videos stream directly from the exact HF
+revision and per-camera offsets in the run's media manifests, bounded to its
+policy-phase duration. These are native-resolution source videos, not model
+overlays; Gemini saw their downsampled copies. The submitted system/request
+prompts, raw response, source identities, and relevant definitions are available
+in collapsed sections. Six Routing cases retain their explicit definition-change
+caveat rather than being silently re-certified. No API key or model call is used.
+
+**Save feedback** appends an independent browser-local record under
+`policy-arena-label-comparison-feedback-v1`, bound to the exact baseline, sample,
+human review, and model response. Field verdicts, free-text criteria/prompt notes,
+and evidence timestamps are proposals only: neither gold nor model labels are
+modified. Saves re-read storage under a browser lock; failed writes stay visible,
+and unsaved edits guard navigation. **Export feedback** downloads the history as
+`label-comparison-feedback.json` for follow-up prompt/criteria work. The comparison
+page has no Convex client or remote-write capability. It is included only in local
+and playground/preview builds, not the shared production build.
+
 ## Hosted playground
 
 Vercel **Preview** deployments include `/sandbox/stage-review.html` alongside

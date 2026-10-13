@@ -12,6 +12,7 @@ export default defineConfig(({ mode }) => ({
       input: {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
         playground: fileURLToPath(new URL('./sandbox/stage-review.html', import.meta.url)),
+        comparison: fileURLToPath(new URL('./sandbox/label-comparison.html', import.meta.url)),
       },
     },
   } : undefined,
