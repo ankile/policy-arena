@@ -48,10 +48,10 @@ test("reverse observed chronology cannot silently succeed even with both clips s
 
 test("a terminal event overrides recoverable failures and cannot be recovered in another attempt", () => {
   const row = { ...label(6, 4), attempt_count: 2, task_success: false,
-    failure_events: [event("grasp_lost", 2), event(), event("wrong_clip_order", 12, 2)],
+    failure_events: [event("first_clip_grasp_lost", 2), event(), event("wrong_clip_order", 12, 2)],
     primary_failure: { failure_mode_id: "wrong_clip_order", time_s: 4 } };
   expect(validateTrajectoryLabel(row, task)).toEqual([]);
-  for (const primary_failure of [{ failure_mode_id: "grasp_lost", time_s: 2 }, { failure_mode_id: "wrong_clip_order", time_s: 12 }]) {
+  for (const primary_failure of [{ failure_mode_id: "first_clip_grasp_lost", time_s: 2 }, { failure_mode_id: "wrong_clip_order", time_s: 12 }]) {
     expect(validateTrajectoryLabel({ ...row, primary_failure }, task).join()).toContain("first terminal failure");
   }
   for (const needs_human_review of [false, true]) expect(validateTrajectoryLabel({ ...row, task_success: true, needs_human_review,

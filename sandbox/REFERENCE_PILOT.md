@@ -82,3 +82,11 @@ content pin so this correction cannot repeatedly downgrade newly reviewed labels
 No machine-label fields, protocol IDs, or shared database records are changed by
 this local transfer. Old TOP contact and Nut hole-miss categories are not guessed
 into the new blocked-entry category without evidence of an insertion attempt.
+
+Routing's current definition also separates grasp failures for LEFT and RIGHT
+clip work: grasp not established versus loss after sustained control for each.
+The physical work phase owns the event, not the count of pickups or the furthest
+stage. Existing unqualified Routing grasp failures carry to a draft requiring
+only that failure choice; stages, binary outcome, notes, and originals remain
+intact. Previously rechecked partial-entry categories are not reopened. The
+left-before-right terminal rule and all stage definitions are unchanged.

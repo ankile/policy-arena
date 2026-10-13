@@ -19,6 +19,27 @@ describe("Routing v5 two-cycle preview", () => {
     expect(spec.trajectory.task_definition.taxonomyVersion).toBe("routing_d1/v5");
   });
 
+  test("human choices and machine schema split grasp failures by physical clip", () => {
+    const schema = normalizeStageSpec(spec).trajectory!;
+    const expected = [
+      ["first_clip_grasp_not_established", "Left clip · grasp not established"],
+      ["first_clip_grasp_lost", "Left clip · grasp lost"],
+      ["second_clip_grasp_not_established", "Right clip · grasp not established"],
+      ["second_clip_grasp_lost", "Right clip · grasp lost"],
+    ];
+    const row = patchStageMark(schema, blankTrajectoryReview(schema, "org/routing", 0), null, "final_rope_released", 10, 1);
+    for (const [id, name] of expected) {
+      expect(schema.task_definition.failureModes.find((mode) => mode.id === id)?.name).toBe(name);
+      expect(spec.failure_modes).toContain(id);
+      expect(spec.trajectory.response_schema.properties.primary_failure.properties.failure_mode_id.enum).toContain(id);
+      expect(validateStageOutcomeReview(schema, { ...row, task_success: false, failure_mode: id }, 30)).toEqual([]);
+    }
+    for (const id of ["grasp_lost", "grasp_not_established"]) {
+      expect(spec.failure_modes).not.toContain(id);
+      expect(validateStageOutcomeReview(schema, { ...row, task_success: false, failure_mode: id }, 30).length).toBeGreaterThan(0);
+    }
+  });
+
   test("candidate preserves the published version and never mutates returned rows", () => {
     const original = [{ taxonomy_version: "trajectory-review/v1/routing_d1/v1", live: true }] as Doc<"stageTaskSpecs">[];
     const rows = withLocalStagePreviews("routing_d1", original)!;

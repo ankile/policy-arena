@@ -5,7 +5,7 @@ import routing from "../data/stage-review/routing_d1_v4.spec.json";
 import { blankTrajectoryReview, normalizeTrajectoryReviewSpec } from "../convex/trajectoryReview";
 import { stageReviewCoverage } from "../convex/stageReviewCoverage";
 import { planCarryForward } from "./carryForwardReviews";
-import { insertionFailureCorrection } from "./insertionFailureCorrection";
+import { failureDefinitionCorrections } from "./failureDefinitionCorrections";
 import { stageReviewRelease } from "../shared/stageReviewRelease";
 import { appendLocalReviews, readLocalReviews, localReviewStorageKey, migrationBackupKey, type LocalReview } from "./localReviewStore";
 
@@ -100,7 +100,7 @@ test("only unambiguous category implications are carried", () => {
 
 for (const task of ["marker_d2", "square_d2", "routing_d1"] as const) test(`${task}: in-place failure refinement preserves stages without silently recertifying old categories`, () => {
   const current = stageReviewRelease[task];
-  const pin = insertionFailureCorrection[task];
+  const pin = failureDefinitionCorrections[task];
   expect(current.trajectory.task_definition_sha256).toBe(pin.targetDefinitionSha256);
   const tag = normalizeTrajectoryReviewSpec(current.trajectory, task, current.taxonomy_version);
   const old = planCarryForward([review({ marker_d2: marker, square_d2: square, routing_d1: routing }[task], 3, "grasp_lost")]).additions[0];
@@ -142,6 +142,38 @@ test("in-place correction preserves previous unresolved migration checks", () =>
   expect(next.local_migration!.issues.join()).toContain("S6 timing");
   expect(next.local_migration!.issues.join()).toContain("Choose the new failure category");
   expect(next.label!.stage_transitions).toEqual(old.label!.stage_transitions);
+});
+
+for (const failure of ["grasp_not_established", "grasp_lost"]) for (const maximum of [1, 7, 10]) {
+  test(`routing ${failure} at S${maximum}: recheck clip ownership without guessing from progress`, () => {
+    const current = stageReviewRelease.routing_d1;
+    const pin = failureDefinitionCorrections.routing_d1;
+    const old = planCarryForward([review(routing, maximum, failure)]).additions[0];
+    old.label!.failure_mode = failure;
+    old.status = "confirmed";
+    old.local_task_definition_sha256 = pin.additionalSources![0].definitionSha256;
+    old.review_coverage = stageReviewCoverage("stages-outcome-v3", "confirmed", true);
+    delete old.local_migration;
+    const snapshot = structuredClone(old);
+    const next = planCarryForward([old]).additions[0];
+    expect(next.taxonomy_version).toBe(current.taxonomy_version);
+    expect(next.status).toBe("draft");
+    expect(next.label!.failure_mode).toBe("");
+    expect(next.label!.stage_transitions).toEqual(old.label!.stage_transitions);
+    expect(next.label!.task_success).toBe(old.label!.task_success);
+    expect(next.notes).toBe(old.notes);
+    expect(next.local_migration!.issues.join()).toContain("Choose the new failure category");
+    expect(old).toEqual(snapshot);
+    expect(planCarryForward([old, next]).additions).toEqual([]);
+  });
+}
+
+test("routing's prior insertion refinement is not reopened by the grasp split", () => {
+  const old = planCarryForward([review(routing, 4, "first_clip_seating_incomplete")]).additions[0];
+  old.status = "confirmed";
+  old.label!.failure_mode = "first_clip_seating_incomplete";
+  old.local_task_definition_sha256 = failureDefinitionCorrections.routing_d1.additionalSources![0].definitionSha256;
+  expect(planCarryForward([old]).additions).toEqual([]);
 });
 
 test("old stage ladders, cleared sources, mismatching identities, and malformed timelines are not relabeled", () => {

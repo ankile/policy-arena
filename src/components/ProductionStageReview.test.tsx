@@ -42,9 +42,9 @@ test("routing human review names both physical clips and saves wrong order witho
   await act(async () => {});
   const choices = view.getByRole("combobox", { name: "Primary failure mode" }) as HTMLSelectElement;
   expect([...choices.options].map((option) => option.textContent)).toEqual([
-    "Choose the main reason…", "Wrong clip order (right before left)", "Grasp not established", "Grasp lost",
+    "Choose the main reason…", "Wrong clip order (right before left)", "Left clip · grasp not established", "Left clip · grasp lost",
     "Left clip · not attempted", "Left clip · entry missed", "Left clip · not fully seated", "Left clip · seated rope came out",
-    "Right clip · not attempted", "Right clip · entry missed", "Right clip · not fully seated", "Right clip · seated rope came out", "Unknown failure cause",
+    "Right clip · grasp not established", "Right clip · grasp lost", "Right clip · not attempted", "Right clip · entry missed", "Right clip · not fully seated", "Right clip · seated rope came out", "Unknown failure cause",
   ]);
   fireEvent.change(view.getByRole("combobox", { name: "Stage reached" }), { target: { value: "second_clip_engaged" } });
   fireEvent.keyDown(window, { key: "m" });
@@ -118,9 +118,10 @@ for (const task of stageReviewTasks) {
     const { view, state, spec } = setup(task, true, outcome);
     await act(async () => {});
     const index = outcome === "failure" ? 3 : task.task === "routing_d1" ? 9 : 6;
+    const failureMode = task.task === "routing_d1" ? "first_clip_grasp_lost" : "grasp_lost";
     fireEvent.change(view.getByRole("combobox", { name: "Stage reached" }), { target: { value: spec.trajectory.task_definition.stages[index].id } });
     fireEvent.keyDown(window, { key: "m" });
-    if (outcome === "failure") fireEvent.change(view.getByRole("combobox", { name: "Primary failure mode" }), { target: { value: "grasp_lost" } });
+    if (outcome === "failure") fireEvent.change(view.getByRole("combobox", { name: "Primary failure mode" }), { target: { value: failureMode } });
     await act(async () => fireEvent.keyDown(window, { key: "c" }));
     expect(state.saves).toHaveLength(1);
     const saved = state.saves[0];
@@ -128,7 +129,7 @@ for (const task of stageReviewTasks) {
     expect(saved.review_protocol).toBe("stages-outcome-v3");
     expect(saved.label).not.toHaveProperty("final_state");
     expect(saved.label!.max_stage).toBe(index);
-    expect(saved.label!.failure_mode).toBe(outcome === "success" ? "none" : "grasp_lost");
+    expect(saved.label!.failure_mode).toBe(outcome === "success" ? "none" : failureMode);
     expect(saved.label!.key_action_observations.every((action: { occurred: boolean }) => !action.occurred)).toBe(true);
   });
 }

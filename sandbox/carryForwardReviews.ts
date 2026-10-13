@@ -7,7 +7,7 @@ import { validateStageOnlyReview } from "../convex/stageOnlyReview";
 import { validateStageOutcomeReview } from "../convex/stageOutcomeReview";
 import { CURRENT_REVIEW_FIELDS, CURRENT_REVIEW_PROTOCOL, stageReviewCoverage } from "../convex/stageReviewCoverage";
 import type { LocalReview } from "./localReviewStore";
-import { insertionFailureCorrection } from "./insertionFailureCorrection";
+import { failureDefinitionCorrections } from "./failureDefinitionCorrections";
 
 const predecessors = { marker_d2: marker, square_d2: square, routing_d1: routing };
 type Task = keyof typeof predecessors;
@@ -17,6 +17,10 @@ const identity = (row: LocalReview) => `${row.task}|${row.dataset_repo}|${row.ep
 /** Only implications supported by the old category are mapped. In particular,
  * alignment errors do not establish whether an insertion was attempted. */
 function failureMapping(task: Task, failure: string, maxStage: number): string {
+  if (task === "routing_d1" && ["grasp_not_established", "grasp_lost", "pregrasp_misalignment", "grasp_not_attempted", "grasp_miss"].includes(failure)) {
+    // A historical maximum cannot identify which clip owned a past grasp failure.
+    return "";
+  }
   if (["pregrasp_misalignment", "grasp_not_attempted", "grasp_miss"].includes(failure)) {
     return task === "routing_d1" || maxStage < 2 ? "grasp_not_established" : "";
   }
@@ -47,11 +51,14 @@ export function planCarryForward(reviews: LocalReview[], now = Date.now()) {
     if (!(source.task in predecessors) || source.reviewer_user_id !== "local-reviewer") continue;
     const task = source.task as Task;
     const current = stageReviewRelease[task];
-    const correction = insertionFailureCorrection[task];
+    const correction = failureDefinitionCorrections[task];
+    const correctionFailures = source.local_task_definition_sha256 === undefined ||
+      source.local_task_definition_sha256 === correction.previousDefinitionSha256
+      ? correction.recheckFailures
+      : correction.additionalSources?.find((entry) => entry.definitionSha256 === source.local_task_definition_sha256)?.recheckFailures;
     const failureCorrection = source.taxonomy_version === current.taxonomy_version &&
       current.trajectory.task_definition_sha256 === correction.targetDefinitionSha256 &&
-      (source.local_task_definition_sha256 === undefined || source.local_task_definition_sha256 === correction.previousDefinitionSha256) &&
-      source.label?.task_success === false && correction.recheckFailures.includes(String(source.label.failure_mode));
+      source.label?.task_success === false && correctionFailures?.includes(String(source.label.failure_mode));
     const previous = failureCorrection ? current : predecessors[task];
     if (source.taxonomy_version !== previous.taxonomy_version || source.status === "cleared" || !source.label ||
       (!failureCorrection && latest.has(`${identity(source)}|${current.taxonomy_version}`))) continue;
