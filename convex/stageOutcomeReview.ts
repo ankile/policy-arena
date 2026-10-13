@@ -20,11 +20,11 @@ export function validateStageOutcomeReview(spec: TrajectoryReviewSpec, row: Stag
     if (row.task_success === true && row.failure_mode !== noFailure) fail("failure_mode", "A successful episode must use the task's no-failure mode.");
   }
   const maximum = task.stages.find((item) => item.id === row.max_stage_id && item.index === row.max_stage);
-  if (maximum && state && typeof row.task_success === "boolean") {
+  if (maximum && typeof row.task_success === "boolean") {
     const successfulStage = task.successDefinition.successfulStageIds.includes(maximum.id);
-    const successfulEnd = task.successDefinition.successfulFinalStateIds!.includes(state.id);
+    const successfulEnd = state && task.successDefinition.successfulFinalStateIds!.includes(state.id);
     if ((row.task_success || successfulEnd) && !successfulStage) fail("max_stage", "A successful result or end state requires a completed-task stage. Check the furthest stage reached.");
-    if (row.task_success && !successfulEnd) fail("final_state", "This end state does not meet the task's success definition. Check the result and end state, or save as uncertain.");
+    if (state && row.task_success && !successfulEnd) fail("final_state", "This end state does not meet the task's success definition. Check the result and end state, or save as uncertain.");
     if (!row.task_success && successfulEnd) fail("task_success", "This end state indicates success. Check the result and end state, or save as uncertain.");
   }
   return issues;
