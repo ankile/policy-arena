@@ -94,6 +94,7 @@ const dataSource: StageReviewDataSource = {
         const prior = readLocalReviews(localStorage).reverse().find((row) => row.dataset_repo === args.dataset_repo &&
           row.episode_index === args.episode_index && row.taxonomy_version === args.taxonomy_version);
         const review: LocalReview = { ...args, ...(coverage ? { review_coverage: coverage } : {}),
+          local_task_definition_sha256: latestStagePreviews[args.task as keyof typeof latestStagePreviews].trajectory.task_definition_sha256,
           ...(prior?.local_migration ? { local_migration: prior.local_migration } : {}),
           _id: `local-${crypto.randomUUID()}`, reviewer: "Local playground", reviewer_user_id: "local-reviewer", saved_at: Date.now() };
         reviews = appendLocalReviews(localStorage, [review]); refresh();

@@ -5,6 +5,8 @@ import routing from "../data/stage-review/routing_d1_v4.spec.json";
 import { blankTrajectoryReview, normalizeTrajectoryReviewSpec } from "../convex/trajectoryReview";
 import { stageReviewCoverage } from "../convex/stageReviewCoverage";
 import { planCarryForward } from "./carryForwardReviews";
+import { insertionFailureCorrection } from "./insertionFailureCorrection";
+import { stageReviewRelease } from "../shared/stageReviewRelease";
 import { appendLocalReviews, readLocalReviews, localReviewStorageKey, migrationBackupKey, type LocalReview } from "./localReviewStore";
 
 function review(spec = marker, maximum = 4, failure = "insertion_orientation_misalignment"): LocalReview {
@@ -89,6 +91,57 @@ test("only unambiguous category implications are carried", () => {
   expect(held.label!.task_success).toBe(false); // Never rewrite the human binary outcome.
   expect(held.label!.failure_mode).toBe("");
   expect(held.status).toBe("draft");
+  expect(planCarryForward([review(marker, 4, "false_insertion")]).additions[0].label!.failure_mode).toBe("false_insertion");
+  for (const old of [review(marker, 4, "holder_contact_no_insertion"), review(square, 4, "hole_missed_peg"), review(routing, 4, "first_clip_seating_incomplete")]) {
+    expect(planCarryForward([old]).additions[0].label!.failure_mode).toBe("");
+    expect(planCarryForward([old]).additions[0].status).toBe("draft");
+  }
+});
+
+for (const task of ["marker_d2", "square_d2", "routing_d1"] as const) test(`${task}: in-place failure refinement preserves stages without silently recertifying old categories`, () => {
+  const current = stageReviewRelease[task];
+  const pin = insertionFailureCorrection[task];
+  expect(current.trajectory.task_definition_sha256).toBe(pin.targetDefinitionSha256);
+  const tag = normalizeTrajectoryReviewSpec(current.trajectory, task, current.taxonomy_version);
+  const old = planCarryForward([review({ marker_d2: marker, square_d2: square, routing_d1: routing }[task], 3, "grasp_lost")]).additions[0];
+  old.status = "confirmed";
+  old.review_coverage = stageReviewCoverage("stages-outcome-v3", "confirmed", true);
+  delete old.local_migration;
+  old.label!.failure_mode = pin.recheckFailures[0];
+  for (const hash of [undefined, pin.previousDefinitionSha256]) {
+    old.local_task_definition_sha256 = hash;
+    const snapshot = structuredClone(old);
+    const { additions, blocked } = planCarryForward([old], 2000);
+    expect(blocked).toEqual([]);
+    expect(additions).toHaveLength(1);
+    const next = additions[0];
+    expect(next.taxonomy_version).toBe(old.taxonomy_version);
+    expect(next.local_task_definition_sha256).toBe(tag.task_definition_sha256);
+    expect(next.label!.stage_transitions).toEqual(old.label!.stage_transitions);
+    expect(next.label!.task_success).toBe(false);
+    expect(next.label!.failure_mode).toBe("");
+    expect(next.status).toBe("draft");
+    expect(next.review_coverage!.reviewed_fields).toEqual([]);
+    expect(next.notes).toBe(old.notes);
+    expect(old).toEqual(snapshot);
+    expect(planCarryForward([old, next]).additions).toEqual([]);
+  }
+  old.local_task_definition_sha256 = pin.targetDefinitionSha256;
+  expect(planCarryForward([old]).additions).toEqual([]);
+  old.local_task_definition_sha256 = "unknown-source";
+  expect(planCarryForward([old]).additions).toEqual([]);
+  delete old.local_task_definition_sha256;
+  old.status = "cleared";
+  expect(planCarryForward([old]).additions).toEqual([]);
+});
+
+test("in-place correction preserves previous unresolved migration checks", () => {
+  const old = planCarryForward([review(marker, 6, "insertion_jammed")]).additions[0];
+  delete old.local_task_definition_sha256;
+  const next = planCarryForward([old]).additions[0];
+  expect(next.local_migration!.issues.join()).toContain("S6 timing");
+  expect(next.local_migration!.issues.join()).toContain("Choose the new failure category");
+  expect(next.label!.stage_transitions).toEqual(old.label!.stage_transitions);
 });
 
 test("old stage ladders, cleared sources, mismatching identities, and malformed timelines are not relabeled", () => {

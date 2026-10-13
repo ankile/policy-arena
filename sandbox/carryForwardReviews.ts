@@ -7,6 +7,7 @@ import { validateStageOnlyReview } from "../convex/stageOnlyReview";
 import { validateStageOutcomeReview } from "../convex/stageOutcomeReview";
 import { CURRENT_REVIEW_FIELDS, CURRENT_REVIEW_PROTOCOL, stageReviewCoverage } from "../convex/stageReviewCoverage";
 import type { LocalReview } from "./localReviewStore";
+import { insertionFailureCorrection } from "./insertionFailureCorrection";
 
 const predecessors = { marker_d2: marker, square_d2: square, routing_d1: routing };
 type Task = keyof typeof predecessors;
@@ -21,19 +22,22 @@ function failureMapping(task: Task, failure: string, maxStage: number): string {
   }
   if (["none", "grasp_lost", "unknown_failure_cause"].includes(failure)) return failure;
   if (task === "routing_d1") {
-    if (/^(first|second)_clip_(not_attempted|engagement_missed|seating_incomplete)$/.test(failure)) return failure;
+    if (/^(first|second)_clip_(not_attempted|engagement_missed)$/.test(failure)) return failure;
     if (/^(first|second)_clip_seat_lost$/.test(failure)) return failure.replace("_seat_lost", "_retention_lost");
   } else {
-    if (["false_insertion", "holder_contact_no_insertion", "hole_missed_peg"].includes(failure)) return "false_insertion";
+    // The retained Marker v6 false-insertion category already meant SIDE/TABLE.
+    // Top contact alone does not prove a push; the Nut miss category spans both
+    // blocked entrance and off-target placement. Neither is safe to auto-map.
+    if (task === "marker_d2" && failure === "false_insertion") return "false_insertion";
     if (["insertion_jammed", "released_hung_on_peg"].includes(failure)) return "incomplete_insertion";
     if (failure === "placement_lost_after_release") return "placement_lost";
   }
   return "";
 }
 
-/** Explicit, browser-local, append-only transfer. Not a general numeric-stage
- * migration: only the three named predecessors are accepted, and IDs are checked.
- * Existing target reviews (including cleared/draft) always win. */
+/** Explicit, browser-local, append-only transfer. Only named predecessors and
+ * the pinned, stage-preserving failure correction are supported. Existing
+ * current-content reviews (including cleared/draft) always win. */
 export function planCarryForward(reviews: LocalReview[], now = Date.now()) {
   const latest = new Map<string, LocalReview>();
   for (const row of reviews) latest.set(`${identity(row)}|${row.taxonomy_version}`, row);
@@ -42,10 +46,15 @@ export function planCarryForward(reviews: LocalReview[], now = Date.now()) {
   for (const source of latest.values()) {
     if (!(source.task in predecessors) || source.reviewer_user_id !== "local-reviewer") continue;
     const task = source.task as Task;
-    const previous = predecessors[task];
     const current = stageReviewRelease[task];
+    const correction = insertionFailureCorrection[task];
+    const failureCorrection = source.taxonomy_version === current.taxonomy_version &&
+      current.trajectory.task_definition_sha256 === correction.targetDefinitionSha256 &&
+      (source.local_task_definition_sha256 === undefined || source.local_task_definition_sha256 === correction.previousDefinitionSha256) &&
+      source.label?.task_success === false && correction.recheckFailures.includes(String(source.label.failure_mode));
+    const previous = failureCorrection ? current : predecessors[task];
     if (source.taxonomy_version !== previous.taxonomy_version || source.status === "cleared" || !source.label ||
-      latest.has(`${identity(source)}|${current.taxonomy_version}`)) continue;
+      (!failureCorrection && latest.has(`${identity(source)}|${current.taxonomy_version}`))) continue;
     const previousTag = normalizeTrajectoryReviewSpec(previous.trajectory, task, previous.taxonomy_version);
     const currentTag = normalizeTrajectoryReviewSpec(current.trajectory, task, current.taxonomy_version);
     const old = source.label;
@@ -57,7 +66,7 @@ export function planCarryForward(reviews: LocalReview[], now = Date.now()) {
     // Old prediction/action ledgers are preserved in the original, not passed off
     // as new-schema machine output or attached to a mismatching prediction ID.
     const label = blankTrajectoryReview(currentTag, source.dataset_repo, source.episode_index);
-    const issues: string[] = [];
+    const issues: string[] = failureCorrection && !committed(source.status) ? [...source.local_migration?.issues ?? []] : [];
     if (committed(source.status) && !CURRENT_REVIEW_FIELDS.every((field) => source.review_coverage?.reviewed_fields.includes(field))) {
       issues.push("Confirm the carried review: its earlier supervision did not cover every current review field.");
     }
@@ -80,13 +89,13 @@ export function planCarryForward(reviews: LocalReview[], now = Date.now()) {
         to_stage_id: stageId(event.to_stage_id as string, event.to_stage_index as number),
       })),
     });
-    if (task !== "routing_d1" && old.max_stage === 6) {
+    if (!failureCorrection && task !== "routing_d1" && old.max_stage === 6) {
       issues.push("Check S6 timing: the saved release timestamp is preserved; full seating may have occurred earlier.");
     }
-    if (task === "routing_d1") {
+    if (!failureCorrection && task === "routing_d1") {
       issues.push("Check clip identity and order: first means LEFT, second means RIGHT. A right-clip insertion attempt before left seating is a terminal failure. Stage marks and the human outcome were preserved for review.");
     }
-    const mapped = failureMapping(task, String(old.failure_mode ?? ""), Number(old.max_stage));
+    const mapped = failureCorrection ? "" : failureMapping(task, String(old.failure_mode ?? ""), Number(old.max_stage));
     label.failure_mode = old.task_success === true ? "none" : mapped;
     if (old.task_success === false && (!mapped || mapped === "none")) {
       label.failure_mode = "";
@@ -99,6 +108,7 @@ export function planCarryForward(reviews: LocalReview[], now = Date.now()) {
       ? source.status : source.status === "uncertain" ? "uncertain" : "draft";
     additions.push({
       _id: `carry-forward-v2:${source._id}`, task, dataset_repo: source.dataset_repo,
+      local_task_definition_sha256: current.trajectory.task_definition_sha256,
       episode_index: source.episode_index, taxonomy_version: current.taxonomy_version,
       reviewer: source.reviewer, reviewer_user_id: source.reviewer_user_id,
       saved_at: now, status, label, notes: source.notes ?? "",

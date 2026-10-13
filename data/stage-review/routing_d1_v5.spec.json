@@ -571,12 +571,12 @@
         },
         {
           "id": "first_clip_engagement_missed",
-          "description": "An actual interaction attempt at the LEFT (FIRST) clip does not enter beneath/into its retaining feature. Mere approach or overlap is insufficient. Subsequent real engagement recovers this event.",
+          "description": "An insertion-directed attempt at the LEFT clip is visibly blocked at or misses its entrance; the rope never enters beneath/into its retaining feature. Includes misaligned entrance contact with zero entry. Mere approach or overlap is insufficient. Any verified partial entry rules out this mode for that event; stuck advancement after entry belongs to first_clip_seating_incomplete. Subsequent real engagement recovers this event.",
           "name": "Left clip · entry missed"
         },
         {
           "id": "first_clip_seating_incomplete",
-          "description": "Rope enters the LEFT (FIRST) clip but does not become properly captured. Gripper release is not required. Subsequent secure seating recovers this event.",
+          "description": "Rope visibly enters beneath/into the LEFT clip retaining feature at least partway, but gets stuck or stops advancing before secure capture. Require actual partial entry plus failed advancement; zero-entry contact belongs to first_clip_engagement_missed. A brief pause or continued insertion at recording cutoff does not establish stuckness. Gripper release is not required. Subsequent secure seating recovers this event.",
           "name": "Left clip · not fully seated"
         },
         {
@@ -591,12 +591,12 @@
         },
         {
           "id": "second_clip_engagement_missed",
-          "description": "An actual interaction attempt at the RIGHT (SECOND) clip does not enter beneath/into its retaining feature. Mere approach or overlap is insufficient. Subsequent real engagement recovers this event.",
+          "description": "An insertion-directed attempt at the RIGHT clip is visibly blocked at or misses its entrance; the rope never enters beneath/into its retaining feature. Includes misaligned entrance contact with zero entry. Mere approach or overlap is insufficient. Any verified partial entry rules out this mode for that event; stuck advancement after entry belongs to second_clip_seating_incomplete. Subsequent real engagement recovers this event.",
           "name": "Right clip · entry missed"
         },
         {
           "id": "second_clip_seating_incomplete",
-          "description": "Rope enters the RIGHT (SECOND) clip but does not become properly captured. Gripper release is not required. Subsequent secure seating recovers this event.",
+          "description": "Rope visibly enters beneath/into the RIGHT clip retaining feature at least partway, but gets stuck or stops advancing before secure capture. Require actual partial entry plus failed advancement; zero-entry contact belongs to second_clip_engagement_missed. A brief pause or continued insertion at recording cutoff does not establish stuckness. Gripper release is not required. Subsequent secure seating recovers this event.",
           "name": "Right clip · not fully seated"
         },
         {
@@ -696,7 +696,7 @@
         "Return trajectory-label/v2 without end-state fields. Check IDs, timing, stage/action consistency, and primary/event agreement."
       ]
     },
-    "task_definition_sha256": "32d3e8f5cd163f03cd93c3a6a099421485edcef6964185c53ef50cf1629b2449",
+    "task_definition_sha256": "e545f73ed433024839bf6ed2f51cb9db0f997a1577dbc586c029d820bba2ae12",
     "response_schema": {
       "type": "OBJECT",
       "properties": {
@@ -1065,5 +1065,5 @@
       "description": "Canonical task-generic trajectory label"
     }
   },
-  "taxonomy_hash": "efe02227507e3245652e456d5315c8a6b9a0a7b126d1b76e07b2d5b63e71946a"
+  "taxonomy_hash": "452895ab39043d2f19085012376936710e3e38100f4042ebdf0e58f00574752f"
 }

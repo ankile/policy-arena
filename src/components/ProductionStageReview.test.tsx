@@ -56,6 +56,21 @@ test("routing human review names both physical clips and saves wrong order witho
 });
 
 for (const task of stageReviewTasks) {
+  if (task.task !== "routing_d1") test(`${task.name}: human can save a blocked-entry failure separately from false or partial insertion`, async () => {
+    const { view, state, spec } = setup(task, true, "failure");
+    await act(async () => {});
+    const choices = view.getByRole("combobox", { name: "Primary failure mode" }) as HTMLSelectElement;
+    for (const label of ["Entry blocked (nothing entered)", "False insertion (wrong surface)", "Incomplete insertion (partway in, stuck)"]) {
+      expect([...choices.options].some((option) => option.textContent === label)).toBe(true);
+    }
+    fireEvent.change(view.getByRole("combobox", { name: "Stage reached" }), { target: { value: spec.trajectory.task_definition.stages[4].id } });
+    fireEvent.keyDown(window, { key: "m" });
+    fireEvent.change(choices, { target: { value: "insertion_entry_blocked" } });
+    await act(async () => fireEvent.keyDown(window, { key: "c" }));
+    expect(state.saves).toHaveLength(1);
+    expect(state.saves[0].label).toMatchObject({ task_success: false, failure_mode: "insertion_entry_blocked", max_stage: 4 });
+    expect(state.saves[0].label).not.toHaveProperty("final_state");
+  });
   test(`${task.name}: an old prediction link without a schema cannot seed the latest form`, async () => {
     const { view, state } = setup(task, true, "success", "");
     await act(async () => {});

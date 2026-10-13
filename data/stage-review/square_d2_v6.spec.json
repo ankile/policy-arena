@@ -70,6 +70,7 @@
     "grasp_not_established",
     "grasp_lost",
     "insertion_not_attempted",
+    "insertion_entry_blocked",
     "false_insertion",
     "incomplete_insertion",
     "placement_lost",
@@ -536,12 +537,19 @@
           "description": "Secure grasp is achieved, but no insertion attempt occurs before the recording ends. Use only if no more specific unrecovered grasp loss or placement failure is visible. This is an episode-end shortfall, not a diagnosis of why motion stopped."
         },
         {
+          "id": "insertion_entry_blocked",
+          "name": "Entry blocked (nothing entered)",
+          "description": "An insertion-directed lowering of the nut against the peg TIP or hole rim is visibly blocked before the peg enters the nut's central hole, for example because the peg hits the nut underside/rim rather than passing through the opening. Mere approach or projection overlap is not an insertion attempt. Excludes pushing down wholly beside the peg or onto the adjacent TABLE (false_insertion), and any verified peg entry (incomplete_insertion if advancement then stalls). Subsequent actual peg entry recovers this event."
+        },
+        {
           "id": "false_insertion",
-          "description": "An insertion-directed movement occurs without the peg entering the nut's central hole: the nut contacts the peg exterior or adjacent table. Mere approach or projection overlap is insufficient. Subsequent actual peg entry recovers this event."
+          "description": "An insertion-like lowering or push occurs wholly beside the peg, against its SIDE, or onto the adjacent TABLE, with the peg outside the nut's central hole. This is placement at the wrong location, not a peg-TIP/underside/rim collision that blocks entry (insertion_entry_blocked). Use observed contact geometry, not inferred robot belief. Mere approach or projection overlap is insufficient. Subsequent actual peg entry recovers this event.",
+          "name": "False insertion (wrong surface)"
         },
         {
           "id": "incomplete_insertion",
-          "description": "Genuine engagement occurs, but correct full seating is not achieved before the sequence ends. Includes partial entry, a hung nut, or release from an incompletely seated placement. Do not infer mechanical jamming. Subsequent full seating recovers this event."
+          "description": "The peg visibly enters at least partway through the nut's central hole, but the nut gets stuck or hangs on the shaft above the base and does not advance to full seating. Require positive entry plus stalled/failed advancement, not a peg-tip/rim collision without entry, a brief pause, or a recording ending during an unobstructed captured descent. 'Stuck' describes observed motion, not an inferred force or mechanical cause. Subsequent full seating recovers this event.",
+          "name": "Incomplete insertion (partway in, stuck)"
         },
         {
           "id": "placement_lost",
@@ -582,6 +590,10 @@
           "rule": "A supplied human binary outcome is authoritative, but proves no stage, action, or timestamp. If success is known but completion is unseen, including recording cutoff, preserve supported observations and request review. Never manufacture seating or automatically rewrite historical human outcomes."
         },
         {
+          "id": "insertion_failure_boundaries",
+          "rule": "Separate insertion failures by observed contact and entry: no insertion-directed attempt = insertion_not_attempted; peg TIP hits nut underside/hole rim during attempted insertion with zero entry = insertion_entry_blocked; nut pushed down wholly beside the peg, against its SIDE or onto adjacent TABLE = false_insertion; peg already partway through the hole but nut stuck/hung above the base = incomplete_insertion. A single no-entry event cannot be both blocked and false insertion. If local geometry or entry depth is unresolved, request review instead of guessing. Neither no-entry category establishes S5; later loss never erases earlier real entry."
+        },
+        {
           "id": "failure_selection",
           "rule": "Keep every distinct observable failure, including recovered events. For failure choose the earliest specific event that remains unrecovered. A subsequent positive achievement of the failed requirement recovers it; another attempt alone does not. Generic no-attempt/unknown categories apply only without a specific unrecovered event. Success uses none. Break equal-onset ties by failureModes order, never by guessed causality."
         },
@@ -615,7 +627,7 @@
         "Return trajectory-label/v2 without end-state fields. Check IDs, timing, stage/action consistency, and primary/event agreement."
       ]
     },
-    "task_definition_sha256": "bf4c76d985ab1a17ed6bfadd49e9d5faac278e6e3ba99abff21c932e18705073",
+    "task_definition_sha256": "274367f07f49123496c66a0fe7c57972f8e55f32ef6a75c5c89c2179b7ffa49a",
     "response_schema": {
       "type": "OBJECT",
       "properties": {
@@ -860,6 +872,7 @@
                   "grasp_not_established",
                   "grasp_lost",
                   "insertion_not_attempted",
+                  "insertion_entry_blocked",
                   "false_insertion",
                   "incomplete_insertion",
                   "placement_lost",
@@ -907,6 +920,7 @@
                 "grasp_not_established",
                 "grasp_lost",
                 "insertion_not_attempted",
+                "insertion_entry_blocked",
                 "false_insertion",
                 "incomplete_insertion",
                 "placement_lost",
@@ -971,5 +985,5 @@
       "description": "Canonical task-generic trajectory label"
     }
   },
-  "taxonomy_hash": "7904deab13c43caaf3bbde3791a01342fc5766b9b93cba2738c48b2d9a9cb81b"
+  "taxonomy_hash": "eb0707a0650b7a5a0e3e2da868332b635cb89f86920fa418da46acc30c40b50a"
 }

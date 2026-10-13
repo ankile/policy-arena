@@ -70,6 +70,7 @@
     "grasp_not_established",
     "grasp_lost",
     "insertion_not_attempted",
+    "insertion_entry_blocked",
     "false_insertion",
     "incomplete_insertion",
     "placement_lost",
@@ -494,12 +495,19 @@
           "description": "Secure grasp is achieved, but no insertion attempt occurs before the recording ends. Use only if no more specific unrecovered grasp loss or placement failure is visible. This is an episode-end shortfall, not a diagnosis of why motion stopped."
         },
         {
+          "id": "insertion_entry_blocked",
+          "name": "Entry blocked (nothing entered)",
+          "description": "An insertion-directed push at the holder TOP face, hole mouth or rim is visibly blocked before any part of the marker tip enters a hole, for example because the tip and hole are misaligned. Mere approach or light incidental contact is not an insertion attempt. Excludes SIDE wall or adjacent TABLE pushing (false_insertion), and any verified hole entry (incomplete_insertion if advancement then stalls). Subsequent actual hole entry recovers this event."
+        },
+        {
           "id": "false_insertion",
-          "description": "An insertion-directed push occurs without the marker entering a holder hole: it presses on the rim, holder exterior, or adjacent table. Side-view overlap or mere approach is insufficient. Subsequent actual hole entry recovers this event."
+          "description": "An insertion-like push is directed against the holder SIDE wall or down onto the TABLE beside the holder, rather than into its top hole-entry region; no hole entry occurs. This is false placement against the wrong surface, not a blocked attempt at the TOP face or hole rim (insertion_entry_blocked). Use observed contact geometry, not inferred robot belief. SIDE overlap cannot override a clear WRIST miss. Subsequent actual hole entry recovers this event.",
+          "name": "False insertion (wrong surface)"
         },
         {
           "id": "incomplete_insertion",
-          "description": "Genuine hole entry occurs, but correct full seating is not achieved before the sequence ends. Includes partial entry or release from an incompletely seated placement. Do not infer mechanical jamming. Subsequent full seating recovers this event."
+          "description": "At least part of the marker tip is visibly inside a holder hole, but the marker gets stuck or visibly stops advancing before full seating. Require positive entry plus stalled/failed advancement, not top-face/rim contact without entry, a brief pause, or a recording that ends during continued insertion. 'Stuck' describes observed motion, not an inferred force or mechanical cause. Subsequent full seating recovers this event.",
+          "name": "Incomplete insertion (partway in, stuck)"
         },
         {
           "id": "placement_lost",
@@ -530,6 +538,10 @@
         {
           "id": "human_outcome",
           "rule": "A supplied human binary outcome is authoritative, but proves no stage, action, or timestamp. If success is known but completion is unseen, including recording cutoff, preserve supported observations and request review. Never manufacture seating or automatically rewrite historical human outcomes."
+        },
+        {
+          "id": "insertion_failure_boundaries",
+          "rule": "Separate insertion failures by observed contact and entry: no insertion-directed attempt = insertion_not_attempted; attempted push at the holder TOP/hole rim with zero entry = insertion_entry_blocked; SIDE wall or adjacent TABLE push = false_insertion; verified partial hole entry followed by stuck/stalled advancement = incomplete_insertion. A single no-entry event cannot be both blocked and false insertion. If contact surface or entry depth is unresolved, request review instead of guessing. Neither no-entry category establishes S5; later loss never erases earlier real entry."
         },
         {
           "id": "failure_selection",
@@ -565,7 +577,7 @@
         "Return trajectory-label/v2 without end-state fields. Check IDs, timing, stage/action consistency, and primary/event agreement."
       ]
     },
-    "task_definition_sha256": "1c42d8d2c2a853e7a4f5ad9d5f820815469c15826caa89199ae5f43a04a04249",
+    "task_definition_sha256": "4dfbd4a1cf35e8938cf1c8a5c01bedb57739c3e3834785758e448b6a5e4f86d4",
     "response_schema": {
       "type": "OBJECT",
       "properties": {
@@ -806,6 +818,7 @@
                   "grasp_not_established",
                   "grasp_lost",
                   "insertion_not_attempted",
+                  "insertion_entry_blocked",
                   "false_insertion",
                   "incomplete_insertion",
                   "placement_lost",
@@ -853,6 +866,7 @@
                 "grasp_not_established",
                 "grasp_lost",
                 "insertion_not_attempted",
+                "insertion_entry_blocked",
                 "false_insertion",
                 "incomplete_insertion",
                 "placement_lost",
@@ -917,5 +931,5 @@
       "description": "Canonical task-generic trajectory label"
     }
   },
-  "taxonomy_hash": "698a5db96a7d9ececd7ddb793d3d4d59bc722a348acaee2d82350865511d4b8e"
+  "taxonomy_hash": "06b9efb755547e090587d87dd904eb60a6e53539a95494f4a922489a4b599248"
 }

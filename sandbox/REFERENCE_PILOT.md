@@ -71,3 +71,14 @@ The queue marks carried drafts with ↪; a short notice identifies what to check
 
 Local writes re-read storage under a browser lock so multiple open tabs do not
 erase each other's saves. This operation never writes to the shared database.
+
+The in-place insertion-failure refinement does not change any stage definitions.
+An explicit transfer also handles affected current-version local reviews:
+the old broad false-insertion and incomplete-insertion choices become drafts
+requiring a failure-category check, while all stage marks, outcomes and notes
+are copied unchanged. Original save records remain intact. Routing's partial-entry
+category receives the same check. New saves include an export-only definition
+content pin so this correction cannot repeatedly downgrade newly reviewed labels.
+No machine-label fields, protocol IDs, or shared database records are changed by
+this local transfer. Old TOP contact and Nut hole-miss categories are not guessed
+into the new blocked-entry category without evidence of an insertion attempt.
