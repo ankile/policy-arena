@@ -6,6 +6,15 @@ import { canonicalDigest } from "./stagePredictionContract";
 import { isNewer, reviewerKey } from "./stageReviews";
 import { trajectoryFromReview } from "./trajectoryReview";
 import { validateStageLabel, type ExportedStageSpec } from "./stageConsistency";
+import { validateStageOutcomeReview } from "./stageOutcomeReview";
+import { normalizeTrajectoryReviewSpec } from "./trajectoryReview";
+import { CURRENT_REVIEW_FIELDS, CURRENT_REVIEW_PROTOCOL } from "./stageReviewCoverage";
+
+function hasV2SummaryCoverage(review: Doc<"stageReviews">) {
+  return review.label?.trajectory_identity?.schema_version === "trajectory-label/v2" &&
+    review.review_coverage?.protocol === CURRENT_REVIEW_PROTOCOL &&
+    CURRENT_REVIEW_FIELDS.every((field) => review.review_coverage!.reviewed_fields.includes(field));
+}
 
 /** Fold ALL statuses first. A new uncertain/draft/cleared row invalidates old gold. */
 export function eligibleGold(rows: Doc<"stageReviews">[], taxonomy: string) {
@@ -20,9 +29,9 @@ export function eligibleGold(rows: Doc<"stageReviews">[], taxonomy: string) {
   const eligible: Doc<"stageReviews">[] = [], excluded: bigint[] = [];
   for (const [episode, reviews] of byEpisode) {
     // Multi-reviewer cases require explicit adjudication, even if summaries agree.
-    // Scoped reviews cannot serve as gold for full-summary action/failure
-    // scoring. Their unreviewed pipeline fields are retained, not certified.
-    if (reviews.length !== 1 || !["confirmed", "corrected"].includes(reviews[0].status) || !reviews[0].label || !reviews[0].prediction_id || (reviews[0].review_coverage && reviews[0].review_coverage.protocol !== "structured-v1")) excluded.push(episode);
+    // V2 human coverage attests every v2 summary metric, not hidden actions or
+    // failure-event times. Older partial scopes still cannot certify v1 gold.
+    if (reviews.length !== 1 || !["confirmed", "corrected"].includes(reviews[0].status) || !reviews[0].label || !reviews[0].prediction_id || (reviews[0].review_coverage && reviews[0].review_coverage.protocol !== "structured-v1" && !hasV2SummaryCoverage(reviews[0]))) excluded.push(episode);
     else eligible.push(reviews[0]);
   }
   return { eligible: eligible.sort((a,b) => Number(a.episode_index-b.episode_index)), excluded };
@@ -58,7 +67,10 @@ export const freeze = mutation({
       const prediction = await ctx.db.get(review.prediction_id!);
       if (!prediction || prediction.run_id !== run._id || prediction.episode_index !== review.episode_index || prediction.content_sha256 !== review.prediction_sha256 || !prediction.source_revision || review.taxonomy_hash !== run.taxonomy_hash) throw new Error("Review prediction attribution or media revision is missing or inconsistent");
       if (!review.episode_duration_s || review.episode_duration_s !== prediction.episode_duration_s) throw new Error("Review video duration does not match its prediction");
-      if (validateStageLabel(spec.spec as ExportedStageSpec, review.label!, review.episode_duration_s).length) throw new Error("Gold review fails semantic validation");
+      const issues = hasV2SummaryCoverage(review)
+        ? validateStageOutcomeReview(normalizeTrajectoryReviewSpec(spec.spec.trajectory, spec.task, spec.taxonomy_version), review.label!, review.episode_duration_s)
+        : validateStageLabel(spec.spec as ExportedStageSpec, review.label!, review.episode_duration_s);
+      if (issues.length) throw new Error("Gold review fails semantic validation");
       rows.push({ episode_index: review.episode_index, review_id: review._id, prediction_id: prediction._id,
         source_revision: prediction.source_revision, label: trajectoryFromReview(review.label!),
         // Keep the canonical payload lossless while distinguishing model text
@@ -83,24 +95,27 @@ export const scores = query({
   args: { benchmark_id: v.id("labelingBenchmarks") },
   handler: (ctx, args) => ctx.db.query("labelingScores").withIndex("by_benchmark", (q) => q.eq("benchmark_id", args.benchmark_id)).order("desc").take(100),
 });
-type SummaryLabel = { max_stage: { stage_index: number }; final_state_id: string; primary_failure: { failure_mode_id: string }; attempt_count: number; task_success: boolean };
+type SummaryLabel = { schema_version?: string; max_stage: { stage_index: number }; final_state_id?: string; primary_failure: { failure_mode_id: string }; attempt_count: number; task_success: boolean };
 export function scoreSummaries(pairs: { gold: SummaryLabel; prediction: SummaryLabel }[]) {
   if (!pairs.length) throw new Error("Cannot score an empty benchmark");
+  const v2 = pairs[0].gold.schema_version === "trajectory-label/v2";
   let stage = 0, final = 0, failure = 0, attempts = 0, success = 0, absoluteStageError = 0;
   for (const { gold, prediction } of pairs) {
     for (const label of [gold, prediction]) {
+      if ((label.schema_version === "trajectory-label/v2") !== v2 ||
+          (label.schema_version !== undefined && !["trajectory-label/v1", "trajectory-label/v2"].includes(label.schema_version))) throw new Error("Cannot mix label protocols in a benchmark");
       if (!Number.isInteger(label.max_stage?.stage_index) || !Number.isInteger(label.attempt_count) ||
-          typeof label.final_state_id !== "string" || typeof label.primary_failure?.failure_mode_id !== "string" || typeof label.task_success !== "boolean") throw new Error("Malformed trajectory summary");
+          (v2 ? "final_state_id" in label : typeof label.final_state_id !== "string") || typeof label.primary_failure?.failure_mode_id !== "string" || typeof label.task_success !== "boolean") throw new Error("Malformed trajectory summary");
     }
     stage += Number(gold.max_stage.stage_index === prediction.max_stage.stage_index);
-    final += Number(gold.final_state_id === prediction.final_state_id);
+    if (!v2) final += Number(gold.final_state_id === prediction.final_state_id);
     failure += Number(gold.primary_failure.failure_mode_id === prediction.primary_failure.failure_mode_id);
     attempts += Number(gold.attempt_count === prediction.attempt_count);
     success += Number(gold.task_success === prediction.task_success);
     absoluteStageError += Math.abs(gold.max_stage.stage_index - prediction.max_stage.stage_index);
   }
-  return { protocol: "trajectory-summary-agreement/v1", n: pairs.length, stage_exact: stage,
-    final_exact: final, failure_exact: failure, attempts_exact: attempts,
+  return { protocol: v2 ? "trajectory-summary-agreement/v2" : "trajectory-summary-agreement/v1", n: pairs.length, stage_exact: stage,
+    ...(!v2 ? { final_exact: final } : {}), failure_exact: failure, attempts_exact: attempts,
     outcome_conditioned_success_exact: success, stage_mae: absoluteStageError / pairs.length,
     event_timing_scored: false, promotion_eligible: false };
 }

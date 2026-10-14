@@ -14,9 +14,9 @@ from pathlib import Path
 import sys
 
 TASKS = {
-    "routing_d1": ("routing_d1_v1", "v4", ("v2", "v3", "v4")),
-    "marker_d2": ("marker_d2_v4", "v6", ("v5", "v6")),
-    "square_d2": ("square_d2_v3", "v5", ("v4", "v5")),
+    "routing_d1": ("routing_d1_v1", "v5", ("v4", "v5")),
+    "marker_d2": ("marker_d2_v4", "v7", ("v6", "v7")),
+    "square_d2": ("square_d2_v3", "v6", ("v5", "v6")),
 }
 
 
@@ -68,9 +68,16 @@ def main():
     # the legacy adapter fixture. Its single preferred success state must still
     # be valid; trajectory-aware consumers use the full successDefinition.
     spec["failure_modes"] = [item["id"] for item in definition["failureModes"]]
-    spec["final_states"] = [item["id"] for item in definition["finalStates"]]
-    if spec["success_final_state"] not in definition["successDefinition"]["successfulFinalStateIds"]:
-        raise ValueError("Choose an explicit compatible adapter success_final_state for this revision")
+    if definition["definitionSchemaVersion"] == "trajectory-task/v2":
+        for key in ("final_states", "success_final_state", "final_state_field"):
+            del spec[key]
+        spec["editable_fields"].remove("final_state")
+        for key in ("final_state_requires_gates", "final_state_requires_min_stage"):
+            del spec["constraints"][key]
+    else:
+        spec["final_states"] = [item["id"] for item in definition["finalStates"]]
+        if spec["success_final_state"] not in definition["successDefinition"]["successfulFinalStateIds"]:
+            raise ValueError("Choose an explicit compatible adapter success_final_state for this revision")
     spec["trajectory"] = {
         "adapter_version": "trajectory-review/v1",
         "task_definition": definition,
@@ -81,7 +88,10 @@ def main():
     }
     spec["taxonomy_hash"] = codec.canonical_digest(spec)
     if args.check:
-        saved = json.loads((root / f"sandbox/data/{args.task}_{version}.spec.json").read_text())
+        path = root / f"data/stage-review/{args.task}_{version}.spec.json"
+        if not path.exists():
+            path = root / f"sandbox/data/{args.task}_{version}.spec.json"
+        saved = json.loads(path.read_text())
         if saved != spec:
             raise SystemExit(f"{args.task} preview differs from its source definition or response schema")
         print(f"{args.task}/{version} preview matches the SIR definition, generated response schema, and content hashes.")

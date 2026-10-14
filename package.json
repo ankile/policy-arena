@@ -18,6 +18,7 @@
     "build:playground": "tsc -b && tsc -p tsconfig.sandbox.json --noEmit && vite build --mode playground",
     "lint": "eslint .",
     "test": "bun test",
+    "stage-review:release": "bun scripts/stage_review_release.ts",
     "preview": "vite preview",
     "build:release": "tsc -b && vite build --config vite.release.config.ts",
     "package:release": "bun scripts/package_release.ts"

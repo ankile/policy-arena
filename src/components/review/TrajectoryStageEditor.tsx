@@ -20,10 +20,11 @@ export function TrajectoryStageEditor(props: StageLabelFormProps & { video?: Rea
   const failureMode = task.failureModes.find((item) => item.id === row.failure_mode);
   const noFailure = task.successDefinition.noFailureModeId;
   const policyFrames = policyFrameCount(props.episodeDurationS, spec.fps);
-  const finalState = task.finalStates.find((item) => item.id === row.final_state);
+  const hasEndStates = task.definitionSchemaVersion === "trajectory-task/v1";
+  const finalState = task.finalStates?.find((item) => item.id === row.final_state);
   const endStates = row.task_success === true
-    ? task.finalStates.filter((item) => task.successDefinition.successfulFinalStateIds.includes(item.id))
-    : task.finalStates;
+    ? (task.finalStates ?? []).filter((item) => task.successDefinition.successfulFinalStateIds!.includes(item.id))
+    : (task.finalStates ?? []);
   const incompatibleEnd = !!finalState && !endStates.some((item) => item.id === finalState.id);
   const outcomeIssues = props.violations.filter((issue) => issue.fields.some((field) => ["task_success", "final_state", "failure_mode"].includes(field)));
   const [choice, setChoice] = useState<string | null>(null);
@@ -147,7 +148,7 @@ export function TrajectoryStageEditor(props: StageLabelFormProps & { video?: Rea
           <select aria-label="Primary failure mode" aria-describedby={row.task_success === false && failureMode?.id !== noFailure && failureMode ? "primary-failure-description" : undefined} className={`${input} mt-2`} disabled={blocked || row.task_success !== false}
             value={row.task_success === false && failureMode?.id !== noFailure ? failureMode?.id ?? "" : ""}
             onChange={(event) => remember({ ...row, failure_mode: event.target.value }, props.selectedEventKey ?? null, "Primary failure mode updated.")}>
-            <option value="">Choose the main reason…</option>{task.failureModes.filter((item) => item.id !== noFailure).map((item) => <option key={item.id} value={item.id}>{endStateTitle(item.id)}</option>)}
+            <option value="">Choose the main reason…</option>{task.failureModes.filter((item) => item.id !== noFailure).map((item) => <option key={item.id} value={item.id}>{item.name ?? endStateTitle(item.id)}</option>)}
           </select>
         </label>
         {row.task_success === false && failureMode && failureMode.id !== noFailure && <details className="text-sm">
@@ -155,7 +156,7 @@ export function TrajectoryStageEditor(props: StageLabelFormProps & { video?: Rea
           <p id="primary-failure-description" className="mt-2 text-ink-muted">{failureMode.description}</p>
         </details>}
       </>}
-      <label className="block text-sm font-medium">How did the episode end?
+      {hasEndStates && <><label className="block text-sm font-medium">How did the episode end?
         <select className={`${input} mt-2`} aria-label="End state" aria-describedby={[finalState ? "episode-end-description" : "", row.task_success === true ? "episode-end-options" : ""].filter(Boolean).join(" ") || undefined} aria-invalid={incompatibleEnd || undefined} value={finalState?.id ?? ""} disabled={blocked}
           onChange={(e) => remember({ ...row, final_state: e.target.value }, props.selectedEventKey ?? null, "End state updated.")}>
           <option value="">Choose the end state…</option>
@@ -170,6 +171,7 @@ export function TrajectoryStageEditor(props: StageLabelFormProps & { video?: Rea
         <summary className="cursor-pointer text-teal">End state definition</summary>
         <p id="episode-end-description" className="mt-2 text-ink-muted">{finalState.description}</p>
       </details>}
+      </>}
       {outcomeIssues.length > 0 && <div className="rounded-lg bg-gold-light p-3 text-sm" aria-label="Result checklist">{outcomeIssues.map((issue, index) => <p key={index}>{issue.message}</p>)}</div>}
       <div className="border-t border-warm-200" />
       {selected && <details><summary className="text-sm text-teal cursor-pointer">Attempt for this mark · {Number.isFinite(attempt) ? attempt : "unset"}</summary>

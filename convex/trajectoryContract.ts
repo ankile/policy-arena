@@ -5,10 +5,21 @@
  * Portal source SHA-256: 2d2a45ba1b80e1af8f62d86bb946ae8dfbf41206c6feaa1909b86bb0bfbbbfd0
  */
 export const TRAJECTORY_LABEL_SCHEMA_VERSION = "trajectory-label/v1";
+export const CURRENT_TRAJECTORY_LABEL_SCHEMA_VERSION = "trajectory-label/v2";
+export function trajectoryLabelVersion(task: TrajectoryTaskDefinition) {
+  return task.definitionSchemaVersion === "trajectory-task/v2"
+    ? CURRENT_TRAJECTORY_LABEL_SCHEMA_VERSION : TRAJECTORY_LABEL_SCHEMA_VERSION;
+}
 
 export type TaskDefinitionItem = {
   id: string;
   description: string;
+  name?: string;
+};
+
+export type FailureModeDefinition = TaskDefinitionItem & {
+  terminal?: boolean;
+  actionOrder?: { prerequisiteActionId: string; laterActionIds: string[] };
 };
 
 export type StageDefinition = TaskDefinitionItem & {
@@ -28,7 +39,7 @@ export type KeyActionDefinition = TaskDefinitionItem & {
 };
 
 export type TrajectoryTaskDefinition = {
-  definitionSchemaVersion: "trajectory-task/v1";
+  definitionSchemaVersion: "trajectory-task/v1" | "trajectory-task/v2";
   taskId: string;
   taxonomyVersion: string;
   displayName: string;
@@ -36,7 +47,7 @@ export type TrajectoryTaskDefinition = {
   successCriteria: string[];
   successDefinition: {
     successfulStageIds: string[];
-    successfulFinalStateIds: string[];
+    successfulFinalStateIds?: string[];
     requiredKeyActionIds: string[];
     noFailureModeId: string;
   };
@@ -44,8 +55,8 @@ export type TrajectoryTaskDefinition = {
   evidenceViews: Array<TaskDefinitionItem & { caveats: string[] }>;
   stages: StageDefinition[];
   keyActions: KeyActionDefinition[];
-  failureModes: TaskDefinitionItem[];
-  finalStates: TaskDefinitionItem[];
+  failureModes: FailureModeDefinition[];
+  finalStates?: TaskDefinitionItem[];
   decisionRules: Array<{ id: string; rule: string }>;
   auditProcedure: string[];
 };
@@ -86,7 +97,7 @@ export type FailureEventObservation = TrajectoryEventOccurrence & {
 };
 
 export type CanonicalTrajectoryLabel = {
-  schema_version: typeof TRAJECTORY_LABEL_SCHEMA_VERSION;
+  schema_version: typeof TRAJECTORY_LABEL_SCHEMA_VERSION | typeof CURRENT_TRAJECTORY_LABEL_SCHEMA_VERSION;
   task_id: string;
   taxonomy_version: string;
   sample_id: string;
@@ -97,7 +108,7 @@ export type CanonicalTrajectoryLabel = {
   key_action_observations: KeyActionObservation[];
   failure_events: FailureEventObservation[];
   primary_failure: { failure_mode_id: string; time_s: number | null };
-  final_state_id: string;
+  final_state_id?: string;
   confidence: EvidenceConfidence;
   needs_human_review: boolean;
   review_reasons: string[];
@@ -182,7 +193,7 @@ export function parseCanonicalTrajectoryLabel(
   const maxStage = asRecord(root?.max_stage);
   const primaryFailure = asRecord(root?.primary_failure);
   if (
-    root?.schema_version !== TRAJECTORY_LABEL_SCHEMA_VERSION ||
+    !root || ![TRAJECTORY_LABEL_SCHEMA_VERSION, CURRENT_TRAJECTORY_LABEL_SCHEMA_VERSION].includes(String(root.schema_version)) ||
     !isString(root.task_id) ||
     !isString(root.taxonomy_version) ||
     !isString(root.sample_id) ||
@@ -200,7 +211,8 @@ export function parseCanonicalTrajectoryLabel(
     !primaryFailure ||
     !isString(primaryFailure.failure_mode_id) ||
     !(primaryFailure.time_s === null || isFiniteNumber(primaryFailure.time_s)) ||
-    !isString(root.final_state_id) ||
+    (root.schema_version === CURRENT_TRAJECTORY_LABEL_SCHEMA_VERSION
+      ? ("final_state_id" in root || "final_state" in root) : !isString(root.final_state_id)) ||
     !isConfidence(root.confidence) ||
     typeof root.needs_human_review !== "boolean" ||
     !Array.isArray(root.review_reasons) ||
@@ -216,9 +228,11 @@ export function validateTrajectoryTaskDefinition(value: unknown): string[] {
   const errors: string[] = [];
   const root = asRecord(value);
   if (!root) return ["Task definition is not a JSON object"];
-  if (root.definitionSchemaVersion !== "trajectory-task/v1") {
-    errors.push("definitionSchemaVersion must be trajectory-task/v1");
+  const v2 = root.definitionSchemaVersion === "trajectory-task/v2";
+  if (!["trajectory-task/v1", "trajectory-task/v2"].includes(String(root.definitionSchemaVersion))) {
+    errors.push("Unsupported trajectory task schema version");
   }
+  if (v2 && "finalStates" in root) errors.push("trajectory-task/v2 must not define finalStates");
   for (const key of ["taskId", "taxonomyVersion", "displayName", "objective"] as const) {
     if (typeof root[key] !== "string" || !String(root[key]).trim()) {
       errors.push(key + " must be a non-empty string");
@@ -232,7 +246,7 @@ export function validateTrajectoryTaskDefinition(value: unknown): string[] {
     "stages",
     "keyActions",
     "failureModes",
-    "finalStates",
+    ...(!v2 ? ["finalStates"] : []),
     "decisionRules",
   ] as const) {
     const collection = root[key];
@@ -266,6 +280,18 @@ export function validateTrajectoryTaskDefinition(value: unknown): string[] {
   const stageIds = new Set(collectionIds.get("stages") ?? []);
   const failureIds = new Set(collectionIds.get("failureModes") ?? []);
   const finalStateIds = new Set(collectionIds.get("finalStates") ?? []);
+  for (const item of Array.isArray(root.failureModes) ? root.failureModes : []) {
+    const mode = asRecord(item); if (!mode) continue;
+    if ("terminal" in mode && typeof mode.terminal !== "boolean") errors.push("failureModes.terminal must be boolean");
+    if (mode.actionOrder !== undefined) {
+      const order = asRecord(mode.actionOrder);
+      if (mode.terminal !== true || !order || typeof order.prerequisiteActionId !== "string" || !actionIds.has(order.prerequisiteActionId) ||
+        !Array.isArray(order.laterActionIds) || !order.laterActionIds.length ||
+        order.laterActionIds.some((id) => typeof id !== "string" || !actionIds.has(id) || id === order.prerequisiteActionId)) {
+        errors.push("failureModes.actionOrder must reference distinct declared actions on a terminal mode");
+      }
+    }
+  }
   const success = asRecord(root.successDefinition);
 
   const keyActions = Array.isArray(root.keyActions) ? root.keyActions : [];
@@ -296,7 +322,7 @@ export function validateTrajectoryTaskDefinition(value: unknown): string[] {
   } else {
     const referenceChecks: Array<[string, Set<string>, boolean]> = [
       ["successfulStageIds", stageIds, false],
-      ["successfulFinalStateIds", finalStateIds, false],
+      ...(!v2 ? [["successfulFinalStateIds", finalStateIds, false] as [string, Set<string>, boolean]] : []),
       ["requiredKeyActionIds", actionIds, true],
     ];
     for (const [key, allowed, allowEmpty] of referenceChecks) {
@@ -316,6 +342,7 @@ export function validateTrajectoryTaskDefinition(value: unknown): string[] {
     ) {
       errors.push("successDefinition.noFailureModeId must name a declared failure mode");
     }
+    if (v2 && "successfulFinalStateIds" in success) errors.push("trajectory-task/v2 must not define successfulFinalStateIds");
   }
   return errors;
 }
@@ -357,8 +384,10 @@ export function validateTrajectoryLabel(value: unknown, task: TrajectoryTaskDefi
   const root = asRecord(value);
   if (!root) return ["Response is not a JSON object"];
   const errors: string[] = [];
-  if (root.schema_version !== TRAJECTORY_LABEL_SCHEMA_VERSION) {
-    errors.push(`schema_version must be ${TRAJECTORY_LABEL_SCHEMA_VERSION}`);
+  const v2 = task.definitionSchemaVersion === "trajectory-task/v2";
+  const expectedVersion = trajectoryLabelVersion(task);
+  if (root.schema_version !== expectedVersion) {
+    errors.push(`schema_version must be ${expectedVersion}`);
   } else if (!parseCanonicalTrajectoryLabel(root)) {
     errors.push("response is missing or mistypes one or more required trajectory-label/v1 fields");
   }
@@ -463,18 +492,21 @@ export function validateTrajectoryLabel(value: unknown, task: TrajectoryTaskDefi
       errors.push("primary_failure time must be null for the no-failure ID");
     }
   } else nonnegativeTime(primary.time_s, "primary_failure.time_s", errors);
-  const finalIds = new Set(task.finalStates.map((state) => state.id));
-  if (!finalIds.has(String(root.final_state_id))) errors.push("final_state_id is undeclared");
+  const finalIds = new Set(task.finalStates?.map((state) => state.id));
+  if (!v2 && !finalIds.has(String(root.final_state_id))) errors.push("final_state_id is undeclared");
+  if (v2 && ("final_state_id" in root || "final_state" in root)) errors.push("trajectory-label/v2 must not contain an end-state field");
   const occurredIds = new Set(actions.filter((value) => asRecord(value)?.occurred === true).map((value) => String(asRecord(value)?.action_id)));
   const success = task.successDefinition;
   const verifiedSuccess = success.successfulStageIds.includes(maxId) &&
-    success.successfulFinalStateIds.includes(String(root.final_state_id)) &&
+    (v2 || success.successfulFinalStateIds!.includes(String(root.final_state_id))) &&
     success.requiredKeyActionIds.every((id) => occurredIds.has(id));
   const primaryId = primary?.failure_mode_id;
+  errors.push(...terminalFailureErrors(root, task));
+  if (v2 && primaryId === "unknown_failure_cause" && !(root.needs_human_review === true && Array.isArray(root.review_reasons) && root.review_reasons.length)) errors.push("unknown failure cause requires explicit human review");
   const primaryNoFailure = primaryId === noFailure;
   if (failureIds.has(String(primaryId))) {
     if (primaryNoFailure) {
-      if (!verifiedSuccess) errors.push("primary_failure no-failure ID requires verified success semantics");
+      if (!verifiedSuccess && !(v2 && root.needs_human_review === true && Array.isArray(root.review_reasons) && root.review_reasons.length)) errors.push("primary_failure no-failure ID requires verified success semantics");
     } else if (!failures.some((value) => {
       const event = asRecord(value);
       return event?.failure_mode_id === primaryId && timesClose(event?.time_s, primary?.time_s);
@@ -482,9 +514,45 @@ export function validateTrajectoryLabel(value: unknown, task: TrajectoryTaskDefi
   }
   if (typeof root.task_success !== "boolean") errors.push("task_success must be a boolean");
   else {
-    if (root.task_success !== (verifiedSuccess && primaryNoFailure)) errors.push("task_success conflicts with the task success definition");
+    if (!v2 && root.task_success !== (verifiedSuccess && primaryNoFailure)) errors.push("task_success conflicts with the task success definition");
     if (root.task_success === true && !primaryNoFailure) errors.push("a successful trajectory must use the no-failure ID");
     else if (root.task_success === false && primaryNoFailure) errors.push("an unsuccessful trajectory cannot use the no-failure ID");
+  }
+  return errors;
+}
+
+/** Positive chronology can prove a violation; unobserved is not proven absent. */
+function terminalFailureErrors(root: UnknownRecord, task: TrajectoryTaskDefinition): string[] {
+  const errors: string[] = [];
+  const events = (Array.isArray(root.failure_events) ? root.failure_events : []).map(asRecord).filter((item): item is UnknownRecord => item !== null);
+  const actions = new Map((Array.isArray(root.key_action_observations) ? root.key_action_observations : []).map(asRecord)
+    .filter((item): item is UnknownRecord => item !== null).map((item) => [item.action_id, item]));
+  const primary = asRecord(root.primary_failure);
+  const terminal: UnknownRecord[] = [];
+  for (const mode of task.failureModes.filter((item) => item.terminal === true)) {
+    const recorded = events.filter((item) => item.failure_mode_id === mode.id);
+    terminal.push(...recorded);
+    const order = mode.actionOrder;
+    if (order) {
+      const prerequisite = actions.get(order.prerequisiteActionId);
+      const earlier = prerequisite?.first_time_s;
+      for (const id of order.laterActionIds) {
+        const later = actions.get(id); const time = later?.first_time_s;
+        if (prerequisite?.occurred === true && later?.occurred === true && isFiniteNumber(earlier) && earlier >= 0 &&
+          isFiniteNumber(time) && time >= 0 && time < earlier - 1e-6 &&
+          !recorded.some((event) => isFiniteNumber(event.time_s) && event.time_s >= 0 && event.time_s <= time + 1e-6)) {
+          errors.push(`${mode.id} must be recorded: ${id} precedes ${order.prerequisiteActionId}`);
+        }
+      }
+    }
+  }
+  if (terminal.length) {
+    if (root.task_success !== false) errors.push("a terminal failure cannot be reported as success or recovered");
+    const timed = terminal.filter((event) => isFiniteNumber(event.time_s) && event.time_s >= 0).sort((a, b) => Number(a.time_s) - Number(b.time_s));
+    const first = timed[0];
+    if (first && (primary?.failure_mode_id !== first.failure_mode_id || !timesClose(primary?.time_s, first.time_s))) {
+      errors.push("primary_failure must be the first terminal failure, ahead of recoverable failures");
+    }
   }
   return errors;
 }

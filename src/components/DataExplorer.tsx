@@ -18,6 +18,7 @@ import {
 } from "../lib/dataset-classification";
 import OutcomeReview from "./OutcomeReview";
 import StageReview from "./StageReview";
+import { stageReviewTask } from "../../shared/stageReviewTasks";
 import { navigateToDataset } from "../lib/appNavigation";
 import { StatusBadge, StatusSelect } from "./StatusBadge";
 import { TaskFilterChips } from "./TaskFilterChips";
@@ -406,6 +407,7 @@ function DatasetDetail({
   readOnly: boolean;
 }) {
   const dataset = useQuery(api.datasets.getByRepo, { repo_id: repoId });
+  const releasedStageTask = stageReviewTask(dataset?.task);
   const viewer = useQuery(api.users.viewer);
   // Stage review is offered only for tasks with an exported live stage spec.
   const stageSpecs = useQuery(
@@ -557,6 +559,8 @@ function DatasetDetail({
       <StageReview
         repoId={repoId}
         task={dataset?.task}
+        fixedTaxonomyVersion={releasedStageTask?.version}
+        requireLiveTaxonomy={Boolean(releasedStageTask)}
         onExit={() => {
           setSelectedIndex(null);
           clearSearchParams("sstatus", "sconf", "sflag", "sarm", "schema", "prediction", "blind");

@@ -44,6 +44,7 @@ export function ReviewViewer({
   timelineMarkers,
   timelineMarkersDisabled,
   onTimelineMarkerSelect,
+  videoUrls,
 }: {
   datasetId: string;
   episode: ReviewEpisode;
@@ -74,6 +75,8 @@ export function ReviewViewer({
   timelineMarkers?: TimelineMarker[];
   timelineMarkersDisabled?: boolean;
   onTimelineMarkerSelect?: (id: string) => void;
+  /** Optional immutable source URLs for offline/reference comparisons. */
+  videoUrls?: Record<string, string>;
 }) {
   const videoRefs = useRef(new Map<string, HTMLVideoElement>());
   const seekTokenRef = useRef(0);
@@ -339,7 +342,7 @@ export function ReviewViewer({
             >
               <video
                 ref={setVideoRef(key)}
-                src={getVideoUrl(key, episode.perCamera[key].fileIndex, datasetId)}
+                src={videoUrls ? videoUrls[key] : getVideoUrl(key, episode.perCamera[key].fileIndex, datasetId)}
                 className={cropped ? "" : "w-full rounded-lg bg-warm-100"}
                 style={videoStyle}
                 muted

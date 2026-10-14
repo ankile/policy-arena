@@ -120,8 +120,9 @@ export function EvidencePanel({
           </p>
           <p className="text-ink-muted">{blind && !spec.failure_modes.includes(String(label[spec.failure_mode_field]))
             ? "Invalid failure value; unblind to inspect" : String(label[spec.failure_mode_field] ?? "—")}</p>
-          <p className="text-ink-muted">→ {blind && !spec.final_states.includes(String(label[spec.final_state_field]))
-            ? "Invalid final state; unblind to inspect" : String(label[spec.final_state_field] ?? "—")}</p>
+          {/* trajectory-task/v2 specs have no end state (empty final_state_field). */}
+          {spec.final_state_field && <p className="text-ink-muted">→ {blind && !spec.final_states.includes(String(label[spec.final_state_field]))
+            ? "Invalid final state; unblind to inspect" : String(label[spec.final_state_field] ?? "—")}</p>}
         </div>
       </div>
 

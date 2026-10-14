@@ -1,7 +1,7 @@
 {
   "task": "marker_d2",
   "lifecycle_task": "marker_d2",
-  "taxonomy_version": "trajectory-review/v1/marker_d2/v5",
+  "taxonomy_version": "trajectory-review/v1/marker_d2/v7",
   "ladder": {
     "header": "Historical maximum progress in any attempt; final state and task success are separate judgments.",
     "success_level": 6,
@@ -57,7 +57,7 @@
       },
       {
         "sid": 6,
-        "text": "The fully seated marker is released and retained by the holder.\nFull insertion depth is positively verified before release.\nThe jaws open and relinquish the marker; the holder retains it fully seated and upright.\nThe gripper moves clear, or recording ends after the jaws are visibly no longer clamping the marker while it stays seated.\nA partial insertion that is released does not establish S6.\nJaw opening while still clamping, a held fully seated marker, or an ambiguous final frame is insufficient.\nDo not invent gripper clearance when recording cuts off.",
+        "text": "The marker reaches the intended seated depth inside a holder hole. It may still be gripped.\nActual entry and visible depth establish full seating inside a holder hole.\nContinued grasp is allowed; jaw opening and clearance are not required.\nPartial engagement, contact outside the opening, or projection overlap is insufficient.\nDo not infer a seating timestamp from a supplied success outcome or expected future motion.",
         "gate_field": null,
         "gate_time_field": null,
         "gate_any_of": [],
@@ -67,45 +67,17 @@
   },
   "failure_modes": [
     "none",
-    "no_useful_approach",
-    "pregrasp_misalignment",
-    "pregrasp_yaw_misalignment",
-    "no_grasp_attempt",
-    "missed_grasp_after_alignment",
-    "unusable_grasp_no_tip_protrusion",
-    "end_pinch_grasp",
-    "marker_slipped_from_gripper",
-    "dropped_marker_during_transport",
-    "transport_orientation_wrong_for_insertion",
-    "uncompensated_grasp_angle",
-    "retreat_from_holder_after_contact",
-    "missed_holder_no_insertion",
-    "jammed_partial_insert",
-    "released_partial_insert_not_seated",
-    "timeout_holding_marker",
-    "holder_contact_no_insertion",
+    "grasp_not_established",
+    "grasp_lost",
+    "insertion_not_attempted",
+    "insertion_entry_blocked",
     "false_insertion",
-    "wrong_hole_partial_insert",
-    "marker_released_at_holder",
-    "marker_slipped_during_insertion",
-    "other"
+    "incomplete_insertion",
+    "placement_lost",
+    "unknown_failure_cause"
   ],
-  "final_states": [
-    "marker_on_table",
-    "marker_in_gripper_away_from_holder",
-    "marker_in_gripper_at_holder",
-    "marker_partially_in_holder_held",
-    "marker_partially_in_holder_released",
-    "marker_fully_seated_held",
-    "marker_fully_seated_released",
-    "marker_release_committed_at_cutoff",
-    "marker_dropped_off_table",
-    "unclear"
-  ],
-  "success_final_state": "marker_fully_seated_released",
   "released_field": "__trajectory_unused_release__",
   "stage_field": "max_stage",
-  "final_state_field": "final_state",
   "failure_mode_field": "failure_mode",
   "event_fields": [
     {
@@ -180,7 +152,6 @@
     "trajectory_identity",
     "max_stage",
     "max_stage_id",
-    "final_state",
     "failure_mode",
     "primary_failure_time_s",
     "attempt_count",
@@ -195,37 +166,29 @@
   ],
   "constraints": {
     "failure_mode_forbidden_stages": {},
-    "historical_event_failure_modes": {},
-    "final_state_requires_gates": {},
-    "final_state_requires_min_stage": {}
+    "historical_event_failure_modes": {}
   },
   "fps": 15,
   "trajectory": {
     "adapter_version": "trajectory-review/v1",
     "task_definition": {
-      "definitionSchemaVersion": "trajectory-task/v1",
+      "definitionSchemaVersion": "trajectory-task/v2",
       "taskId": "marker_d2",
-      "taxonomyVersion": "marker_d2/v5",
+      "taxonomyVersion": "marker_d2/v7",
       "displayName": "Marker · six positive milestones",
-      "objective": "Align for a marker grasp, establish a secure hold, lift clear of the table, orient the marker vertically over a holder hole, engage the hole, and release the fully seated marker. Track achieved milestones separately from the failure cause and final physical state.",
+      "objective": "Place the marker fully into a holder hole. Gripper release is optional.",
       "successCriteria": [
-        "The marker has visibly entered a holder hole and reached full seating depth.",
-        "The jaws visibly release the fully seated marker and the holder retains it upright.",
-        "The gripper moves clear, or recording cuts off only after the jaws visibly stop clamping the fully seated marker; do not infer release from intent or a supplied outcome.",
-        "Success is judged at the endpoint; later loss of an earlier seated-and-released state is a failure without erasing the achieved milestone."
+        "The marker enters a holder hole and reaches the intended full seating depth.",
+        "Correct seating remains established at the end. Continued gripper retention is allowed; release and clearance are not required.",
+        "A supplied human success remains authoritative if recording cutoff prevents visual verification. Report the evidence gap without inventing a seating timestamp. Captured descent alone does not prove visible base contact."
       ],
       "successDefinition": {
         "successfulStageIds": [
-          "seated_marker_released"
-        ],
-        "successfulFinalStateIds": [
-          "marker_fully_seated_released",
-          "marker_release_committed_at_cutoff"
+          "marker_fully_seated"
         ],
         "requiredKeyActionIds": [
           "enter_hole",
-          "reach_full_depth",
-          "open_jaws"
+          "reach_full_depth"
         ],
         "noFailureModeId": "none"
       },
@@ -345,19 +308,17 @@
           ]
         },
         {
+          "id": "marker_fully_seated",
           "index": 6,
-          "id": "seated_marker_released",
-          "name": "Release the fully seated marker",
-          "description": "The fully seated marker is released and retained by the holder.",
+          "name": "Fully seat the marker",
+          "description": "The marker reaches the intended seated depth inside a holder hole. It may still be gripped.",
           "entryCriteria": [
-            "Full insertion depth is positively verified before release.",
-            "The jaws open and relinquish the marker; the holder retains it fully seated and upright.",
-            "The gripper moves clear, or recording ends after the jaws are visibly no longer clamping the marker while it stays seated."
+            "Actual entry and visible depth establish full seating inside a holder hole.",
+            "Continued grasp is allowed; jaw opening and clearance are not required."
           ],
           "exclusions": [
-            "A partial insertion that is released does not establish S6.",
-            "Jaw opening while still clamping, a held fully seated marker, or an ambiguous final frame is insufficient.",
-            "Do not invent gripper clearance when recording cuts off."
+            "Partial engagement, contact outside the opening, or projection overlap is insufficient.",
+            "Do not infer a seating timestamp from a supplied success outcome or expected future motion."
           ]
         }
       ],
@@ -477,14 +438,14 @@
           "id": "enter_hole",
           "name": "Enter holder hole",
           "description": "The marker tip visibly enters a specific holder hole.",
-          "stageRelation": "Required for S5 hole engagement and S6 successful release.",
+          "stageRelation": "Required for S5 hole engagement and S6 full seating, independent of release.",
           "stageLinks": [
             {
               "stageId": "holder_hole_engaged",
               "relation": "required_for_entry"
             },
             {
-              "stageId": "seated_marker_released",
+              "stageId": "marker_fully_seated",
               "relation": "required_for_entry"
             }
           ]
@@ -493,10 +454,10 @@
           "id": "reach_full_depth",
           "name": "Reach full insertion depth",
           "description": "Visible geometry positively establishes full seating.",
-          "stageRelation": "Required before S6 release; full depth while held is recorded as an action within S5.",
+          "stageRelation": "Direct evidence of full seating; does not require release.",
           "stageLinks": [
             {
-              "stageId": "seated_marker_released",
+              "stageId": "marker_fully_seated",
               "relation": "required_for_entry"
             }
           ]
@@ -505,184 +466,59 @@
           "id": "open_jaws",
           "name": "Open gripper jaws",
           "description": "The gripper jaws visibly open or visibly begin to part from the marker. Report the first frame where the finger gap visibly grows, never an earlier frame of intent.",
-          "stageRelation": "Necessary but not sufficient for S6: the marker must be fully seated and actually relinquished.",
-          "stageLinks": [
-            {
-              "stageId": "seated_marker_released",
-              "relation": "required_for_entry"
-            }
-          ]
+          "stageRelation": "Optional follow-through observation; neither release nor clearance is required for success or seating.",
+          "stageLinks": []
         },
         {
           "id": "move_gripper_clear",
           "name": "Move gripper clear",
           "description": "The gripper retreats enough to test independent holder retention.",
-          "stageRelation": "Confirms independent retention after S6 release; omit when recording ends before retreat.",
-          "stageLinks": [
-            {
-              "stageId": "seated_marker_released",
-              "relation": "supports_entry"
-            }
-          ]
+          "stageRelation": "Optional follow-through observation; neither release nor clearance is required for success or seating.",
+          "stageLinks": []
         }
       ],
       "failureModes": [
         {
           "id": "none",
-          "description": "No terminal failure; use only for verified successful release with a retained fully seated endpoint."
+          "description": "No unresolved task failure; use for success. Recovered failure events may remain."
         },
         {
-          "id": "no_useful_approach",
-          "description": "No useful approach into the marker workspace."
+          "id": "grasp_not_established",
+          "description": "No secure control of the marker is established in the relevant grasp sequence. A missed close, momentary pinch, or immediate escape without sustained control belongs here, not grasp_lost. A later secure grasp recovers this event."
         },
         {
-          "id": "pregrasp_misalignment",
-          "description": "Approach geometry prevents a viable grasp."
+          "id": "grasp_lost",
+          "description": "The gripper establishes sustained control of the marker, then visibly loses it before correct placement. Excludes a momentary unsuccessful pinch, deliberate release, and loss of an already completed placement. A subsequent secure regrasp recovers this event."
         },
         {
-          "id": "pregrasp_yaw_misalignment",
-          "description": "Yaw misalignment prevents a viable grasp."
+          "id": "insertion_not_attempted",
+          "description": "Secure grasp is achieved, but no insertion attempt occurs before the recording ends. Use only if no more specific unrecovered grasp loss or placement failure is visible. This is an episode-end shortfall, not a diagnosis of why motion stopped."
         },
         {
-          "id": "no_grasp_attempt",
-          "description": "The gripper approaches but never executes a committed close."
-        },
-        {
-          "id": "missed_grasp_after_alignment",
-          "description": "A committed close after alignment fails to establish secure marker retention; do not use merely because a secure grasp fails to lift."
-        },
-        {
-          "id": "unusable_grasp_no_tip_protrusion",
-          "description": "The grasp is unusable for insertion because the marker tip does not protrude."
-        },
-        {
-          "id": "end_pinch_grasp",
-          "description": "The gripper pinches an end without establishing a secure insertion-usable grasp."
-        },
-        {
-          "id": "marker_slipped_from_gripper",
-          "description": "A retained marker gradually escapes before holder interaction."
-        },
-        {
-          "id": "dropped_marker_during_transport",
-          "description": "A retained marker drops during transport for a reason other than gradual slip."
-        },
-        {
-          "id": "transport_orientation_wrong_for_insertion",
-          "description": "The retained marker reaches useful transport but has an insertion-incompatible orientation."
-        },
-        {
-          "id": "uncompensated_grasp_angle",
-          "description": "A visible grasp-angle error is not corrected before holder interaction."
-        },
-        {
-          "id": "retreat_from_holder_after_contact",
-          "description": "The retained marker contacts the holder and then retreats without insertion."
-        },
-        {
-          "id": "missed_holder_no_insertion",
-          "description": "The retained marker reaches the holder vicinity but misses it without visible contact."
-        },
-        {
-          "id": "jammed_partial_insert",
-          "description": "The marker visibly enters partially and then jams."
-        },
-        {
-          "id": "released_partial_insert_not_seated",
-          "description": "A partial insertion is released and retained but never fully seated."
-        },
-        {
-          "id": "timeout_holding_marker",
-          "description": "The marker remains held at video end and no more specific visible causal failure applies."
-        },
-        {
-          "id": "holder_contact_no_insertion",
-          "description": "The retained marker touches the TOP holder face or top rim/edge without entering a hole."
+          "id": "insertion_entry_blocked",
+          "name": "Entry blocked (nothing entered)",
+          "description": "An insertion-directed push at the holder TOP face, hole mouth or rim is visibly blocked before any part of the marker tip enters a hole, for example because the tip and hole are misaligned. Mere approach or light incidental contact is not an insertion attempt. Excludes SIDE wall or adjacent TABLE pushing (false_insertion), and any verified hole entry (incomplete_insertion if advancement then stalls). Subsequent actual hole entry recovers this event."
         },
         {
           "id": "false_insertion",
-          "description": "The insertion occurs at a false location: SIDE holder contact or a downward push onto the TABLE beside the holder."
+          "description": "An insertion-like push is directed against the holder SIDE wall or down onto the TABLE beside the holder, rather than into its top hole-entry region; no hole entry occurs. This is false placement against the wrong surface, not a blocked attempt at the TOP face or hole rim (insertion_entry_blocked). Use observed contact geometry, not inferred robot belief. SIDE overlap cannot override a clear WRIST miss. Subsequent actual hole entry recovers this event.",
+          "name": "False insertion (wrong surface)"
         },
         {
-          "id": "wrong_hole_partial_insert",
-          "description": "The marker partially enters a holder hole other than the visible task target."
+          "id": "incomplete_insertion",
+          "description": "At least part of the marker tip is visibly inside a holder hole, but the marker gets stuck or visibly stops advancing before full seating. Require positive entry plus stalled/failed advancement, not top-face/rim contact without entry, a brief pause, or a recording that ends during continued insertion. 'Stuck' describes observed motion, not an inferred force or mechanical cause. Subsequent full seating recovers this event.",
+          "name": "Incomplete insertion (partway in, stuck)"
         },
         {
-          "id": "marker_released_at_holder",
-          "description": "The jaws release at the holder and the marker ends unretained without retained partial insertion."
+          "id": "placement_lost",
+          "description": "Correct full seating is positively established, then the object visibly leaves that placement before the recording ends. Release need not have occurred. Subsequent restored correct placement recovers this event."
         },
         {
-          "id": "marker_slipped_during_insertion",
-          "description": "The marker reaches holder contact or shallow entry, then slips or is pulled out before retained release."
-        },
-        {
-          "id": "other",
-          "description": "A directly visible failure not covered by a more specific declared mode."
-        }
-      ],
-      "finalStates": [
-        {
-          "id": "marker_on_table",
-          "description": "The marker rests on the table."
-        },
-        {
-          "id": "marker_in_gripper_away_from_holder",
-          "description": "The gripper retains the marker away from the holder."
-        },
-        {
-          "id": "marker_in_gripper_at_holder",
-          "description": "The gripper retains the marker at the holder."
-        },
-        {
-          "id": "marker_partially_in_holder_held",
-          "description": "The marker is partially inserted and still held."
-        },
-        {
-          "id": "marker_partially_in_holder_released",
-          "description": "The holder retains a released partial insertion."
-        },
-        {
-          "id": "marker_fully_seated_held",
-          "description": "The marker is fully seated and still held."
-        },
-        {
-          "id": "marker_fully_seated_released",
-          "description": "The holder retains a released fully seated marker."
-        },
-        {
-          "id": "marker_release_committed_at_cutoff",
-          "description": "At the final visible frame the marker is fully seated in a holder hole, the jaws have visibly begun to open and are no longer clamping it, and the recording ends before the gripper moves clear."
-        },
-        {
-          "id": "marker_dropped_off_table",
-          "description": "The marker has dropped out of the supported workspace."
-        },
-        {
-          "id": "unclear",
-          "description": "The final marker state cannot be determined."
+          "id": "unknown_failure_cause",
+          "description": "Failure is known but the video cannot distinguish an observable category. Assess at the final decisive frame, set needs_human_review=true, and explain the missing evidence; do not invent a cause."
         }
       ],
       "decisionRules": [
-        {
-          "id": "positive_progress_ladder",
-          "rule": "Each numbered stage is a positively achieved milestone, not an attempt or failure category. Timestamp the first evidence that its criteria are met. A failed episode whose maximum is S{k} for k < 6 is summarized as 'reached S{k}; failed to reach S{k+1}'. Do not assign S{k+1} merely because it was attempted. Keep the concrete causal failure enum separate from this progress summary."
-        },
-        {
-          "id": "historical_progress",
-          "rule": "Compute max_stage as the highest positively achieved stage across all attempts, not the final physical state. A later slip, drop, or loss of seating does not erase earlier progress. A failure after S6 means the completed result was later lost, not failure to reach a nonexistent S7. A recovered failure event does not by itself make the final outcome a failure."
-        },
-        {
-          "id": "supported_timestamps",
-          "rule": "Grasp and lift, or alignment and engagement, may share a timestamp if independently supported in that frame. Do not invent intermediate times or achievements to fill the ladder. Occlusion means not verified, not proof the milestone never happened: use the lower supported maximum, flag human review, and explain uncertain boundaries."
-        },
-        {
-          "id": "outcome_not_timestamp",
-          "rule": "If a human_outcome_anchor is supplied, retain it as authoritative binary outcome context, not as evidence of a stage or timestamp. Never invent alignment, grasp, lift, entry, release, or seating to satisfy it. If the visible milestones or endpoint cannot support its terminal semantics, flag the conflict for human review; do not hide it with coerced stage labels."
-        },
-        {
-          "id": "grasp_before_lift",
-          "rule": "S2 is secure retention even on the table. S3 additionally requires clear table clearance under gripper control. A miss remains at the highest earlier verified milestone; a sustained grasp followed by a failed lift reaches S2."
-        },
         {
           "id": "hard_wrist_veto",
           "rule": "Use SIDE for global motion and WRIST for local geometry. If usable WRIST never shows the holder, do not award S4 or S5 from SIDE overlap. A genuinely unusable view warrants uncertainty, not invented geometry."
@@ -692,44 +528,63 @@
           "rule": "S4 requires both upright insertion-compatible orientation and the retained marker tip over a specific holder hole. Vertical orientation elsewhere is not enough."
         },
         {
-          "id": "contact_surface_taxonomy",
-          "rule": "TOP holder face/rim contact without entry maps to holder_contact_no_insertion. SIDE holder contact or a downward push onto the TABLE beside the holder maps to false_insertion. Neither establishes S5. Preserve any earlier genuine alignment."
-        },
-        {
           "id": "entry_geometry",
-          "rule": "S5 requires positive tip entry into a specific holder hole. A partial entry followed by a jam or release still achieves S5; partial-release and fully-seated-held states are endpoint/action distinctions, not extra stages."
+          "rule": "S5 requires positive tip entry into a specific holder hole. Partial entry followed by a jam or release still achieves S5. Only verified full seating achieves S6, whether held or released."
         },
         {
-          "id": "release_after_seating",
-          "rule": "S6 requires visible full-depth seating followed by actual loss of jaw retention while the holder supports the marker. Timestamp the first frame where release and full seated retention are verified. A fully seated marker still clamped is S5, not S6."
+          "id": "positive_progress",
+          "rule": "Stages are achieved milestones, not intentions or failures. Preserve historical maximum despite later loss. Emit only supported transitions; equal times and forward jumps are allowed. Do not invent skipped stages."
         },
         {
-          "id": "terminal_cutoff_commitment",
-          "rule": "Preserve the existing narrow cutoff allowance: S6 may be verified before gripper clearance only if multiple terminal frames establish full seating, visible jaw parting that stops clamping, and stable upright holder retention. Use marker_release_committed_at_cutoff, report move_gripper_clear as absent, and never substitute opening intent for actual relinquishment."
+          "id": "human_outcome",
+          "rule": "A supplied human binary outcome is authoritative, but proves no stage, action, or timestamp. If success is known but completion is unseen, including recording cutoff, preserve supported observations and request review. Never manufacture seating or automatically rewrite historical human outcomes."
+        },
+        {
+          "id": "insertion_failure_boundaries",
+          "rule": "Separate insertion failures by observed contact and entry: no insertion-directed attempt = insertion_not_attempted; attempted push at the holder TOP/hole rim with zero entry = insertion_entry_blocked; SIDE wall or adjacent TABLE push = false_insertion; verified partial hole entry followed by stuck/stalled advancement = incomplete_insertion. A single no-entry event cannot be both blocked and false insertion. If contact surface or entry depth is unresolved, request review instead of guessing. Neither no-entry category establishes S5; later loss never erases earlier real entry."
+        },
+        {
+          "id": "failure_selection",
+          "rule": "Keep every distinct observable failure, including recovered events. For failure choose the earliest specific event that remains unrecovered. A subsequent positive achievement of the failed requirement recovers it; another attempt alone does not. Generic no-attempt/unknown categories apply only without a specific unrecovered event. Success uses none. Break equal-onset ties by failureModes order, never by guessed causality."
+        },
+        {
+          "id": "failure_timing",
+          "rule": "Use first visible onset for a missed attempt or loss. For no-attempt, incomplete-placement, or unknown modes only established when recording ends, use the final decisive frame as assessment time, not causal onset. Primary mode/time must match an event."
         },
         {
           "id": "uncertainty",
-          "rule": "Audit the final WRIST sequence, not one frame. If full depth or loss of clamping cannot be verified, keep the lower supported stage and request review. Do not promote the stage solely to match a supplied human outcome."
+          "rule": "Occlusion is not evidence of failed grasp, absent engagement, or a drop. Use unknown_failure_cause and request review for unresolved failure evidence. Position and rotation misalignment are not separate categories."
+        },
+        {
+          "id": "attempts",
+          "rule": "A new attempt begins after the prior manipulation sequence is abandoned and a fresh acquisition sequence starts. Local insertion corrections, pauses, and occlusion do not create attempts. The planned second routing grasp belongs to the same two-clip attempt."
+        },
+        {
+          "id": "time_evidence",
+          "rule": "Timestamp the earliest supported achievement, not the start of trying. Secure grasp requires sustained object control across a visible interval, not a fixed number of sampled frames or momentary pinch. Use coupled motion and retention; request review if sparse evidence cannot resolve it."
+        },
+        {
+          "id": "no_end_state",
+          "rule": "No final-state enum or end-state output field exists in this protocol. Judge outcome from physical success criteria and any supplied human outcome. Release is optional. Later loss of correct placement before recording ends invalidates visually judged success."
         }
       ],
       "auditProcedure": [
-        "Locate the marker, gripper, holder, and relevant hole in synchronized SIDE and WRIST evidence.",
-        "Segment chronological attempts and preserve achieved progress across later slips or retries.",
-        "Independently verify alignment, secure grasp, clear lift, local vertical insertion alignment, hole engagement, and fully seated release.",
-        "Record every declared key action independently, including full seating while held and unsuccessful jaw openings; do not expose these as additional human stages.",
-        "Inspect the final second for actual release and retained full seating; use the narrowly defined cutoff state only when all evidence gates hold.",
-        "Choose the physical final state and causal failure enum separately from the highest stage. For a failed episode below S6, name the next unreached milestone; request review for unobserved boundaries.",
-        "Cross-check stage/action identities, transition times, failure onset, endpoint, success, and any human-outcome conflict."
+        "Locate the object and target in synchronized views; keep physical clip identities fixed.",
+        "Record achieved milestones and supported timestamps; later loss does not erase history.",
+        "Record independent key actions, including optional releases.",
+        "Record observable failures and positive recovery evidence; select the earliest unrecovered specific failure when unsuccessful.",
+        "Judge correct placement without requiring release. Preserve supplied human outcome and flag missing visual evidence.",
+        "Return trajectory-label/v2 without end-state fields. Check IDs, timing, stage/action consistency, and primary/event agreement."
       ]
     },
-    "task_definition_sha256": "0ce0ab5deedae077f3a42b20c4bb307738cc784c75e6896178de0d5670c9d482",
+    "task_definition_sha256": "4dfbd4a1cf35e8938cf1c8a5c01bedb57739c3e3834785758e448b6a5e4f86d4",
     "response_schema": {
       "type": "OBJECT",
       "properties": {
         "schema_version": {
           "type": "STRING",
           "enum": [
-            "trajectory-label/v1"
+            "trajectory-label/v2"
           ]
         },
         "task_id": {
@@ -741,7 +596,7 @@
         "taxonomy_version": {
           "type": "STRING",
           "enum": [
-            "marker_d2/v5"
+            "marker_d2/v7"
           ]
         },
         "sample_id": {
@@ -769,7 +624,7 @@
                 "marker_lifted",
                 "marker_aligned_for_insertion",
                 "holder_hole_engaged",
-                "seated_marker_released"
+                "marker_fully_seated"
               ]
             },
             "stage_index": {
@@ -802,7 +657,7 @@
                   "marker_lifted",
                   "marker_aligned_for_insertion",
                   "holder_hole_engaged",
-                  "seated_marker_released"
+                  "marker_fully_seated"
                 ],
                 "description": "Declared stage ID before the transition"
               },
@@ -820,7 +675,7 @@
                   "marker_lifted",
                   "marker_aligned_for_insertion",
                   "holder_hole_engaged",
-                  "seated_marker_released"
+                  "marker_fully_seated"
                 ],
                 "description": "Declared stage ID positively reached by the transition"
               },
@@ -960,28 +815,14 @@
                 "type": "STRING",
                 "enum": [
                   "none",
-                  "no_useful_approach",
-                  "pregrasp_misalignment",
-                  "pregrasp_yaw_misalignment",
-                  "no_grasp_attempt",
-                  "missed_grasp_after_alignment",
-                  "unusable_grasp_no_tip_protrusion",
-                  "end_pinch_grasp",
-                  "marker_slipped_from_gripper",
-                  "dropped_marker_during_transport",
-                  "transport_orientation_wrong_for_insertion",
-                  "uncompensated_grasp_angle",
-                  "retreat_from_holder_after_contact",
-                  "missed_holder_no_insertion",
-                  "jammed_partial_insert",
-                  "released_partial_insert_not_seated",
-                  "timeout_holding_marker",
-                  "holder_contact_no_insertion",
+                  "grasp_not_established",
+                  "grasp_lost",
+                  "insertion_not_attempted",
+                  "insertion_entry_blocked",
                   "false_insertion",
-                  "wrong_hole_partial_insert",
-                  "marker_released_at_holder",
-                  "marker_slipped_during_insertion",
-                  "other"
+                  "incomplete_insertion",
+                  "placement_lost",
+                  "unknown_failure_cause"
                 ],
                 "description": "Declared failure-mode ID"
               },
@@ -1022,28 +863,14 @@
               "type": "STRING",
               "enum": [
                 "none",
-                "no_useful_approach",
-                "pregrasp_misalignment",
-                "pregrasp_yaw_misalignment",
-                "no_grasp_attempt",
-                "missed_grasp_after_alignment",
-                "unusable_grasp_no_tip_protrusion",
-                "end_pinch_grasp",
-                "marker_slipped_from_gripper",
-                "dropped_marker_during_transport",
-                "transport_orientation_wrong_for_insertion",
-                "uncompensated_grasp_angle",
-                "retreat_from_holder_after_contact",
-                "missed_holder_no_insertion",
-                "jammed_partial_insert",
-                "released_partial_insert_not_seated",
-                "timeout_holding_marker",
-                "holder_contact_no_insertion",
+                "grasp_not_established",
+                "grasp_lost",
+                "insertion_not_attempted",
+                "insertion_entry_blocked",
                 "false_insertion",
-                "wrong_hole_partial_insert",
-                "marker_released_at_holder",
-                "marker_slipped_during_insertion",
-                "other"
+                "incomplete_insertion",
+                "placement_lost",
+                "unknown_failure_cause"
               ]
             },
             "time_s": {
@@ -1058,22 +885,6 @@
             "time_s"
           ],
           "description": "Most specific failure explaining the final outcome"
-        },
-        "final_state_id": {
-          "type": "STRING",
-          "enum": [
-            "marker_on_table",
-            "marker_in_gripper_away_from_holder",
-            "marker_in_gripper_at_holder",
-            "marker_partially_in_holder_held",
-            "marker_partially_in_holder_released",
-            "marker_fully_seated_held",
-            "marker_fully_seated_released",
-            "marker_release_committed_at_cutoff",
-            "marker_dropped_off_table",
-            "unclear"
-          ],
-          "description": "Declared physical state at the final visible frame"
         },
         "confidence": {
           "type": "STRING",
@@ -1112,7 +923,6 @@
         "key_action_observations",
         "failure_events",
         "primary_failure",
-        "final_state_id",
         "confidence",
         "needs_human_review",
         "review_reasons",
@@ -1121,5 +931,5 @@
       "description": "Canonical task-generic trajectory label"
     }
   },
-  "taxonomy_hash": "30c22b9135914327c0de6699ed904c75b0f864ea8f3f8f0ac95bbfdb0de3e485"
+  "taxonomy_hash": "06b9efb755547e090587d87dd904eb60a6e53539a95494f4a922489a4b599248"
 }

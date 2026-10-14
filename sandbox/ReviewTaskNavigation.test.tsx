@@ -19,10 +19,10 @@ for (const task of ["marker_d2", "square_d2", "routing_d1"] as const) test(`${ta
   expect(guide.open).toBe(false);
   fireEvent.click(guide.querySelector("summary")!);
   expect(guide.open).toBe(true);
-  const causes = within(view.getByRole("region", { name: "Failure causes" }));
+  const causes = within(view.getByRole("region", { name: "Observable failures" }));
   for (const item of spec.trajectory.task_definition.failureModes) expect(causes.getByText(item.description)).toBeTruthy();
-  const endpoints = within(view.getByRole("region", { name: "Physical end states" }));
-  for (const item of spec.trajectory.task_definition.finalStates) expect(endpoints.getByText(item.description)).toBeTruthy();
+  expect(view.queryByRole("region", { name: "Physical end states" })).toBeNull();
+  if (task === "routing_d1") expect(view.getByText("Seat LEFT before attempting RIGHT; both must stay seated. Release is optional.")).toBeTruthy();
 });
 
 describe("playground task navigation", () => {
@@ -57,7 +57,7 @@ describe("playground task navigation", () => {
       fireEvent.click(selected);
       expect(selections).toHaveLength(0);
       const dataset = view.queryByRole("combobox", { name: "Dataset" }) as HTMLSelectElement | null;
-      expect(dataset?.value ?? null).toBe(current.task === "routing_d1" ? current.dataset : null);
+      expect(dataset?.value).toBe(current.dataset);
     });
   }
 
@@ -66,7 +66,7 @@ describe("playground task navigation", () => {
     const selections: ReviewSample[] = [];
     const view = render(<ReviewTaskNavigation current={routing} onSelect={(sample) => selections.push(sample)} />);
     const dataset = view.getByRole("combobox", { name: "Dataset" });
-    expect(within(dataset).getAllByRole("option")).toHaveLength(2);
+    expect(within(dataset).getAllByRole("option")).toHaveLength(4);
     fireEvent.change(dataset, { target: { value: routingManual.dataset } });
     expect(selections).toEqual([routingManual]);
     for (const sample of [routing, routingManual]) {

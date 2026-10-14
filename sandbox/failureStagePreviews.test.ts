@@ -4,18 +4,17 @@ import { blankTrajectoryReview, trajectoryTaskDefinitionDigest } from "../convex
 import { prepareStageOutcomeLabel, validateStageOutcomeReview } from "../convex/stageOutcomeReview";
 import { normalizeStageSpec } from "../src/lib/stage-spec";
 import { patchStageMark } from "../src/lib/stageTimeline";
-import { latestStagePreviews } from "./localStagePreviews";
-import previousMarker from "./data/marker_d2_v5.spec.json";
-import previousSquare from "./data/square_d2_v4.spec.json";
-import previousRouting from "./data/routing_d1_v3.spec.json";
+// Freeze this regression suite to the v1 failure-only release.
+import marker from "../data/stage-review/marker_d2_v6.spec.json";
+import square from "../data/stage-review/square_d2_v5.spec.json";
+import routing from "../data/stage-review/routing_d1_v4.spec.json";
+const latestStagePreviews = { marker_d2: marker, square_d2: square, routing_d1: routing };
 
-for (const [previous, spec] of [[previousMarker, latestStagePreviews.marker_d2], [previousSquare, latestStagePreviews.square_d2], [previousRouting, latestStagePreviews.routing_d1]]) {
+for (const spec of Object.values(latestStagePreviews)) {
   describe(spec.taxonomy_version, () => {
     const schema = normalizeStageSpec(spec).trajectory!;
     const definition = schema.task_definition;
-    test("failure revisions preserve stages/actions and keep both hashes and envelope vocabularies coherent", async () => {
-      expect(definition.stages).toEqual(previous.trajectory.task_definition.stages);
-      expect(definition.keyActions).toEqual(previous.trajectory.task_definition.keyActions);
+    test("retained predecessors keep hashes and envelope vocabularies coherent", async () => {
       expect(spec.failure_modes).toEqual(definition.failureModes.map((mode) => mode.id));
       expect(spec.final_states).toEqual(definition.finalStates.map((state) => state.id));
       expect(definition.successDefinition.successfulFinalStateIds).toContain(spec.success_final_state);

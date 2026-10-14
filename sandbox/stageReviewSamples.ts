@@ -1,4 +1,5 @@
 import { latestStagePreviews, type PreviewTask } from "./localStagePreviews";
+import pilot from "./data/stage-reference-pilot.json";
 
 export type ReviewSample = {
   task: PreviewTask;
@@ -18,6 +19,14 @@ export const reviewSamples: readonly ReviewSample[] = [
   { task: "marker_d2", taskName: "Marker", datasetName: "R5 · repeat evaluation", dataset: "ankile/real01b-md2-r5-repeat-base-dp-filmtiidk4-c200k-n32-s2026070704", prediction: "legacy", schema: latestStagePreviews.marker_d2.taxonomy_version },
   { task: "square_d2", taskName: "Square nut", datasetName: "R5 · redo evaluation", dataset: "ankile/real01b-square-d2-r5-redo-base-dp-filmtiidk4-c200k-n32-s2026081801", prediction: "legacy", schema: latestStagePreviews.square_d2.taxonomy_version },
   { task: "routing_d1", taskName: "Routing", datasetName: "UMI-relative · 15-arm evaluation", dataset: "ankile/real01b-routing-d1-umirel-lineage-15arm-heldout-sobol50-s2026090701", prediction: "legacy", schema: latestStagePreviews.routing_d1.taxonomy_version },
+];
+
+export const allReviewSamples: readonly ReviewSample[] = [...reviewSamples,
+  ...pilot.sources.filter((source) => !reviewSamples.some((sample) => sample.dataset === source.repo))
+    .map((source): ReviewSample => ({task: source.task as PreviewTask,
+      taskName: source.task === "marker_d2" ? "Marker" : source.task === "square_d2" ? "Square nut" : "Routing",
+      datasetName: source.name, dataset: source.repo, prediction: "legacy",
+      schema: latestStagePreviews[source.task as PreviewTask].taxonomy_version})),
 ];
 
 export function reviewSampleHref(sample: ReviewSample) {

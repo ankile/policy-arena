@@ -1,5 +1,5 @@
 import {
-  TRAJECTORY_LABEL_SCHEMA_VERSION,
+  trajectoryLabelVersion,
   validateTrajectoryLabel,
   validateTrajectoryTaskDefinition,
   type TrajectoryTaskDefinition,
@@ -31,7 +31,7 @@ export function trajectoryFromReview(row: StageLabelRow): Record<string, unknown
     ...identity,
     max_stage: { stage_id: row.max_stage_id, stage_index: row.max_stage },
     primary_failure: { failure_mode_id: row.failure_mode, time_s: row.primary_failure_time_s },
-    final_state_id: row.final_state,
+    ...(identity.schema_version === "trajectory-label/v2" ? {} : { final_state_id: row.final_state }),
     attempt_count: row.attempt_count,
     task_success: row.task_success,
     stage_transitions: row.stage_transitions,
@@ -60,7 +60,7 @@ export function normalizeTrajectoryReviewSpec(value: unknown, task: string, taxo
   // The portal validator checks IDs/relations. These fields are rendered by the
   // review form and must be correctly typed too, before a spec can be shown.
   for (const [name, items] of Object.entries({ stages: definition.stages, keyActions: definition.keyActions,
-    failureModes: definition.failureModes, finalStates: definition.finalStates })) {
+    failureModes: definition.failureModes, finalStates: definition.finalStates ?? [] })) {
     for (const item of items) {
       if (typeof item.description !== "string" || !item.description.trim()) throw new Error(`${name} descriptions must be nonempty strings`);
     }
@@ -77,6 +77,7 @@ export function normalizeTrajectoryReviewSpec(value: unknown, task: string, taxo
 
 export function canonicalizeTrajectoryReview(row: StageLabelRow): { label: StageLabelRow; unknownKeys: string[] } {
   const allowed = new Set<string>(TRAJECTORY_REVIEW_FIELDS);
+  if (record(row.trajectory_identity)?.schema_version === "trajectory-label/v2") allowed.delete("final_state");
   return { label: { ...row }, unknownKeys: Object.keys(row).filter((key) => !allowed.has(key)).sort() };
 }
 
@@ -121,10 +122,10 @@ export function validateTrajectoryReview(
 export function blankTrajectoryReview(tag: TrajectoryReviewSpec, repoId: string, episodeIndex: number | bigint): StageLabelRow {
   const task = tag.task_definition;
   return {
-    trajectory_identity: { schema_version: TRAJECTORY_LABEL_SCHEMA_VERSION,
+    trajectory_identity: { schema_version: trajectoryLabelVersion(task),
       task_id: task.taskId, taxonomy_version: task.taxonomyVersion, sample_id: `${repoId}#episode=${episodeIndex}` },
     max_stage: null, max_stage_id: "", failure_mode: "", primary_failure_time_s: null,
-    final_state: "", attempt_count: 1, task_success: null,
+    ...(task.definitionSchemaVersion === "trajectory-task/v1" ? { final_state: "" } : {}), attempt_count: 1, task_success: null,
     stage_transitions: [], failure_events: [],
     key_action_observations: task.keyActions.map((action) => ({
       action_id: action.id, occurred: false, first_time_s: null, occurrences: [],
@@ -188,6 +189,6 @@ export function trajectoryShapeViolations(tag: TrajectoryReviewSpec, canonical: 
 export function validTrajectoryIdentity(tag: TrajectoryReviewSpec, value: unknown): boolean {
   const identity = record(value);
   return identity !== null && Object.keys(identity).sort().join(",") === "sample_id,schema_version,task_id,taxonomy_version" &&
-    identity.schema_version === TRAJECTORY_LABEL_SCHEMA_VERSION && identity.task_id === tag.task_definition.taskId &&
+    identity.schema_version === trajectoryLabelVersion(tag.task_definition) && identity.task_id === tag.task_definition.taskId &&
     identity.taxonomy_version === tag.task_definition.taxonomyVersion && typeof identity.sample_id === "string" && identity.sample_id.trim().length > 0;
 }

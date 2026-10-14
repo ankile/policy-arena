@@ -49,6 +49,26 @@ function chooseVersion(view: ReturnType<typeof render>, version: string) {
 }
 
 describe("stage prediction version review", () => {
+  test("curated queue navigation waits for draft save, and cannot leave after a failed save", async () => {
+    window.history.replaceState(null, "", "/?episode=0&prediction=A");
+    const {state, props} = createStageReviewFixture([]);
+    let navigations = 0;
+    const view = render(<StageReview {...props} renderQueueNavigation={(navigate) =>
+      <button onClick={() => navigate(() => { navigations++; })}>Next sampled dataset</button>} />);
+    await settle();
+    key("4");
+    state.save = async () => { throw new Error("disk full"); };
+    fireEvent.click(view.getByRole("button", {name: "Next sampled dataset"}));
+    await settle();
+    expect(navigations).toBe(0);
+    state.save = async () => {};
+    fireEvent.click(view.getByRole("button", {name: "Next sampled dataset"}));
+    await settle();
+    expect(navigations).toBe(1);
+    expect(state.saves.at(-1)?.status).toBe("draft");
+    expect(state.saves.at(-1)?.label?.max_stage).toBe(4);
+  });
+
   test("browsing and inspecting canonical predictions never saves or success-overlays them", async () => {
     const { state, view } = fixture();
     await settle();
@@ -71,7 +91,7 @@ describe("stage prediction version review", () => {
     state.active = "B";
     await act(async () => rerender());
     expect((view.getByRole("combobox", { name: "Prediction version" }) as HTMLSelectElement).value).toBe("A");
-    expect(view.container.textContent).toContain("Historical prediction version: A");
+    expect(view.container.textContent).toContain("Historical imported prediction: A");
     expect(state.saves).toHaveLength(0);
   });
 
@@ -145,7 +165,7 @@ describe("stage prediction version review", () => {
   test("explicit historical selection changes selected evidence without writing reviews", async () => {
     const { state, view } = fixture("?episode=0&prediction=B");
     await settle();
-    expect(view.container.textContent).toContain("Historical prediction version: B");
+    expect(view.container.textContent).toContain("Historical imported prediction: B");
     fireEvent.click(view.getByRole("button", { name: /model evidence/ }));
     await act(async () => fireEvent.click(view.getAllByRole("button", { name: "Show provenance and unblind" })[0]));
     expect(view.container.textContent).toContain("raw-B");

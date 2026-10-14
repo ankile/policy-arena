@@ -1,7 +1,7 @@
 {
   "task": "square_d2",
   "lifecycle_task": "square_d2",
-  "taxonomy_version": "trajectory-review/v1/square_d2/v4",
+  "taxonomy_version": "trajectory-review/v1/square_d2/v6",
   "ladder": {
     "header": "Historical maximum progress in any attempt; final state and task success are separate judgments.",
     "success_level": 6,
@@ -57,7 +57,7 @@
       },
       {
         "sid": 6,
-        "text": "The gripper releases the nut and it descends along the peg to the base.\nThe nut separates from the gripper while the peg shaft remains captured inside its center hole.\nThe nut finishes independently seated low and flat at the base, or recording cuts off after positively verified independent gravity descent on the captured shaft with no obstruction or escape path.\nA static partial insertion hung above the base is still S5.\nA nut held at the base, dropped beside the peg, or still coupled to the jaws does not establish S6.\nAn ambiguous release or a single projection-overlap frame does not establish the cutoff branch.",
+        "text": "The peg passes through the central hole and the nut reaches its intended seated position on the base. It may still be gripped.\nThe peg is through the central hole and the nut is at the base in the intended seated position.\nContinued grasp is allowed; jaw opening and clearance are not required.\nPartial engagement, contact outside the opening, or projection overlap is insufficient.\nDo not infer a seating timestamp from a supplied success outcome or expected future motion.",
         "gate_field": null,
         "gate_time_field": null,
         "gate_any_of": [],
@@ -67,38 +67,17 @@
   },
   "failure_modes": [
     "none",
-    "no_useful_approach",
-    "pregrasp_misalignment",
-    "wrong_approach_direction",
-    "no_grasp_attempt",
-    "missed_grasp_after_alignment",
-    "aligned_grasp_miss",
-    "nut_slipped_from_gripper",
-    "dropped_nut_during_transport",
-    "transport_orientation_wrong_for_insertion",
-    "nut_hole_missed_peg",
-    "nut_hung_on_peg_not_seated",
-    "retreat_from_peg_after_contact",
-    "timeout_holding_nut",
-    "released_partial_not_seated",
-    "other"
+    "grasp_not_established",
+    "grasp_lost",
+    "insertion_not_attempted",
+    "insertion_entry_blocked",
+    "false_insertion",
+    "incomplete_insertion",
+    "placement_lost",
+    "unknown_failure_cause"
   ],
-  "final_states": [
-    "nut_on_table",
-    "nut_in_gripper_away_from_peg",
-    "nut_in_gripper_at_peg",
-    "nut_partially_on_peg_held",
-    "nut_partially_on_peg_released",
-    "nut_fully_seated_held",
-    "nut_released_on_captured_peg_path",
-    "nut_fully_seated_released",
-    "nut_dropped_off_table",
-    "unclear"
-  ],
-  "success_final_state": "nut_released_on_captured_peg_path",
   "released_field": "__trajectory_unused_release__",
   "stage_field": "max_stage",
-  "final_state_field": "final_state",
   "failure_mode_field": "failure_mode",
   "event_fields": [
     {
@@ -173,7 +152,6 @@
     "trajectory_identity",
     "max_stage",
     "max_stage_id",
-    "final_state",
     "failure_mode",
     "primary_failure_time_s",
     "attempt_count",
@@ -188,37 +166,29 @@
   ],
   "constraints": {
     "failure_mode_forbidden_stages": {},
-    "historical_event_failure_modes": {},
-    "final_state_requires_gates": {},
-    "final_state_requires_min_stage": {}
+    "historical_event_failure_modes": {}
   },
   "fps": 15,
   "trajectory": {
     "adapter_version": "trajectory-review/v1",
     "task_definition": {
-      "definitionSchemaVersion": "trajectory-task/v1",
+      "definitionSchemaVersion": "trajectory-task/v2",
       "taskId": "square_d2",
-      "taxonomyVersion": "square_d2/v4",
+      "taxonomyVersion": "square_d2/v6",
       "displayName": "Square nut · six positive milestones",
-      "objective": "Align for a square-nut grasp, establish a secure hold, lift clear of the table, align the center hole over the sampled peg, engage the peg through the hole, and release the nut so it descends and seats at the peg base. Track achieved milestones separately from failure causes and endpoint state.",
+      "objective": "Place the square nut over the peg and fully down onto the base. Gripper release is optional.",
       "successCriteria": [
-        "The square nut's center hole is positively engaged around the sampled peg.",
-        "The nut is positively released from the gripper while the peg shaft remains captured inside the center hole.",
-        "Either the nut is visibly fully seated and independently retained at the peg base, or the recording cuts off only after a narrowly verified independent gravity descent along the captured peg shaft has begun.",
-        "No authoritative view positively shows the nut missing the peg, escaping the shaft, or landing on the table beside the peg."
+        "The peg passes through the nut's central hole and the nut reaches its intended position on the base.",
+        "Correct seating remains established at the end. Continued gripper retention is allowed; release and clearance are not required.",
+        "A supplied human success remains authoritative if recording cutoff prevents visual verification. Report the evidence gap without inventing a seating timestamp. Captured descent alone does not prove visible base contact."
       ],
       "successDefinition": {
         "successfulStageIds": [
-          "nut_released_to_base"
-        ],
-        "successfulFinalStateIds": [
-          "nut_released_on_captured_peg_path",
-          "nut_fully_seated_released"
+          "nut_fully_seated"
         ],
         "requiredKeyActionIds": [
           "engage_peg_top",
-          "open_jaws",
-          "commit_release_on_peg"
+          "reach_peg_base"
         ],
         "noFailureModeId": "none"
       },
@@ -343,18 +313,17 @@
           ]
         },
         {
+          "id": "nut_fully_seated",
           "index": 6,
-          "id": "nut_released_to_base",
-          "name": "Release the nut to the base",
-          "description": "The gripper releases the nut and it descends along the peg to the base.",
+          "name": "Fully seat the nut",
+          "description": "The peg passes through the central hole and the nut reaches its intended seated position on the base. It may still be gripped.",
           "entryCriteria": [
-            "The nut separates from the gripper while the peg shaft remains captured inside its center hole.",
-            "The nut finishes independently seated low and flat at the base, or recording cuts off after positively verified independent gravity descent on the captured shaft with no obstruction or escape path."
+            "The peg is through the central hole and the nut is at the base in the intended seated position.",
+            "Continued grasp is allowed; jaw opening and clearance are not required."
           ],
           "exclusions": [
-            "A static partial insertion hung above the base is still S5.",
-            "A nut held at the base, dropped beside the peg, or still coupled to the jaws does not establish S6.",
-            "An ambiguous release or a single projection-overlap frame does not establish the cutoff branch."
+            "Partial engagement, contact outside the opening, or projection overlap is insufficient.",
+            "Do not infer a seating timestamp from a supplied success outcome or expected future motion."
           ]
         }
       ],
@@ -474,14 +443,14 @@
           "id": "engage_peg_top",
           "name": "Engage peg through center hole",
           "description": "The sampled peg tip visibly enters or becomes enclosed by the nut's center hole.",
-          "stageRelation": "Required for S5 engagement and S6 released descent.",
+          "stageRelation": "Required for S5 engagement and S6 full seating, independent of release.",
           "stageLinks": [
             {
               "stageId": "peg_engaged",
               "relation": "required_for_entry"
             },
             {
-              "stageId": "nut_released_to_base",
+              "stageId": "nut_fully_seated",
               "relation": "required_for_entry"
             }
           ]
@@ -490,14 +459,14 @@
           "id": "descend_nut_along_peg",
           "name": "Descend nut along peg",
           "description": "The engaged nut moves downward along the peg toward the base.",
-          "stageRelation": "Descent can occur while still held; it does not alone prove S6 release.",
+          "stageRelation": "Descent can occur while held or released; S6 additionally requires reaching the intended seated position at the base.",
           "stageLinks": [
             {
               "stageId": "peg_engaged",
               "relation": "may_occur_within"
             },
             {
-              "stageId": "nut_released_to_base",
+              "stageId": "nut_fully_seated",
               "relation": "supports_entry"
             }
           ]
@@ -506,11 +475,11 @@
           "id": "reach_peg_base",
           "name": "Reach peg base",
           "description": "The nut completes its descent and sits visibly low and flat at the peg base.",
-          "stageRelation": "Confirms the completed S6 branch. Do not fabricate it for a terminal captured-descent cutoff.",
+          "stageRelation": "Direct evidence of full seating; does not require release.",
           "stageLinks": [
             {
-              "stageId": "nut_released_to_base",
-              "relation": "supports_entry"
+              "stageId": "nut_fully_seated",
+              "relation": "required_for_entry"
             }
           ]
         },
@@ -518,37 +487,22 @@
           "id": "open_jaws",
           "name": "Open gripper jaws",
           "description": "The gripper jaws visibly open after insertion work. When the jaws themselves are locally occluded, clear multi-frame separation and independent nut motion after prior retention may positively establish that the release occurred.",
-          "stageRelation": "Necessary but insufficient for S6; verify separation and a captured successful seating path.",
-          "stageLinks": [
-            {
-              "stageId": "nut_released_to_base",
-              "relation": "required_for_entry"
-            }
-          ]
+          "stageRelation": "Optional follow-through observation; neither release nor clearance is required for success or seating.",
+          "stageLinks": []
         },
         {
           "id": "commit_release_on_peg",
           "name": "Commit release onto captured peg",
           "description": "The previously retained nut separates from the gripper while the sampled peg shaft remains positively enclosed by the center hole, and the nut either settles at the base or begins independent downward motion along the shaft.",
-          "stageRelation": "Required for S6 released seating or the narrowly verified captured-descent cutoff.",
-          "stageLinks": [
-            {
-              "stageId": "nut_released_to_base",
-              "relation": "required_for_entry"
-            }
-          ]
+          "stageRelation": "Optional follow-through observation; neither release nor clearance is required for success or seating.",
+          "stageLinks": []
         },
         {
           "id": "move_gripper_clear",
           "name": "Move gripper clear",
           "description": "The gripper retreats far enough that independent peg retention can be judged.",
-          "stageRelation": "Supports independent retention; never invent clearance beyond recording cutoff.",
-          "stageLinks": [
-            {
-              "stageId": "nut_released_to_base",
-              "relation": "supports_entry"
-            }
-          ]
+          "stageRelation": "Optional follow-through observation; neither release nor clearance is required for success or seating.",
+          "stageLinks": []
         },
         {
           "id": "retain_partial_after_release",
@@ -561,140 +515,52 @@
           "id": "retain_seated_after_release",
           "name": "Retain seated nut after release",
           "description": "After the jaws open and the gripper clears, the white nut body remains fully seated around the peg at the base.",
-          "stageRelation": "Confirms completed seating after release; absent if recording ends on the verified descent path.",
-          "stageLinks": [
-            {
-              "stageId": "nut_released_to_base",
-              "relation": "supports_entry"
-            }
-          ]
+          "stageRelation": "Optional follow-through observation; neither release nor clearance is required for success or seating.",
+          "stageLinks": []
         }
       ],
       "failureModes": [
         {
           "id": "none",
-          "description": "No terminal failure; use only for verified released seating or the narrowly verified captured-descent cutoff."
+          "description": "No unresolved task failure; use for success. Recovered failure events may remain."
         },
         {
-          "id": "no_useful_approach",
-          "description": "The gripper never makes a useful approach or genuine attempt at the nut."
+          "id": "grasp_not_established",
+          "description": "No secure control of the nut is established in the relevant grasp sequence. A missed close, momentary pinch, or immediate escape without sustained control belongs here, not grasp_lost. A later secure grasp recovers this event."
         },
         {
-          "id": "pregrasp_misalignment",
-          "description": "The gripper goes for the nut but the approach or jaw pose cannot securely capture the handle or plate edge."
+          "id": "grasp_lost",
+          "description": "The gripper establishes sustained control of the nut, then visibly loses it before correct placement. Excludes a momentary unsuccessful pinch, deliberate release, and loss of an already completed placement. A subsequent secure regrasp recovers this event."
         },
         {
-          "id": "wrong_approach_direction",
-          "description": "The gripper reaches the nut from a grossly unsuitable direction or orientation for a usable grasp."
+          "id": "insertion_not_attempted",
+          "description": "Secure grasp is achieved, but no insertion attempt occurs before the recording ends. Use only if no more specific unrecovered grasp loss or placement failure is visible. This is an episode-end shortfall, not a diagnosis of why motion stopped."
         },
         {
-          "id": "no_grasp_attempt",
-          "description": "A plausible grasp pose is reached but the jaws never execute a committed grasp attempt."
+          "id": "insertion_entry_blocked",
+          "name": "Entry blocked (nothing entered)",
+          "description": "An insertion-directed lowering of the nut against the peg TIP or hole rim is visibly blocked before the peg enters the nut's central hole, for example because the peg hits the nut underside/rim rather than passing through the opening. Mere approach or projection overlap is not an insertion attempt. Excludes pushing down wholly beside the peg or onto the adjacent TABLE (false_insertion), and any verified peg entry (incomplete_insertion if advancement then stalls). Subsequent actual peg entry recovers this event."
         },
         {
-          "id": "missed_grasp_after_alignment",
-          "description": "A close after viable alignment fails to establish a secure nut hold. A secure grasp followed by a failed lift is not a grasp miss."
+          "id": "false_insertion",
+          "description": "An insertion-like lowering or push occurs wholly beside the peg, against its SIDE, or onto the adjacent TABLE, with the peg outside the nut's central hole. This is placement at the wrong location, not a peg-TIP/underside/rim collision that blocks entry (insertion_entry_blocked). Use observed contact geometry, not inferred robot belief. Mere approach or projection overlap is insufficient. Subsequent actual peg entry recovers this event.",
+          "name": "False insertion (wrong surface)"
         },
         {
-          "id": "aligned_grasp_miss",
-          "description": "A close after viable alignment fails to establish a secure nut hold. A secure grasp followed by a failed lift is not a grasp miss."
+          "id": "incomplete_insertion",
+          "description": "The peg visibly enters at least partway through the nut's central hole, but the nut gets stuck or hangs on the shaft above the base and does not advance to full seating. Require positive entry plus stalled/failed advancement, not a peg-tip/rim collision without entry, a brief pause, or a recording ending during an unobstructed captured descent. 'Stuck' describes observed motion, not an inferred force or mechanical cause. Subsequent full seating recovers this event.",
+          "name": "Incomplete insertion (partway in, stuck)"
         },
         {
-          "id": "nut_slipped_from_gripper",
-          "description": "A previously retained nut visibly slides or rotates out through still-closed jaws without an external collision or commanded release."
+          "id": "placement_lost",
+          "description": "Correct full seating is positively established, then the object visibly leaves that placement before the recording ends. Release need not have occurred. Subsequent restored correct placement recovers this event."
         },
         {
-          "id": "dropped_nut_during_transport",
-          "description": "A previously lifted nut abruptly separates or free-falls during lift or transport because of a collision, impact, jaw opening, or another non-slip loss."
-        },
-        {
-          "id": "transport_orientation_wrong_for_insertion",
-          "description": "The retained nut reaches transport or peg work in an orientation that does not provide a plausible center-hole insertion path."
-        },
-        {
-          "id": "nut_hole_missed_peg",
-          "description": "The robot attempts insertion but the nut's center hole misses the sampled peg; this includes release or downward motion that leaves the nut body on the black tabletop beside an exposed peg."
-        },
-        {
-          "id": "nut_hung_on_peg_not_seated",
-          "description": "The nut engages the peg but remains suspended above the base rather than descending flat."
-        },
-        {
-          "id": "retreat_from_peg_after_contact",
-          "description": "After insertion-relevant peg contact, the robot withdraws without a retained insertion endpoint."
-        },
-        {
-          "id": "timeout_holding_nut",
-          "description": "The episode ends with positive evidence that the jaws still retain the nut and the nut remains kinematically coupled to the gripper without a verified successful release. Absence of a clearly visible jaw-opening frame is not sufficient when independent nut motion establishes release; timestamp the final frame or last decisive endpoint evidence."
-        },
-        {
-          "id": "released_partial_not_seated",
-          "description": "After insertion work, the released nut remains statically hung above the base, escapes laterally from the peg, or falls away instead of seating. Do not use this mode when the terminal evidence satisfies the declared captured gravity-descent success rule."
-        },
-        {
-          "id": "other",
-          "description": "A visible failure not represented by another declared mode; explain it in notes and request review."
-        }
-      ],
-      "finalStates": [
-        {
-          "id": "nut_on_table",
-          "description": "The nut finishes supported by the table rather than retained by the gripper or peg."
-        },
-        {
-          "id": "nut_in_gripper_away_from_peg",
-          "description": "The nut finishes retained by the gripper away from the sampled peg's insertion region."
-        },
-        {
-          "id": "nut_in_gripper_at_peg",
-          "description": "The nut finishes retained by the gripper at the sampled peg region without a released endpoint."
-        },
-        {
-          "id": "nut_partially_on_peg_held",
-          "description": "The nut finishes partially engaged on the peg while still held by the gripper."
-        },
-        {
-          "id": "nut_partially_on_peg_released",
-          "description": "The nut finishes independently retained on the peg above the base after the jaws open."
-        },
-        {
-          "id": "nut_fully_seated_held",
-          "description": "The nut finishes flat at the peg base while still held by the gripper."
-        },
-        {
-          "id": "nut_released_on_captured_peg_path",
-          "description": "At the final visible frame, the nut is no longer retained by the gripper and is independently descending toward the base while the sampled peg shaft remains captured inside the center hole; the recording ends before seating is shown."
-        },
-        {
-          "id": "nut_fully_seated_released",
-          "description": "The nut finishes flat at the peg base and independently retained after the jaws open and gripper clears."
-        },
-        {
-          "id": "nut_dropped_off_table",
-          "description": "The nut leaves the visible supporting table or drops into an unrecoverable off-table region."
-        },
-        {
-          "id": "unclear",
-          "description": "The final physical nut state cannot be established from the supplied evidence."
+          "id": "unknown_failure_cause",
+          "description": "Failure is known but the video cannot distinguish an observable category. Assess at the final decisive frame, set needs_human_review=true, and explain the missing evidence; do not invent a cause."
         }
       ],
       "decisionRules": [
-        {
-          "id": "positive_progress_ladder",
-          "rule": "Each numbered stage is a positively achieved milestone, not an attempt or failure category. Timestamp the first evidence that its criteria are met. A failed episode whose maximum is S{k} for k < 6 is summarized as 'reached S{k}; failed to reach S{k+1}'. Do not assign S{k+1} merely because it was attempted. Keep the concrete causal failure enum separate from this progress summary."
-        },
-        {
-          "id": "historical_progress",
-          "rule": "Compute max_stage as the highest positively achieved stage across all attempts, not the final physical state. A later slip, drop, or loss of seating does not erase earlier progress. A failure after S6 means the completed result was later lost, not failure to reach a nonexistent S7. A recovered failure event does not by itself make the final outcome a failure."
-        },
-        {
-          "id": "supported_timestamps",
-          "rule": "Grasp and lift, or alignment and engagement, may share a timestamp if independently supported in that frame. Do not invent intermediate times or achievements to fill the ladder. Occlusion means not verified, not proof the milestone never happened: use the lower supported maximum, flag human review, and explain uncertain boundaries."
-        },
-        {
-          "id": "outcome_not_timestamp",
-          "rule": "If a human_outcome_anchor is supplied, retain it as authoritative binary outcome context, not as evidence of a stage or timestamp. Never invent alignment, grasp, lift, entry, release, or seating to satisfy it. If the visible milestones or endpoint cannot support its terminal semantics, flag the conflict for human review; do not hide it with coerced stage labels."
-        },
         {
           "id": "locate_current_scene",
           "rule": "Locate the same white square nut, its center hole and handle, the sampled orange peg, peg base, and gripper. The peg position varies by episode; its visibility does not prove the nut is on it."
@@ -704,12 +570,8 @@
           "rule": "Track the same nut across all stages. S2 requires secure retention, S3 adds clear table clearance, and S4 adds local insertion alignment over the sampled peg. An empty gripper moving away while the nut remains on the table establishes neither grasp nor lift."
         },
         {
-          "id": "grasp_before_lift",
-          "rule": "A sustained grasp on the table reaches S2. A missed close or immediate slip does not. S3 requires actual lift under control; dragging and pivoting are not lift."
-        },
-        {
           "id": "positive_hole_engagement",
-          "rule": "S5 requires positive peg-tip entry through the center hole. Exterior contact, pressing beside the peg, or robot intent does not count. A partial insertion, hung release, or fully-seated held state remains historical S5 until S6 release-to-base criteria are met."
+          "rule": "S5 requires positive peg-tip entry through the center hole. Exterior contact, pressing beside the peg, or robot intent does not count. Partial insertion or hanging above the base remains S5. Full seating at the base achieves S6, whether held or released."
         },
         {
           "id": "projection_overlap",
@@ -720,48 +582,59 @@
           "rule": "If the peg is outside the center hole, do not credit engagement at that moment. After release, a nut escaping the shaft or landing on the tabletop beside an exposed peg forbids a successful on-peg endpoint, but does not erase genuinely achieved earlier milestones."
         },
         {
-          "id": "release_assisted_seating",
-          "rule": "S6 combines release with a successful independent seating path. If the nut is seated while still held, remain at S5 until release. If release initiates descent, timestamp S6 when completed independent base seating is verified, or when all terminal-cutoff commitment gates are first met. Keep the separate release and seating action times; no hidden held-seat stage is required."
+          "id": "positive_progress",
+          "rule": "Stages are achieved milestones, not intentions or failures. Preserve historical maximum despite later loss. Emit only supported transitions; equal times and forward jumps are allowed. Do not invent skipped stages."
         },
         {
-          "id": "terminal_cutoff_commitment",
-          "rule": "Retain the existing narrow cutoff allowance only when all are visible across terminal frames: S5 hole engagement, jaw release and nut separation, peg shaft enclosed by the hole, independent downward motion along that shaft, and no lateral escape, collision, tabletop support, static hang, or obstruction that can prevent seating. Use nut_released_on_captured_peg_path; never fabricate a base-seating action or future timestamp."
+          "id": "human_outcome",
+          "rule": "A supplied human binary outcome is authoritative, but proves no stage, action, or timestamp. If success is known but completion is unseen, including recording cutoff, preserve supported observations and request review. Never manufacture seating or automatically rewrite historical human outcomes."
         },
         {
-          "id": "seating_from_motion",
-          "rule": "Use nut_fully_seated_released only for a nut visibly low and flat at the base with independent retention. Static dwell, one-view overlap, or an occluded endpoint is insufficient."
+          "id": "insertion_failure_boundaries",
+          "rule": "Separate insertion failures by observed contact and entry: no insertion-directed attempt = insertion_not_attempted; peg TIP hits nut underside/hole rim during attempted insertion with zero entry = insertion_entry_blocked; nut pushed down wholly beside the peg, against its SIDE or onto adjacent TABLE = false_insertion; peg already partway through the hole but nut stuck/hung above the base = incomplete_insertion. A single no-entry event cannot be both blocked and false insertion. If local geometry or entry depth is unresolved, request review instead of guessing. Neither no-entry category establishes S5; later loss never erases earlier real entry."
         },
         {
-          "id": "held_timeout",
-          "rule": "A static hold, even fully seated at the base, does not establish release. Use timeout_holding_nut only with positive final gripper retention and no more specific cause. Timestamp an endpoint-conditioned timeout at final decisive evidence."
+          "id": "failure_selection",
+          "rule": "Keep every distinct observable failure, including recovered events. For failure choose the earliest specific event that remains unrecovered. A subsequent positive achievement of the failed requirement recovers it; another attempt alone does not. Generic no-attempt/unknown categories apply only without a specific unrecovered event. Success uses none. Break equal-onset ties by failureModes order, never by guessed causality."
         },
         {
-          "id": "gripper_loss_tie_break",
-          "rule": "Use nut_slipped_from_gripper for relative escape through closed jaws without external contact; use dropped_nut_during_transport for collision, jaw opening, or another non-slip loss. If the distinction is unclear, use the broader supported cause and request review."
+          "id": "failure_timing",
+          "rule": "Use first visible onset for a missed attempt or loss. For no-attempt, incomplete-placement, or unknown modes only established when recording ends, use the final decisive frame as assessment time, not causal onset. Primary mode/time must match an event."
         },
         {
           "id": "uncertainty",
-          "rule": "Audit the final two seconds as synchronized nut-gripper-peg motion. Unverified release or descent means the lower supported stage and human review, not assumed success. Preserve a later failure after historical S6 rather than rewriting the earlier timeline."
+          "rule": "Occlusion is not evidence of failed grasp, absent engagement, or a drop. Use unknown_failure_cause and request review for unresolved failure evidence. Position and rotation misalignment are not separate categories."
+        },
+        {
+          "id": "attempts",
+          "rule": "A new attempt begins after the prior manipulation sequence is abandoned and a fresh acquisition sequence starts. Local insertion corrections, pauses, and occlusion do not create attempts. The planned second routing grasp belongs to the same two-clip attempt."
+        },
+        {
+          "id": "time_evidence",
+          "rule": "Timestamp the earliest supported achievement, not the start of trying. Secure grasp requires sustained object control across a visible interval, not a fixed number of sampled frames or momentary pinch. Use coupled motion and retention; request review if sparse evidence cannot resolve it."
+        },
+        {
+          "id": "no_end_state",
+          "rule": "No final-state enum or end-state output field exists in this protocol. Judge outcome from physical success criteria and any supplied human outcome. Release is optional. Later loss of correct placement before recording ends invalidates visually judged success."
         }
       ],
       "auditProcedure": [
-        "Locate the same nut, its initial table site, the sampled peg, peg base, and gripper.",
-        "Segment chronological attempts and verify alignment, secure grasp, clear lift, insertion alignment, hole engagement, and released descent/seating as separate positive milestones.",
-        "Record every declared key action independently of the human stage ladder, including held seating, unsuccessful openings, and partial-release hangs.",
-        "Inspect synchronized terminal motion for actual separation, captured descent, static hanging, lateral escape, tabletop landing, and low-flat base seating.",
-        "Keep maximum achieved stage, causal failure mode, final physical state, and task outcome distinct. For a failed episode below S6, identify the next unreached milestone.",
-        "Check cutoff gates without inventing future seating or clearance, and flag any unresolved human-outcome conflict.",
-        "Cross-check event times, attempts, stage/action IDs, failure events, endpoint, and confidence."
+        "Locate the object and target in synchronized views; keep physical clip identities fixed.",
+        "Record achieved milestones and supported timestamps; later loss does not erase history.",
+        "Record independent key actions, including optional releases.",
+        "Record observable failures and positive recovery evidence; select the earliest unrecovered specific failure when unsuccessful.",
+        "Judge correct placement without requiring release. Preserve supplied human outcome and flag missing visual evidence.",
+        "Return trajectory-label/v2 without end-state fields. Check IDs, timing, stage/action consistency, and primary/event agreement."
       ]
     },
-    "task_definition_sha256": "773fa7994e2a2ffbb29ac15e1d3d7dbb57f0dd112da7788570bbe9311fda7485",
+    "task_definition_sha256": "274367f07f49123496c66a0fe7c57972f8e55f32ef6a75c5c89c2179b7ffa49a",
     "response_schema": {
       "type": "OBJECT",
       "properties": {
         "schema_version": {
           "type": "STRING",
           "enum": [
-            "trajectory-label/v1"
+            "trajectory-label/v2"
           ]
         },
         "task_id": {
@@ -773,7 +646,7 @@
         "taxonomy_version": {
           "type": "STRING",
           "enum": [
-            "square_d2/v4"
+            "square_d2/v6"
           ]
         },
         "sample_id": {
@@ -801,7 +674,7 @@
                 "nut_lifted",
                 "nut_aligned_over_peg",
                 "peg_engaged",
-                "nut_released_to_base"
+                "nut_fully_seated"
               ]
             },
             "stage_index": {
@@ -834,7 +707,7 @@
                   "nut_lifted",
                   "nut_aligned_over_peg",
                   "peg_engaged",
-                  "nut_released_to_base"
+                  "nut_fully_seated"
                 ],
                 "description": "Declared stage ID before the transition"
               },
@@ -852,7 +725,7 @@
                   "nut_lifted",
                   "nut_aligned_over_peg",
                   "peg_engaged",
-                  "nut_released_to_base"
+                  "nut_fully_seated"
                 ],
                 "description": "Declared stage ID positively reached by the transition"
               },
@@ -996,21 +869,14 @@
                 "type": "STRING",
                 "enum": [
                   "none",
-                  "no_useful_approach",
-                  "pregrasp_misalignment",
-                  "wrong_approach_direction",
-                  "no_grasp_attempt",
-                  "missed_grasp_after_alignment",
-                  "aligned_grasp_miss",
-                  "nut_slipped_from_gripper",
-                  "dropped_nut_during_transport",
-                  "transport_orientation_wrong_for_insertion",
-                  "nut_hole_missed_peg",
-                  "nut_hung_on_peg_not_seated",
-                  "retreat_from_peg_after_contact",
-                  "timeout_holding_nut",
-                  "released_partial_not_seated",
-                  "other"
+                  "grasp_not_established",
+                  "grasp_lost",
+                  "insertion_not_attempted",
+                  "insertion_entry_blocked",
+                  "false_insertion",
+                  "incomplete_insertion",
+                  "placement_lost",
+                  "unknown_failure_cause"
                 ],
                 "description": "Declared failure-mode ID"
               },
@@ -1051,21 +917,14 @@
               "type": "STRING",
               "enum": [
                 "none",
-                "no_useful_approach",
-                "pregrasp_misalignment",
-                "wrong_approach_direction",
-                "no_grasp_attempt",
-                "missed_grasp_after_alignment",
-                "aligned_grasp_miss",
-                "nut_slipped_from_gripper",
-                "dropped_nut_during_transport",
-                "transport_orientation_wrong_for_insertion",
-                "nut_hole_missed_peg",
-                "nut_hung_on_peg_not_seated",
-                "retreat_from_peg_after_contact",
-                "timeout_holding_nut",
-                "released_partial_not_seated",
-                "other"
+                "grasp_not_established",
+                "grasp_lost",
+                "insertion_not_attempted",
+                "insertion_entry_blocked",
+                "false_insertion",
+                "incomplete_insertion",
+                "placement_lost",
+                "unknown_failure_cause"
               ]
             },
             "time_s": {
@@ -1080,22 +939,6 @@
             "time_s"
           ],
           "description": "Most specific failure explaining the final outcome"
-        },
-        "final_state_id": {
-          "type": "STRING",
-          "enum": [
-            "nut_on_table",
-            "nut_in_gripper_away_from_peg",
-            "nut_in_gripper_at_peg",
-            "nut_partially_on_peg_held",
-            "nut_partially_on_peg_released",
-            "nut_fully_seated_held",
-            "nut_released_on_captured_peg_path",
-            "nut_fully_seated_released",
-            "nut_dropped_off_table",
-            "unclear"
-          ],
-          "description": "Declared physical state at the final visible frame"
         },
         "confidence": {
           "type": "STRING",
@@ -1134,7 +977,6 @@
         "key_action_observations",
         "failure_events",
         "primary_failure",
-        "final_state_id",
         "confidence",
         "needs_human_review",
         "review_reasons",
@@ -1143,5 +985,5 @@
       "description": "Canonical task-generic trajectory label"
     }
   },
-  "taxonomy_hash": "95ec63617a4f7fb1deb7980179b02a87c875069722b1830bcb481a0cc95f3145"
+  "taxonomy_hash": "eb0707a0650b7a5a0e3e2da868332b635cb89f86920fa418da46acc30c40b50a"
 }

@@ -177,6 +177,7 @@ function GoldPanel({ task, editor }: { task: string; editor: boolean }) {
 function Benchmark({ benchmark: b, editor }: { benchmark: Doc<"labelingBenchmarks">; editor: boolean }) {
   const versions = useQuery(api.stagePredictions.listForRepo, { dataset_repo: b.dataset_repo, taxonomy_version: b.taxonomy_version });
   const scores = useQuery(api.labelingScores.scores, { benchmark_id: b._id });
+  const noEndState = b.rows.every((row) => row.label.schema_version === "trajectory-label/v2");
   const score = useMutation(api.labelingScores.score);
   const [run, setRun] = useState(b.baseline_run_id), [error, setError] = useState(""), [busy, setBusy] = useState(false);
   async function evaluate() {
@@ -186,6 +187,6 @@ function Benchmark({ benchmark: b, editor }: { benchmark: Doc<"labelingBenchmark
     <p className="font-medium">{b.name} · {b.rows.length} episodes</p><p className="text-xs text-ink-muted break-all mt-1">{b.dataset_repo} · {new Date(b.created_at).toISOString()}</p>
     <div className="flex gap-3 mt-3"><select aria-label="Prediction version to score" className={input} value={run} onChange={(e) => setRun(e.target.value as Id<"stagePredictionRuns">)}>{versions?.runs.map((r) => <option key={r._id} value={r._id}>{r.pipeline.version}{r._id === b.baseline_run_id ? " · frozen baseline" : ""}</option>)}</select><button className={button} disabled={!editor || busy} onClick={() => void evaluate()}>Score</button></div>
     {error && <p role="alert" className="text-sm text-coral mt-2">{error}</p>}
-    {scores && scores.length > 0 && <div className="overflow-x-auto"><table className="mt-4 w-full text-xs text-left"><thead><tr>{["Version", "Stage", "Final state", "Failure", "Attempts", "Stage MAE"].map((s) => <th className="py-2 pr-3" key={s}>{s}</th>)}</tr></thead><tbody>{scores.map((s) => <tr key={s._id} className="border-t border-warm-200"><td className="py-2 pr-3">{s.run_id === b.baseline_run_id ? "Baseline" : versions?.runs.find((r) => r._id === s.run_id)?.pipeline.version ?? s.run_id}</td>{[s.metrics.stage_exact, s.metrics.final_exact, s.metrics.failure_exact, s.metrics.attempts_exact].map((n, i) => <td key={i} className="pr-3">{n}/{s.metrics.n}</td>)}<td>{Number(s.metrics.stage_mae).toFixed(2)}</td></tr>)}</tbody></table></div>}
+    {scores && scores.length > 0 && <div className="overflow-x-auto"><table className="mt-4 w-full text-xs text-left"><thead><tr>{["Version", "Stage", ...(!noEndState ? ["Final state"] : []), "Failure", "Attempts", "Stage MAE"].map((s) => <th className="py-2 pr-3" key={s}>{s}</th>)}</tr></thead><tbody>{scores.map((s) => <tr key={s._id} className="border-t border-warm-200"><td className="py-2 pr-3">{s.run_id === b.baseline_run_id ? "Baseline" : versions?.runs.find((r) => r._id === s.run_id)?.pipeline.version ?? s.run_id}</td>{[s.metrics.stage_exact, ...(!noEndState ? [s.metrics.final_exact] : []), s.metrics.failure_exact, s.metrics.attempts_exact].map((n, i) => <td key={i} className="pr-3">{n}/{s.metrics.n}</td>)}<td>{Number(s.metrics.stage_mae).toFixed(2)}</td></tr>)}</tbody></table></div>}
   </div>;
 }

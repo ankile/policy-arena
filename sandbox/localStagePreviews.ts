@@ -1,15 +1,12 @@
 import type { Doc, Id } from "../convex/_generated/dataModel";
-import previousSpec from "./data/routing_d1_v2.spec.json";
-import previousRouting from "./data/routing_d1_v3.spec.json";
-import previousMarker from "./data/marker_d2_v5.spec.json";
-import previousSquare from "./data/square_d2_v4.spec.json";
-import routing from "./data/routing_d1_v4.spec.json";
-import marker from "./data/marker_d2_v6.spec.json";
-import square from "./data/square_d2_v5.spec.json";
+import priorMarkerRelease from "../data/stage-review/marker_d2_v6.spec.json";
+import priorSquareRelease from "../data/stage-review/square_d2_v5.spec.json";
+import priorRoutingRelease from "../data/stage-review/routing_d1_v4.spec.json";
+import { stageReviewRelease } from "../shared/stageReviewRelease";
 
-export const latestStagePreviews = { routing_d1: routing, marker_d2: marker, square_d2: square };
+export const latestStagePreviews = stageReviewRelease;
 export type PreviewTask = keyof typeof latestStagePreviews;
-const previewRows: Doc<"stageTaskSpecs">[] = [previousSpec, previousRouting, previousMarker, previousSquare, ...Object.values(latestStagePreviews)].map((candidate) => ({
+const previewRows: Doc<"stageTaskSpecs">[] = [priorMarkerRelease, priorSquareRelease, priorRoutingRelease, ...Object.values(latestStagePreviews)].map((candidate) => ({
   _id: `local-${candidate.taxonomy_version}` as Id<"stageTaskSpecs">,
   _creationTime: 0, exported_at: 0, live: false,
   task: candidate.task, taxonomy_version: candidate.taxonomy_version, taxonomy_hash: candidate.taxonomy_hash,

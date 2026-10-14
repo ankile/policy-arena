@@ -1,5 +1,5 @@
 import { type TrajectoryEventLink } from "../../convex/trajectoryEventLinks";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "../../convex/_generated/api";
 import { blankTrajectoryReview } from "../../convex/trajectoryReview";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
@@ -26,7 +26,7 @@ import {
 } from "../lib/stagePredictionReview";
 import { useStageReviewDraft } from "../lib/useStageReviewDraft";
 import { prepareStageOutcomeLabel, validateStageOutcomeReview } from "../../convex/stageOutcomeReview";
-import { CURRENT_REVIEW_PROTOCOL } from "../../convex/stageReviewCoverage";
+import { CURRENT_REVIEW_PROTOCOL, reviewProtocolForTask } from "../../convex/stageReviewCoverage";
 import { isPolicyFrame, policyFrameCount } from "../../convex/trajectoryTime";
 import { stageReviewDataSource, type StageReviewDataSource } from "../lib/stageReviewDataSource";
 import { useSearchParam, useSearchParamNumber, useSearchParamNavigationGuard, setSearchParams } from "../lib/useSearchParam";
@@ -115,7 +115,7 @@ const HELP_KEYS: [string, string][] = [
   ["space", "play / pause"],
   ["0–9", "set the furthest stage (does not mark a time)"],
   ["- / =", "decrement / increment the stage (covers S10)"],
-  ["c", "confirm stages, result and end state + next episode"],
+  ["c", "confirm review + next episode"],
   ["u", "uncertain: reviewed but not gold-eligible + advance"],
   ["e", "toggle the model-evidence rail"],
   ["n", "next episode (drafts unsaved edits)"],
@@ -131,6 +131,8 @@ export default function StageReview({
   onOpenOutcomeReview,
   dataSource = stageReviewDataSource,
   fixedTaxonomyVersion,
+  requireLiveTaxonomy = false,
+  renderQueueNavigation,
 }: {
   repoId: string;
   task?: string;
@@ -140,6 +142,9 @@ export default function StageReview({
   dataSource?: StageReviewDataSource;
   /** Pin a curated labeling surface to one definition, without version controls. */
   fixedTaxonomyVersion?: string;
+  requireLiveTaxonomy?: boolean;
+  /** Optional curated queue; all navigation passes through draft protection. */
+  renderQueueNavigation?: (navigate: (next: () => void) => Promise<void>) => ReactNode;
 }) {
   const { useQuery, useMutation, usePaginatedQuery, fetchAppliedProgress,
     fetchEpisodeFrameSignals, fetchLabelHistory, fetchLedgerArms, fetchReviewEpisodes } = dataSource;
@@ -173,13 +178,16 @@ export default function StageReview({
   const specResult = useMemo<{ spec: ExportedStageSpec | null; error: string | null }>(() => {
     if (!specRow) return { spec: null, error: fixedTaxonomyVersion && specRowsLoaded
       ? `Required task definition ${fixedTaxonomyVersion} is unavailable.` : null };
+    if (requireLiveTaxonomy && !specRow.live) return { spec: null,
+      error: `Required task definition ${fixedTaxonomyVersion} has not been activated. Publish the stage-review release before labeling.` };
     try {
       return { spec: normalizeStageSpec(specRow.spec), error: null };
     } catch (err) {
       return { spec: null, error: (err as Error).message };
     }
-  }, [specRow, fixedTaxonomyVersion, specRowsLoaded]);
+  }, [specRow, fixedTaxonomyVersion, specRowsLoaded, requireLiveTaxonomy]);
   const spec = specResult.spec;
+  const reviewProtocol = spec?.trajectory ? reviewProtocolForTask(spec.trajectory.task_definition) : CURRENT_REVIEW_PROTOCOL;
   const taxonomyVersion = spec?.taxonomy_version ?? null;
 
   const reviews = useQuery(
@@ -187,8 +195,11 @@ export default function StageReview({
     taxonomyVersion ? { dataset_repo: repoId, taxonomy_version: taxonomyVersion } : "skip"
   );
   const scopedReviewReady = !spec?.trajectory ||
-    reviews?.supported_review_protocols?.includes(CURRENT_REVIEW_PROTOCOL) === true;
-  const [predictionParam, setPredictionParam] = useSearchParam("prediction", "");
+    reviews?.supported_review_protocols?.includes(reviewProtocol) === true;
+  const [rawPredictionParam, setPredictionParam] = useSearchParam("prediction", "");
+  const oldSchemaLink = Boolean(fixedTaxonomyVersion && schemaParam && schemaParam !== fixedTaxonomyVersion);
+  // Old bookmarks never seed the latest definition with old stage semantics.
+  const predictionParam = oldSchemaLink ? "" : rawPredictionParam;
   const legacyPrefillRows = useQuery(
     api.stagePrefills.forRepo,
     taxonomyVersion && predictionParam === "legacy"
@@ -202,9 +213,17 @@ export default function StageReview({
   // Capture the default once by writing its concrete identity into the URL.
   // A publication in another session must not switch an in-progress form.
   useEffect(() => {
-    if (predictionParam || predictionVersions === undefined) return;
+    if (predictionVersions === undefined) return;
+    if (fixedTaxonomyVersion && (schemaParam !== fixedTaxonomyVersion ||
+      (predictionParam && predictionParam !== "legacy" && !predictionVersions.runs.some((run) => run._id === predictionParam)))) {
+      const compatible = !oldSchemaLink && (predictionParam === "legacy" || predictionVersions.runs.some((run) => run._id === predictionParam));
+      setSearchParams({ schema: fixedTaxonomyVersion,
+        prediction: compatible ? predictionParam : predictionVersions.active_run_id ?? "legacy" });
+      return;
+    }
+    if (predictionParam) return;
     setPredictionParam(predictionVersions.active_run_id ?? "legacy");
-  }, [predictionParam, predictionVersions, setPredictionParam]);
+  }, [predictionParam, predictionVersions, setPredictionParam, fixedTaxonomyVersion, schemaParam, oldSchemaLink]);
   const predictionSelection = predictionVersions !== undefined && predictionParam
     ? resolvePredictionSelection(predictionParam, predictionVersions.runs)
     : null;
@@ -888,7 +907,7 @@ export default function StageReview({
           status,
           label: label && spec.trajectory ? prepareStageOutcomeLabel(spec.trajectory, label) : label ?? undefined,
           ...(spec.trajectory && status !== "cleared" ? {
-            review_protocol: CURRENT_REVIEW_PROTOCOL,
+            review_protocol: reviewProtocol,
             notes: draft.humanNotes ?? "",
           } : {}),
           ...draft.attribution,
@@ -903,7 +922,7 @@ export default function StageReview({
         return false;
       }
     },
-    [spec, task, saveReview, repoId, draft, predictionsReady, blind, episodeDurationS, scopedReviewReady, priorFullReviewId, scopeAcknowledgment]
+    [spec, task, saveReview, repoId, draft, predictionsReady, blind, episodeDurationS, scopedReviewReady, priorFullReviewId, scopeAcknowledgment, reviewProtocol]
   );
 
   const advance = useCallback(
@@ -1266,9 +1285,9 @@ export default function StageReview({
         >
           &larr; Back to explorer
         </button>
-        <div className="rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-sm text-coral font-mono">
-          Stage spec for {task}@{specRow?.taxonomy_version} is malformed — re-run the
-          exporter: {specResult.error}
+        <div role="alert" className="rounded-lg border border-coral/30 bg-coral-light px-4 py-3 text-sm text-coral">
+          {specResult.error}
+          {fixedTaxonomyVersion && !specRow && <p className="mt-2">The latest definition has not been published to this server. An administrator must publish the stage-review release before labeling. Older labels are unchanged.</p>}
         </div>
       </div>
     );
@@ -1305,6 +1324,9 @@ export default function StageReview({
 
   return (
     <div className="bg-white rounded-2xl border border-warm-200 shadow-sm overflow-clip">
+      {/* Only supplies an event callback; the navigation slot never reads refs while rendering. */}
+      {/* eslint-disable-next-line react-hooks/refs */}
+      {renderQueueNavigation?.((next) => leaveForm(next, true))}
       {showHelp && (
         <HelpOverlay
           title="Stage review shortcuts"
@@ -1325,6 +1347,7 @@ export default function StageReview({
           <h2 className="font-display text-xl text-ink mt-1">Stage review</h2>
           <p className="text-xs text-ink-muted font-mono mt-0.5">
             {repoId} · {task} · S0–S{spec.ladder.max_stage}
+            {fixedTaxonomyVersion && <> · Definition {fixedTaxonomyVersion.split("/").at(-1)}</>}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 min-w-0">
@@ -1352,7 +1375,7 @@ export default function StageReview({
             </select>
           )}
           {(!fixedTaxonomyVersion || predictionVersions === undefined || predictionVersions.runs.length > 0 || predictionSelection?.error) && <label className="flex flex-col gap-1 text-[10px] font-mono text-ink-muted">
-            Prediction version
+            Model suggestions
             <select
               aria-label="Prediction version"
               value={predictionParam}
@@ -1366,10 +1389,10 @@ export default function StageReview({
             >
               {!predictionParam && <option value="">Loading versions…</option>}
               {predictionSelection?.error && <option value={predictionParam}>Unavailable version</option>}
-              <option value="legacy">Legacy predictions ({predictionVersions?.legacy_count ?? 0})</option>
+              <option value="legacy">{predictionVersions?.legacy_count ? `Earlier model suggestions (${predictionVersions.legacy_count})` : "No model suggestions"}</option>
               {predictionVersions?.runs.map((run) => (
                 <option key={run._id} value={run._id}>
-                  {blind ? run._id : run.run_key}{run._id === predictionVersions.active_run_id ? " (active)" : " (historical)"}
+                  {blind ? run._id : run.run_key}{run._id === predictionVersions.active_run_id ? " (default)" : " (historical)"}
                 </option>
               ))}
             </select>
@@ -1486,8 +1509,8 @@ export default function StageReview({
       )}
       {selectedRun && (
         <details className="px-6 py-2 border-b border-warm-100 text-[11px] font-mono text-ink-muted break-all">
-          <summary className="cursor-pointer">Prediction version details</summary>
-          {selectedRun._id === predictionVersions?.active_run_id ? "Active" : "Historical"} prediction version: {blind ? selectedRun._id : selectedRun.run_key}
+          <summary className="cursor-pointer">Model suggestion source · not human-verified</summary>
+          {selectedRun._id === predictionVersions?.active_run_id ? "Default" : "Historical"} imported prediction: {blind ? selectedRun._id : selectedRun.run_key}
           {!blind && <>{" · "}{selectedRun.pipeline.name}@{selectedRun.pipeline.version}</>}
           {" · published "}{new Date(selectedRun.published_at).toISOString()}
           {" · "}{selectedRun._id}
@@ -1770,12 +1793,12 @@ export default function StageReview({
                     <p className="font-mono break-all">Review source: {attributionDescription(draft.attribution)}</p>
                   </details></div>
                   {inheritedSuccess && <p className="mt-1">Legacy form fields inherit the human success outcome. The original prediction remains in model evidence.</p>}
-                  {spec.trajectory && currentOwn?.reviewCoverage && !["structured-v1", CURRENT_REVIEW_PROTOCOL].includes(currentOwn.reviewCoverage.protocol) && <p className="mt-2 text-sm text-ink">Your earlier review had a narrower scope. Check the task result, end state and primary failure mode before confirming this review.</p>}
+                  {spec.trajectory && currentOwn?.reviewCoverage && !["structured-v1", reviewProtocol].includes(currentOwn.reviewCoverage.protocol) && <p className="mt-2 text-sm text-ink">Check the current review fields before confirming. Your earlier review remains in history.</p>}
                   {priorFullReviewId && <label className="mt-2 flex gap-2 text-sm text-ink">
                     <input type="checkbox" aria-label="Accept narrower review scope" disabled={formDisabled}
                       checked={scopeAcknowledgment === priorFullReviewId}
                       onChange={(event) => setScopeAcknowledgment(event.target.checked ? priorFullReviewId : null)} />
-                    <span>Replace my full structured review with a stages, result, end state and primary failure review. The original stays in history, but my latest review will no longer qualify as full-summary gold (actions and detailed failures are not reviewed here).</span>
+                    <span>Review only the visible fields. The original stays in history; hidden actions and failure details are not human-confirmed.</span>
                   </label>}
                 </div>
               )}
@@ -1860,8 +1883,11 @@ export default function StageReview({
                             {other.reviewCoverage?.reviewed_fields.includes("task_success")
                               ? other.label.task_success === true ? "Success" : other.label.task_success === false ? "Failure" : "Result unset"
                               : "Result not reviewed"} ·{" "}
-                            {other.reviewCoverage?.reviewed_fields.includes("final_state")
-                              ? spec.trajectory.task_definition.finalStates.find((state) => state.id === other.label?.final_state)?.description ?? "End state unset"
+                            {spec.trajectory.task_definition.definitionSchemaVersion === "trajectory-task/v2"
+                              ? other.reviewCoverage?.reviewed_fields.includes("failure_mode")
+                                ? String(other.label.failure_mode ?? "Failure category unset") : "Failure category not reviewed"
+                              : other.reviewCoverage?.reviewed_fields.includes("final_state")
+                              ? spec.trajectory.task_definition.finalStates?.find((state) => state.id === other.label?.final_state)?.description ?? "End state unset"
                               : "End state not reviewed"}
                           </> : <>{blind && !spec.failure_modes.includes(String(other.label[spec.failure_mode_field]))
                             ? "invalid failure value" : String(other.label[spec.failure_mode_field] ?? "—")} →{" "}
