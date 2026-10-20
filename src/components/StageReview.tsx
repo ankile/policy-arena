@@ -47,6 +47,8 @@ import {
   type CropBox,
 } from "./review/format";
 import { isTypingTarget, useWindowKeydown } from "./review/useWindowKeydown";
+import { useFrameStepSizes } from "./review/frameStepSizes";
+import { FrameStepControls } from "./review/FrameStepControls";
 
 // ---------------------------------------------------------------------------
 // Stage-label review (Phase 2). Web successor to the cv2 CorrectionUIServer:
@@ -109,8 +111,8 @@ interface ResolvedOutcome {
 }
 
 const HELP_KEYS: [string, string][] = [
-  ["← / →", "step 1 frame (shift: 10)"],
-  ["[ / ]", "step 30 frames"],
+  ["← / →", "step N frames (set in the header; shift: 10)"],
+  ["[ / ]", "step M frames (set in the header)"],
   ["Home / End", "first / last frame"],
   ["space", "play / pause"],
   ["0–9", "set the furthest stage (does not mark a time)"],
@@ -716,6 +718,7 @@ export default function StageReview({
   const [saving, setSaving] = useState(false);
   const [showEvidence, setShowEvidence] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [frameSteps, setFrameSteps] = useFrameStepSizes("policy-arena:stage-review:frame-steps", { arrow: 1, bracket: 30 });
   const [unverifiable, setUnverifiable] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
   const saveInFlight = useRef(false);
@@ -1092,19 +1095,19 @@ export default function StageReview({
     switch (key) {
       case "ArrowLeft":
         event.preventDefault();
-        stepFrame(event.shiftKey ? -10 : -1);
+        stepFrame(event.shiftKey ? -10 : -frameSteps.arrow);
         return;
       case "ArrowRight":
         event.preventDefault();
-        stepFrame(event.shiftKey ? 10 : 1);
+        stepFrame(event.shiftKey ? 10 : frameSteps.arrow);
         return;
       case "[":
         event.preventDefault();
-        stepFrame(-30);
+        stepFrame(-frameSteps.bracket);
         return;
       case "]":
         event.preventDefault();
-        stepFrame(30);
+        stepFrame(frameSteps.bracket);
         return;
       case "Home":
         event.preventDefault();
@@ -1420,6 +1423,7 @@ export default function StageReview({
                 ? `${currentOwn.status} ✓`
                 : "no review yet"}
           </span>
+          <FrameStepControls sizes={frameSteps} onChange={setFrameSteps} />
           <button
             onClick={() => setShowHelp(true)}
             className="w-7 h-7 rounded-full border border-warm-200 text-ink-muted hover:text-teal hover:border-teal text-sm cursor-pointer"
