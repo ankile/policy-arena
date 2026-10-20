@@ -91,6 +91,13 @@ describe("episodeSplice plan/apply", () => {
 
     const args = { dataset_repo: REPO, total_before: 6, drop: [2] };
     const planned = await t.query(internal.episodeSplice.plan, args);
+    const jobId = await t.run(async (ctx) =>
+      ctx.db.insert("applyJobs", { dataset_repo: REPO, status: "pending", requested_by: "r", requested_at: 1 }),
+    );
+    await expect(
+      t.mutation(internal.episodeSplice.apply, { ...args, expected_fingerprint: planned.fingerprint }),
+    ).rejects.toThrow(/apply job/);
+    await t.run(async (ctx) => ctx.db.patch(jobId, { status: "applied" }));
     expect(planned.by_table).toEqual({
       outcomeReviews: { patched: 2, deleted: 1 },
       episodeNotes: { patched: 1, deleted: 1 },

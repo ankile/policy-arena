@@ -16,7 +16,10 @@
  * predictions / labeling jobs / benchmarks pin episode sets by revision; a repo
  * that has any is refused rather than half-renumbered. The fingerprint pins the
  * exact pre-splice row set, so a second apply (or a concurrent review save)
- * fails instead of shifting indices twice. Internal: deploy credentials only.
+ * fails instead of shifting indices twice; an in-flight apply job refuses it. Run it
+ * only AFTER the Hub splice commit has landed (the shell checks the Hub head first):
+ * renumbered rows against an unspliced Hub would apply reviews to the wrong
+ * episodes. Internal: deploy credentials only.
  */
 import { internalMutation, internalQuery } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
@@ -86,6 +89,12 @@ export const apply = internalMutation({
         `row set changed since the plan (fingerprint ${p.fingerprint} != expected ` +
           `${args.expected_fingerprint}); re-run episodeSplice:plan -- was the splice already applied?`
       );
+    }
+    // An apply job in flight would merge pre-splice progress with renumbered rows.
+    const inFlight = (await ctx.db.query("applyJobs").withIndex("by_repo", (q) => q.eq("dataset_repo", args.dataset_repo)).collect())
+      .filter((job) => job.status === "pending" || job.status === "applying");
+    if (inFlight.length) {
+      throw new Error(`${args.dataset_repo} has ${inFlight.length} apply job(s) pending/applying; wait for them before splicing`);
     }
     for (const row of p.deletes) {
       await ctx.db.delete(row.id as Id<TableNames>);
