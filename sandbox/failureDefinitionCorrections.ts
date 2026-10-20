@@ -31,7 +31,7 @@ export const failureDefinitionCorrections: Record<"marker_d2" | "square_d2" | "r
   },
   "routing_d1": {
     "previousDefinitionSha256": "32d3e8f5cd163f03cd93c3a6a099421485edcef6964185c53ef50cf1629b2449",
-    "targetDefinitionSha256": "27b8dff855f4b1635f61194ffc4a03f8a2eb117fed903902b1a75c3f80a477d7",
+    "targetDefinitionSha256": "9f95800e98be412acbe597ab52a5994c0c18a68fdc4abe333e1b47e43c1bc32a",
     "failureMappings": {
       "first_clip_retention_lost": "first_clip_seating_incomplete",
       "second_clip_retention_lost": "second_clip_seating_incomplete",
@@ -64,7 +64,12 @@ export const failureDefinitionCorrections: Record<"marker_d2" | "square_d2" | "r
     }, {
       // v5 content: first_clip_pulled_out was carved out of first_clip_seating_incomplete.
       "definitionSha256": "93268e7b15ded288f925cab87f48a1ddd865fedf6fd85abacab74bc69ed38e1b",
-      "recheckFailures": ["first_clip_seating_incomplete"],
+      "recheckFailures": ["first_clip_seating_incomplete", "second_clip_engagement_missed", "second_clip_not_attempted"],
+      "recheckStages": false
+    }, {
+      // v6 content: second_clip_rope_slack_insufficient narrows these two RIGHT-clip modes.
+      "definitionSha256": "27b8dff855f4b1635f61194ffc4a03f8a2eb117fed903902b1a75c3f80a477d7",
+      "recheckFailures": ["second_clip_engagement_missed", "second_clip_not_attempted"],
       "recheckStages": false
     }]
   }

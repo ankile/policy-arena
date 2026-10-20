@@ -7,7 +7,7 @@ import { stageReviewRelease } from "../shared/stageReviewRelease";
 import fixtures from "./fixtures/trajectory-review-fixtures.json";
 import { blankTrajectoryReview } from "../convex/trajectoryReview";
 import { CURRENT_REVIEW_PROTOCOL, reviewProtocolForTask } from "../convex/stageReviewCoverage";
-import routingV5 from "../data/stage-review/routing_d1_v5.spec.json";
+import routingV6 from "../data/stage-review/routing_d1_v6.spec.json";
 import { patchStageMark } from "../src/lib/stageTimeline";
 import { prepareStageOutcomeLabel } from "../convex/stageOutcomeReview";
 
@@ -61,7 +61,7 @@ for (const task of stageReviewTasks) test(`${task.name}: success requires a comp
 for (const task of stageReviewTasks) test(`${task.name}: existing API publishes the exact release, preserves history, and accepts new scoped reviews`, async () => {
   // Published predecessors: legacy fixtures, or a released trajectory-task/v2 snapshot.
   const prior = fixtures.synthetic.tasks.find((item) => item.spec.taxonomy_version === task.previousVersion) ??
-    { spec: [routingV5].find((spec) => spec.taxonomy_version === task.previousVersion)! };
+    { spec: [routingV6].find((spec) => spec.taxonomy_version === task.previousVersion)! };
   const current = stageReviewRelease[task.task];
   const publish = (spec: typeof prior.spec | typeof current, live: boolean) =>
     t.mutation(api.stageTaskSpecs.upsert, { ...service, task: task.task, taxonomy_version: spec.taxonomy_version,

@@ -7,16 +7,16 @@ import { patchStageMark, stageTitle } from "../src/lib/stageTimeline";
 import { validateStageOnlyReview } from "../convex/stageOnlyReview";
 import { prepareStageOutcomeLabel, validateStageOutcomeReview } from "../convex/stageOutcomeReview";
 import previousSpec from "../data/stage-review/routing_d1_v4.spec.json";
-import spec from "../data/stage-review/routing_d1_v6.spec.json";
+import spec from "../data/stage-review/routing_d1_v7.spec.json";
 import { latestStagePreviews, stagePreviewHref, withLocalStagePreviews } from "./localStagePreviews";
 
-describe("Routing v6 two-cycle preview", () => {
+describe("Routing v7 two-cycle preview", () => {
   test("exported definition and adapter hashes match their contents", async () => {
     const normalized = normalizeStageSpec(spec);
     expect(await trajectoryTaskDefinitionDigest(normalized.trajectory!.task_definition)).toBe(spec.trajectory.task_definition_sha256);
     const { taxonomy_hash, ...content } = spec;
     expect(await canonicalDigest(content)).toBe(taxonomy_hash);
-    expect(spec.trajectory.task_definition.taxonomyVersion).toBe("routing_d1/v6");
+    expect(spec.trajectory.task_definition.taxonomyVersion).toBe("routing_d1/v7");
   });
 
   test("human choices and machine schema split grasp failures by physical clip", () => {
@@ -29,6 +29,7 @@ describe("Routing v6 two-cycle preview", () => {
       ["first_clip_pulled_out", "Left clip · pulled back out"],
       ["second_clip_grasp_not_established", "Right clip · grasp not established"],
       ["second_clip_grasp_lost", "Right clip · grasp lost"],
+      ["second_clip_rope_slack_insufficient", "Right clip · not enough rope slack"],
       ["second_clip_wrong_approach_angle", "Right clip · wrong approach angle"],
       ["second_clip_seating_incomplete", "Right clip · not fully seated"],
     ];
@@ -80,7 +81,7 @@ describe("Routing v6 two-cycle preview", () => {
     ]);
     let row = blankTrajectoryReview(schema, "org/routing", 116);
     const actions = structuredClone(row.key_action_observations);
-    expect(row.trajectory_identity).toMatchObject({ taxonomy_version: "routing_d1/v6" });
+    expect(row.trajectory_identity).toMatchObject({ taxonomy_version: "routing_d1/v7" });
     for (const index of [1, 2, 6, 10]) row = patchStageMark(schema, row, null, schema.task_definition.stages[index].id, index, 1);
     expect(validateStageOnlyReview(schema, row, 30)).toEqual([]);
     row = prepareStageOutcomeLabel(schema, { ...row, task_success: true, failure_mode: "none" });
