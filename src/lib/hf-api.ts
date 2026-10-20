@@ -1,3 +1,4 @@
+import { armsFromResults, type EpisodeArms } from "./episodeArms";
 import { asyncBufferFromUrl, parquetReadObjects, toJson } from "hyparquet";
 
 const DEFAULT_DATASET_ID = "ankile/dp-franka-pick-cube-2026-02-12";
@@ -1049,4 +1050,28 @@ export async function fetchLedgerArms(
   }
   ledgerArmCache.set(datasetId, arms);
   return arms;
+}
+
+const episodeArmCache = new Map<string, EpisodeArms>();
+
+/**
+ * Arm labels for the outcome-review arm filter: ledger arms when the repo has
+ * labelled ledger rows (collection repos), else the eval's `results.json` arm
+ * names. Repos with neither return an empty map.
+ */
+export async function fetchEpisodeArms(datasetId: string): Promise<EpisodeArms> {
+  const cached = episodeArmCache.get(datasetId);
+  if (cached) return cached;
+  const ledger = await fetchLedgerArms(datasetId);
+  let result: EpisodeArms = { source: "ledger", arms: ledger };
+  if (ledger.size === 0) {
+    const resp = await fetch(`${hfBase(datasetId)}/results.json`);
+    if (resp.ok) {
+      result = { source: "results", arms: armsFromResults(await resp.json()) };
+    } else if (resp.status !== 404) {
+      throw new Error(`Failed to fetch results.json: HTTP ${resp.status}`);
+    }
+  }
+  episodeArmCache.set(datasetId, result);
+  return result;
 }

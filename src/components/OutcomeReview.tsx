@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "../lib/arenaClient";
 import { api } from "../../convex/_generated/api";
 import { useSearchParam, useSearchParamNumber } from "../lib/useSearchParam";
+import { parseArmFilter, unknownArms, type EpisodeArms } from "../lib/episodeArms";
 import {
   FPS,
   explorerCameraKeys,
   fetchAppliedProgress,
   fetchEpisodeFrameSignals,
   fetchLabelHistory,
-  fetchLedgerArms,
+  fetchEpisodeArms,
   fetchReviewEpisodes,
   selectPrimaryCameraKey,
   type AppliedProgress,
@@ -271,7 +272,7 @@ export default function OutcomeReview({
 
   const [episodes, setEpisodes] = useState<ReviewEpisode[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [ledgerArms, setLedgerArms] = useState<Map<number, string> | null>(null);
+  const [episodeArms, setEpisodeArms] = useState<EpisodeArms | null>(null);
   const [ledgerError, setLedgerError] = useState<string | null>(null);
   const [armFilter, setArmFilter] = useSearchParam("arm", "all");
   // The APPLIED record on HF (cv2-era sessions + past worker applies) — the
@@ -391,11 +392,11 @@ export default function OutcomeReview({
   // -- Ledger arm labels (optional sidecars; absence is fine) --------------
   useEffect(() => {
     let cancelled = false;
-    setLedgerArms(null);
+    setEpisodeArms(null);
     setLedgerError(null);
-    fetchLedgerArms(repoId)
+    fetchEpisodeArms(repoId)
       .then((arms) => {
-        if (!cancelled) setLedgerArms(arms);
+        if (!cancelled) setEpisodeArms(arms);
       })
       .catch((err: Error) => {
         // A malformed ledger must be visible, not silently unfiltered.
@@ -473,8 +474,16 @@ export default function OutcomeReview({
   );
 
   const armOptions = useMemo(
-    () => (ledgerArms ? [...new Set(ledgerArms.values())].sort() : []),
-    [ledgerArms]
+    () => (episodeArms ? [...new Set(episodeArms.arms.values())].sort() : []),
+    [episodeArms]
+  );
+  const selectedArms = useMemo(() => parseArmFilter(armFilter), [armFilter]);
+  // Selected arms this dataset does not have (stale/mistyped ?arm=): shown in
+  // a banner, never silently applied. Empty until the arm labels have loaded.
+  const missingArms = useMemo(
+    () =>
+      selectedArms && episodeArms ? unknownArms(selectedArms, armOptions) : [],
+    [selectedArms, episodeArms, armOptions]
   );
 
   // Addressed = a web review exists OR the applied HF record already carries
@@ -513,11 +522,15 @@ export default function OutcomeReview({
         (episode) => effectiveOutcome(episode.episodeIndex) === filter
       );
     }
-    // A stale ?arm= from another dataset must not silently empty the queue:
-    // only apply the filter when the value exists in THIS dataset's ledger.
-    if (armFilter !== "all" && ledgerArms && armOptions.includes(armFilter)) {
-      result = result.filter(
-        (episode) => ledgerArms.get(episode.episodeIndex) === armFilter
+    // While arm labels load, an arm-filtered queue stays empty rather than
+    // flashing every arm. A stale ?arm= value is reported in a banner
+    // (missingArms); the queue filters on the selected arms this dataset has.
+    if (selectedArms && episodeArms === null && ledgerError === null) return [];
+    const knownSelected = selectedArms?.filter((arm) => armOptions.includes(arm)) ?? [];
+    if (episodeArms && knownSelected.length > 0) {
+      const keep = new Set(knownSelected);
+      result = result.filter((episode) =>
+        keep.has(episodeArms.arms.get(episode.episodeIndex) ?? "")
       );
     }
     return result;
@@ -530,9 +543,10 @@ export default function OutcomeReview({
     isAddressed,
     filter,
     effectiveOutcome,
-    armFilter,
-    ledgerArms,
+    selectedArms,
+    episodeArms,
     armOptions,
+    ledgerError,
   ]);
 
   const currentEpisode = useMemo(
@@ -1539,9 +1553,16 @@ export default function OutcomeReview({
                   e.currentTarget.blur();
                 }}
                 className="min-w-32 rounded-lg border border-warm-200 bg-white px-2 py-1.5 text-xs font-body text-ink cursor-pointer"
-                title="Filter by ledger arm (blind_dagger / protocol_quota / teleop_manifest ledgers)"
+                title={
+                  episodeArms?.source === "results"
+                    ? "Filter by eval arm (results.json); ?arm=a,b selects several"
+                    : "Filter by ledger arm (blind_dagger / protocol_quota / teleop_manifest ledgers); ?arm=a,b selects several"
+                }
               >
                 <option value="all">All arms</option>
+                {selectedArms && selectedArms.length > 1 && (
+                  <option value={armFilter}>{selectedArms.join(" + ")}</option>
+                )}
                 {armOptions.map((arm) => (
                   <option key={arm} value={arm}>
                     {arm}
@@ -1560,9 +1581,15 @@ export default function OutcomeReview({
               )}
             </div>
           </div>
+          {missingArms.length > 0 && (
+            <div className="rounded-lg border border-coral/30 bg-coral-light px-2 py-1.5 text-[10px] text-coral font-mono">
+              arm filter: {missingArms.join(", ")} not in this dataset
+              {missingArms.length === selectedArms?.length ? " — showing all arms" : " — ignored"}
+            </div>
+          )}
           {ledgerError && (
             <div className="rounded-lg border border-coral/30 bg-coral-light px-2 py-1.5 text-[10px] text-coral font-mono">
-              arm filter unavailable — ledger parse failed: {ledgerError}
+              arm filter unavailable — arm labels failed to load: {ledgerError}
             </div>
           )}
           <div
@@ -1592,7 +1619,11 @@ export default function OutcomeReview({
                   }
                   selected={selectedEpisode === episode.episodeIndex}
                   onSelect={() => selectEpisode(episode.episodeIndex)}
-                  arm={ledgerArms?.get(episode.episodeIndex) ?? null}
+                  arm={
+                    episodeArms?.source === "ledger"
+                      ? episodeArms.arms.get(episode.episodeIndex) ?? null
+                      : null
+                  }
                 />
               </div>
             ))}
