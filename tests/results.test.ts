@@ -92,14 +92,29 @@ describe("resumed eval prefix", () => {
   });
 
   test("rejects modified or removed submission and phase-stop history", () => {
+    const modifiedLedger = current();
+    modifiedLedger.arena_submitted_rollouts = [[0, 1], [1, 0]];
+    expect(isResumedEvalPrefix(previous(), modifiedLedger)).toBe(false);
+    const reorderedStops = current();
+    reorderedStops.phase_stops.reverse();
+    expect(isResumedEvalPrefix(previous(), reorderedStops)).toBe(false);
     for (const key of ["arena_submitted_rollouts", "phase_stops"] as const) {
-      const modified = current();
-      modified[key].reverse();
-      expect(isResumedEvalPrefix(previous(), modified)).toBe(false);
       const removed = current();
       removed[key] = [];
       expect(isResumedEvalPrefix(previous(), removed)).toBe(false);
     }
+  });
+
+  test("a re-collected slot may land mid-list in the sorted Arena ledgers", () => {
+    // Splice + --rerun-incomplete-rounds: round 0's slot was removed from the
+    // ledger, rounds 1-2 stayed; the redo re-adds (0, 0) before them.
+    const prev = previous();
+    prev.arena_submitted_round_indices = [1];
+    prev.arena_submitted_rollouts = [[1, 0]];
+    const curr = current();
+    curr.arena_submitted_round_indices = [0, 1];
+    curr.arena_submitted_rollouts = [[0, 0], [1, 0]];
+    expect(isResumedEvalPrefix(prev, curr)).toBe(true);
   });
 
   test("advances the raw backup on resume and preserves it on repeat apply", () => {

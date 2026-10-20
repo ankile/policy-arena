@@ -329,6 +329,8 @@ function resumedArgsCompatible(previous: unknown, current: unknown): boolean {
   return true;
 }
 
+const LEDGER_SET_KEYS = new Set(["arena_submitted_round_indices", "arena_submitted_rollouts"]);
+
 /** _is_resumed_eval_prefix: previous is an exact earlier checkpoint of current. */
 export function isResumedEvalPrefix(previous: Payload, current: Payload): boolean {
   const identityKeys = ["dataset_name", "arena_session_id"];
@@ -351,7 +353,13 @@ export function isResumedEvalPrefix(previous: Payload, current: Payload): boolea
     const currSubmitted = current[key];
     if (prevSubmitted === undefined && currSubmitted === undefined) continue;
     if (!Array.isArray(prevSubmitted) || !Array.isArray(currSubmitted)) return false;
-    if (
+    if (LEDGER_SET_KEYS.has(key)) {
+      // The Arena ledgers are written sorted, so a re-collected slot (a spliced-out
+      // rollout re-run with --rerun-incomplete-rounds) lands mid-list: compare as
+      // sets, the resume only ever ADDS entries.
+      const currEntries = new Set(currSubmitted.map((entry) => dumpsSorted(entry as Json)));
+      if (!prevSubmitted.every((entry) => currEntries.has(dumpsSorted(entry as Json)))) return false;
+    } else if (
       dumpsSorted(currSubmitted.slice(0, prevSubmitted.length) as Json) !==
       dumpsSorted(prevSubmitted as Json)
     ) {

@@ -26,6 +26,8 @@ import type * as bradleyTerry from "../bradleyTerry.js";
 import type * as datasetStats from "../datasetStats.js";
 import type * as datasetStatsLogic from "../datasetStatsLogic.js";
 import type * as datasets from "../datasets.js";
+import type * as episodeSplice from "../episodeSplice.js";
+import type * as episodeSpliceLogic from "../episodeSpliceLogic.js";
 import type * as evalSessions from "../evalSessions.js";
 import type * as http from "../http.js";
 import type * as labelingContract from "../labelingContract.js";
@@ -89,6 +91,8 @@ declare const fullApi: ApiFromModules<{
   datasetStats: typeof datasetStats;
   datasetStatsLogic: typeof datasetStatsLogic;
   datasets: typeof datasets;
+  episodeSplice: typeof episodeSplice;
+  episodeSpliceLogic: typeof episodeSpliceLogic;
   evalSessions: typeof evalSessions;
   http: typeof http;
   labelingContract: typeof labelingContract;
