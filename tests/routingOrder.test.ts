@@ -26,7 +26,7 @@ function label(leftTime = 4, rightTime = 8) {
 }
 
 test("routing order corrects the current protocol in place, with no end-state field", () => {
-  expect(task.taxonomyVersion).toBe("routing_d1/v5");
+  expect(task.taxonomyVersion).toBe("routing_d1/v6");
   expect(task.definitionSchemaVersion).toBe("trajectory-task/v2");
   expect(validateTrajectoryTaskDefinition(task)).toEqual([]);
   expect(task.stages[3].name).toContain("left");

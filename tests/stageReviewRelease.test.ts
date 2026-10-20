@@ -6,7 +6,8 @@ import { stageReviewTasks } from "../shared/stageReviewTasks";
 import { stageReviewRelease } from "../shared/stageReviewRelease";
 import fixtures from "./fixtures/trajectory-review-fixtures.json";
 import { blankTrajectoryReview } from "../convex/trajectoryReview";
-import { CURRENT_REVIEW_PROTOCOL } from "../convex/stageReviewCoverage";
+import { CURRENT_REVIEW_PROTOCOL, reviewProtocolForTask } from "../convex/stageReviewCoverage";
+import routingV5 from "../data/stage-review/routing_d1_v5.spec.json";
 import { patchStageMark } from "../src/lib/stageTimeline";
 import { prepareStageOutcomeLabel } from "../convex/stageOutcomeReview";
 
@@ -58,7 +59,9 @@ for (const task of stageReviewTasks) test(`${task.name}: success requires a comp
 });
 
 for (const task of stageReviewTasks) test(`${task.name}: existing API publishes the exact release, preserves history, and accepts new scoped reviews`, async () => {
-  const prior = fixtures.synthetic.tasks.find((item) => item.spec.taxonomy_version === task.previousVersion)!;
+  // Published predecessors: legacy fixtures, or a released trajectory-task/v2 snapshot.
+  const prior = fixtures.synthetic.tasks.find((item) => item.spec.taxonomy_version === task.previousVersion) ??
+    { spec: [routingV5].find((spec) => spec.taxonomy_version === task.previousVersion)! };
   const current = stageReviewRelease[task.task];
   const publish = (spec: typeof prior.spec | typeof current, live: boolean) =>
     t.mutation(api.stageTaskSpecs.upsert, { ...service, task: task.task, taxonomy_version: spec.taxonomy_version,
@@ -68,7 +71,7 @@ for (const task of stageReviewTasks) test(`${task.name}: existing API publishes 
   const oldLabel = blankTrajectoryReview(prior.spec.trajectory, repo, 0);
   const oldId = await t.mutation(api.stageReviews.save, { ...service, reviewer_override: "test-reviewer", task: task.task,
     dataset_repo: repo, taxonomy_version: prior.spec.taxonomy_version, episode_index: 0n, status: "draft",
-    label: oldLabel, episode_duration_s: 30, review_protocol: "stages-outcome-v2" });
+    label: oldLabel, episode_duration_s: 30, review_protocol: reviewProtocolForTask(prior.spec.trajectory.task_definition) });
   const old = await t.run((ctx) => ctx.db.get(oldId));
 
   expect(current.taxonomy_version).toBe(task.version);
