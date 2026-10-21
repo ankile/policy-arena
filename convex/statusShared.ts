@@ -29,6 +29,18 @@ export const statusOrInheritValidator = v.union(
   v.literal("inherit")
 );
 
+/**
+ * Task a DATASET is listed and status-resolved under: its recorded task, or
+ * the task row's datasets_listed_under for a renamed line (routing_d1 data are
+ * routing_d2). Spec lookups keep using the recorded dataset.task.
+ */
+export function listedDatasetTask(
+  task: string,
+  taskStatuses: Map<string, { datasets_listed_under?: string }>
+): string {
+  return taskStatuses.get(task)?.datasets_listed_under ?? task;
+}
+
 export function effectiveStatus(
   override: EntityStatus | undefined,
   task: string | null | undefined,

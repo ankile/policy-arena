@@ -3,7 +3,7 @@ import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { requireEditorOrService } from "./access";
 import { loadTaskStatusMap } from "./statuses";
-import { effectiveStatus, statusOrInheritValidator } from "./statusShared";
+import { effectiveStatus, listedDatasetTask, statusOrInheritValidator } from "./statusShared";
 
 export const register = mutation({
   args: {
@@ -273,13 +273,11 @@ export const getByRepo = query({
       .unique();
     if (!dataset) return null;
     const taskStatuses = await loadTaskStatusMap(ctx);
+    const listedTask = listedDatasetTask(dataset.task, taskStatuses);
     return {
       ...dataset,
-      effective_status: effectiveStatus(
-        dataset.status,
-        dataset.task,
-        taskStatuses
-      ),
+      listed_task: listedTask,
+      effective_status: effectiveStatus(dataset.status, listedTask, taskStatuses),
     };
   },
 });
@@ -358,8 +356,11 @@ export const list = query({
     } else {
       datasets = await ctx.db.query("datasets").collect();
     }
+    const taskStatuses = await loadTaskStatusMap(ctx);
     if (args.task) {
-      datasets = datasets.filter((d) => d.task === args.task);
+      datasets = datasets.filter(
+        (d) => d.task === args.task || listedDatasetTask(d.task, taskStatuses) === args.task
+      );
     }
     if (args.source_type && args.dataset_role) {
       datasets = datasets.filter((d) => d.source_type === args.source_type);
@@ -367,12 +368,15 @@ export const list = query({
     if (args.trainable !== undefined) {
       datasets = datasets.filter((d) => d.trainable === args.trainable);
     }
-    const taskStatuses = await loadTaskStatusMap(ctx);
     return datasets
-      .map((d) => ({
-        ...d,
-        effective_status: effectiveStatus(d.status, d.task, taskStatuses),
-      }))
+      .map((d) => {
+        const listedTask = listedDatasetTask(d.task, taskStatuses);
+        return {
+          ...d,
+          listed_task: listedTask,
+          effective_status: effectiveStatus(d.status, listedTask, taskStatuses),
+        };
+      })
       .sort((a, b) => b._creationTime - a._creationTime);
   },
 });

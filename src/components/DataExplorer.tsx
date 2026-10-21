@@ -1029,7 +1029,9 @@ export default function DataExplorer({readOnly = false}: {readOnly?: boolean}) {
     : datasets.filter((d) => d.effective_status === "mainline");
 
   // Tasks for filter pills; TaskFilterChips dedupes and orders them (mainline first).
-  const allTasks = visibleDatasets.map((d) => d.task);
+  // Listed task: a renamed line (taskStatuses.datasets_listed_under) groups its
+  // datasets under the new name, e.g. routing_d1 recordings under routing_d2.
+  const allTasks = visibleDatasets.map((d) => d.listed_task);
 
   // Compute source type counts and episode counts (from all datasets before task filter)
   const sourceTypeCounts = new Map<string, number>();
@@ -1044,7 +1046,7 @@ export default function DataExplorer({readOnly = false}: {readOnly?: boolean}) {
   const filteredDatasets =
     taskFilter === "all"
       ? visibleDatasets
-      : visibleDatasets.filter((d) => d.task === taskFilter);
+      : visibleDatasets.filter((d) => d.listed_task === taskFilter);
 
   return (
     <div

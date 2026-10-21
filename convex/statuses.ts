@@ -53,6 +53,35 @@ export const setTaskStatus = mutation({
   },
 });
 
+/**
+ * Rename a line for DATASETS: every dataset recorded under `task` is listed and
+ * status-resolved under `listed_under` (null clears). Internal (deploy
+ * credentials): `npx convex run statuses:setDatasetsListedUnder
+ * '{"task":"routing_d1","listed_under":"routing_d2"}'`.
+ */
+export const setDatasetsListedUnder = internalMutation({
+  args: { task: v.string(), listed_under: v.union(v.string(), v.null()) },
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("taskStatuses")
+      .withIndex("by_task", (q) => q.eq("task", args.task))
+      .unique();
+    if (!row) throw new Error(`No taskStatuses row for ${args.task}`);
+    if (args.listed_under !== null) {
+      const target = await ctx.db
+        .query("taskStatuses")
+        .withIndex("by_task", (q) => q.eq("task", args.listed_under!))
+        .unique();
+      if (!target) throw new Error(`No taskStatuses row for target ${args.listed_under}`);
+      if (target.datasets_listed_under) {
+        throw new Error(`${args.listed_under} is itself listed under ${target.datasets_listed_under}; aliases are one hop`);
+      }
+    }
+    await ctx.db.patch(row._id, { datasets_listed_under: args.listed_under ?? undefined });
+    return row._id;
+  },
+});
+
 // Idempotent seed (run via `npx convex run statuses:seedDefaults`): every task
 // string observed in policies/datasets gets a taskStatuses row (mainline set
 // below, everything else retired). Ran 2026-08-20; it also folded the legacy

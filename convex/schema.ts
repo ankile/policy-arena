@@ -63,6 +63,12 @@ export default defineSchema({
     status: statusValidator,
     reason: v.optional(v.string()),
     superseded_by: v.optional(v.string()), // e.g. insert_marker_d1_v0 -> insert_marker_d1
+    // A RENAMED line: datasets recorded under this task are listed and
+    // status-resolved under that task (routing_d1 -> routing_d2), while spec
+    // lookups (task/stage specs, predictions, labeling) keep the recorded task.
+    // Datasets only: policies carry their own environment. Set via
+    // statuses:setDatasetsListedUnder (setTaskStatus leaves it untouched).
+    datasets_listed_under: v.optional(v.string()),
     updated_at: v.float64(),
     updated_by: v.string(),
   }).index("by_task", ["task"]),
