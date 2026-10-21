@@ -69,3 +69,6 @@ original policy metadata, mapping, and evaluation-results hash. Policy names,
 model IDs, evaluation results, and source dataset task metadata retain their
 original identifiers. The initial classification manifest above is historical;
 its Routing D1 entries predate this migration and must not be reapplied.
+
+
+Datasets followed on 2026-10-20 ([split record](routing-d2-dataset-split-2026-10-20.json)): `datasets.task` is the line — 39 routing datasets are `routing_d2` (mainline), 40 stay `routing_d1` (retired/testing); `environment` stays `routing_d1`, the physical task that keys task/stage specs. New `routing_d1` registrations are filed as `routing_d2`; re-registration keeps a curated task.
