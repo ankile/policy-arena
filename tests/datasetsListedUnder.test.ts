@@ -13,6 +13,8 @@ const modules = {
   "../convex/statuses.ts": () => import("../convex/statuses"),
   "../convex/statusShared.ts": () => import("../convex/statusShared"),
   "../convex/access.ts": () => import("../convex/access"),
+  "../convex/evalSessions.ts": () => import("../convex/evalSessions"),
+  "../convex/ratings.ts": () => import("../convex/ratings"),
 };
 
 describe("datasets_listed_under", () => {
@@ -54,6 +56,14 @@ describe("datasets_listed_under", () => {
     expect((await t.query(api.datasets.list, { task: "routing_d1" })).length).toBe(2);
     expect(await t.query(api.datasets.getByRepo, { repo_id: "a/routing-eval" }))
       .toMatchObject({ listed_task: "routing_d2", effective_status: "mainline" });
+
+    // Eval sessions on routing_d1 recordings group + resolve as mainline routing_d2
+    // in the Sessions list and in the leaderboard ratings feed.
+    await t.run(async (ctx) => {
+      await ctx.db.insert("evalSessions", { dataset_repo: "a/routing-eval", num_rounds: BigInt(0), policy_ids: [] });
+    });
+    expect(await t.query(api.evalSessions.list, {})).toMatchObject([{ task: "routing_d2", effective_status: "mainline" }]);
+    expect(await t.query(api.ratings.sessionOutcomes, {})).toMatchObject([{ task: "routing_d2", effective_status: "mainline" }]);
 
     await expect(
       t.mutation(internal.statuses.setDatasetsListedUnder, { task: "routing_d2", listed_under: "routing_d1" }),

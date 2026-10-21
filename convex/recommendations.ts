@@ -1,7 +1,7 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
 import { loadTaskStatusMap } from "./statuses";
-import { effectiveStatus } from "./statusShared";
+import { effectiveStatus, listedDatasetTask } from "./statusShared";
 import {
   RATING_ANCHOR,
   fitBradleyTerry,
@@ -117,7 +117,7 @@ export const getOpponents = query({
         .unique();
       const status = effectiveStatus(
         session.status,
-        dataset?.task ?? null,
+        dataset ? listedDatasetTask(dataset.task, taskStatuses) : null,
         taskStatuses
       );
       if (status !== "mainline") continue;

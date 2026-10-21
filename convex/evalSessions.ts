@@ -6,6 +6,7 @@ import { requireEditorOrService } from "./access";
 import { loadTaskStatusMap } from "./statuses";
 import {
   effectiveStatus,
+  listedDatasetTask,
   statusValidator,
   statusOrInheritValidator,
 } from "./statusShared";
@@ -198,7 +199,7 @@ export const list = query({
           .query("datasets")
           .withIndex("by_repo", (q) => q.eq("repo_id", session.dataset_repo))
           .unique();
-        const task = dataset?.task ?? null;
+        const task = dataset ? listedDatasetTask(dataset.task, taskStatuses) : null;
         return {
           ...session,
           policyNames,
