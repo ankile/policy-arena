@@ -1,7 +1,7 @@
 import { query } from "./_generated/server";
 import { pairOutcomesFromRounds } from "./bradleyTerry";
 import { loadTaskStatusMap } from "./statuses";
-import { effectiveStatus, listedDatasetTask } from "./statusShared";
+import { effectiveStatus } from "./statusShared";
 
 /**
  * Compact per-session outcome aggregates for CLIENT-SIDE rating fits: the
@@ -68,7 +68,7 @@ export const sessionOutcomes = query({
           .query("datasets")
           .withIndex("by_repo", (q) => q.eq("repo_id", session.dataset_repo))
           .unique();
-        const task = dataset ? listedDatasetTask(dataset.task, taskStatuses) : null;
+        const task = dataset?.task ?? null;
 
         return {
           session_id: session._id,

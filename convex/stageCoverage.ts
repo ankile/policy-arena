@@ -17,7 +17,7 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { isNewer, reviewerKey } from "./stageReviews";
-import { effectiveStatus, listedDatasetTask } from "./statusShared";
+import { effectiveStatus } from "./statusShared";
 import { loadTaskStatusMap } from "./statuses";
 
 function emptyHist(nStages: number): number[] {
@@ -76,10 +76,7 @@ export const forTask = query({
     // task-level status (same resolution as everywhere else).
     const taskStatuses = await loadTaskStatusMap(ctx);
     const statusByRepo = new Map(
-      datasets.map((d) => [
-        d.repo_id,
-        effectiveStatus(d.status, listedDatasetTask(d.task, taskStatuses), taskStatuses),
-      ])
+      datasets.map((d) => [d.repo_id, effectiveStatus(d.status, d.task, taskStatuses)])
     );
     const repoVisible = (repo: string) =>
       args.includeAll === true ||

@@ -21,9 +21,11 @@ export const noteSuggestions = query({
   handler: async (ctx, args) => {
     const dataset = await ctx.db.query("datasets")
       .withIndex("by_repo", (q) => q.eq("repo_id", args.dataset_repo)).unique();
-    if (!dataset || !dataset.task.trim()) return { recent: [], mostUsed: [] };
-    const datasets = await ctx.db.query("datasets")
-      .withIndex("by_task", (q) => q.eq("task", dataset.task)).collect();
+    if (!dataset || !dataset.environment.trim()) return { recent: [], mostUsed: [] };
+    // Same physical task (environment), across lines: routing_d1 and routing_d2
+    // recordings share failure-mode vocabulary.
+    const datasets = (await ctx.db.query("datasets").collect())
+      .filter((row) => row.environment === dataset.environment);
     const groups = await Promise.all(datasets.map((row) => ctx.db.query("episodeNotes")
       .withIndex("by_repo_episode", (q) => q.eq("dataset_repo", row.repo_id)).collect()));
     const counts = new Map<string, { notes: string; count: number; lastUsed: number }>();

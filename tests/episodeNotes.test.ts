@@ -60,7 +60,7 @@ test("suggestions rank distinct same-task notes by recency and episode usage", a
   const t = convexTest(schema, modules);
   await t.run(async (ctx) => {
     for (const [repo_id, task] of [["test/current", "routing"], ["test/prior", "routing"], ["test/other", "square"]]) {
-      await ctx.db.insert("datasets", { repo_id, task, name: repo_id, source_type: "eval", environment: "real" });
+      await ctx.db.insert("datasets", { repo_id, task, name: repo_id, source_type: "eval", environment: task });
     }
     for (const [dataset_repo, episode_index, notes, updated_at] of [
       ["test/current", 0n, "Current episode only", 100],

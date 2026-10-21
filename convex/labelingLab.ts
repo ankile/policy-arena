@@ -93,7 +93,7 @@ export const submit = mutation({
     if (!submissionReady()) throw new Error("Labeling worker is disabled until its cloud canary is verified");
     const config = await ctx.db.get(args.config_id);
     const dataset = await ctx.db.query("datasets").withIndex("by_repo", (q) => q.eq("repo_id", args.dataset_repo)).unique();
-    if (!config || !dataset || dataset.task !== config.task) throw new Error("Choose a registered dataset and matching task configuration");
+    if (!config || !dataset || dataset.environment !== config.task) throw new Error("Choose a registered dataset and matching task configuration");
     if (dataset.stats_status !== "ready" || !dataset.stats_hf_sha || !/^[0-9a-f]{40}$/.test(dataset.stats_hf_sha) || dataset.num_episodes === undefined) throw new Error("Refresh dataset statistics to pin its media revision before submitting");
     const episodes = validateEpisodes(args.episodes, Number(dataset.num_episodes));
     // One global job, with one worker call at a time, is the initial spend ceiling.

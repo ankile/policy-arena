@@ -6,7 +6,6 @@ import { requireEditorOrService } from "./access";
 import { loadTaskStatusMap } from "./statuses";
 import {
   effectiveStatus,
-  listedDatasetTask,
   statusValidator,
   statusOrInheritValidator,
 } from "./statusShared";
@@ -199,7 +198,7 @@ export const list = query({
           .query("datasets")
           .withIndex("by_repo", (q) => q.eq("repo_id", session.dataset_repo))
           .unique();
-        const task = dataset ? listedDatasetTask(dataset.task, taskStatuses) : null;
+        const task = dataset?.task ?? null;
         return {
           ...session,
           policyNames,
@@ -260,7 +259,7 @@ export const getDetail = query({
     const taskSpec = dataset
       ? await ctx.db
           .query("taskSpecs")
-          .withIndex("by_task", (q) => q.eq("task", dataset.task))
+          .withIndex("by_task", (q) => q.eq("task", dataset.environment)) // physical task = spec key
           .unique()
       : null;
     const maxSubtaskMarks = taskSpec ? Number(taskSpec.num_subtask_marks) : 0;

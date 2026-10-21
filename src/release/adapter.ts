@@ -90,7 +90,6 @@ export function createReleaseAdapter(data: Release, ui: UISnapshot, sim?: SimSta
       repo_id: d.id,
       name: d.id.slice(9),
       task: task.id,
-      listed_task: task.id,
       environment: task.id,
       source_type: meta.sourceType,
       dataset_role: (

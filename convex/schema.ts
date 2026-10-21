@@ -63,12 +63,12 @@ export default defineSchema({
     status: statusValidator,
     reason: v.optional(v.string()),
     superseded_by: v.optional(v.string()), // e.g. insert_marker_d1_v0 -> insert_marker_d1
-    // A RENAMED line: datasets recorded under this task are listed and
-    // status-resolved under that task (routing_d1 -> routing_d2), while spec
-    // lookups (task/stage specs, predictions, labeling) keep the recorded task.
-    // Datasets only: policies carry their own environment. Set via
-    // statuses:setDatasetsListedUnder (setTaskStatus leaves it untouched).
-    datasets_listed_under: v.optional(v.string()),
+    // A renamed line: a dataset NEWLY registered with this task is filed under
+    // that task instead (routing_d1 recordings -> routing_d2); its environment
+    // keeps the recorded (physical) task, which is the spec key. Existing rows
+    // keep their curated task. Set via statuses:setRegisterNewDatasetsAs
+    // (setTaskStatus leaves it untouched).
+    register_new_datasets_as: v.optional(v.string()),
     updated_at: v.float64(),
     updated_by: v.string(),
   }).index("by_task", ["task"]),
@@ -216,7 +216,7 @@ export default defineSchema({
   // of mirroring Python constants in TS. Phase 2 extends this with the full
   // StageLabelTaskSpec export.
   taskSpecs: defineTable({
-    task: v.string(), // RealTaskSpec.name — matches datasets.task
+    task: v.string(), // RealTaskSpec.name — matches datasets.environment (the physical task)
     task_name: v.string(), // LeRobot/collection task name, e.g. "Square_D1"
     num_subtask_marks: v.int64(),
     // Crop reference space [H, W] (stored-frame pixels; station frames are 480x640).

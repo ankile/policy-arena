@@ -407,12 +407,16 @@ function DatasetDetail({
   readOnly: boolean;
 }) {
   const dataset = useQuery(api.datasets.getByRepo, { repo_id: repoId });
-  const releasedStageTask = stageReviewTask(dataset?.task);
+  // Specs (task/stage specs, review marks) are keyed by the PHYSICAL task, the
+  // dataset's environment; dataset.task is the line it is filed under (a
+  // routing_d1 recording in the routing_d2 line keeps the routing_d1 specs).
+  const specTask = dataset?.environment;
+  const releasedStageTask = stageReviewTask(specTask);
   const viewer = useQuery(api.users.viewer);
   // Stage review is offered only for tasks with an exported live stage spec.
   const stageSpecs = useQuery(
     api.stageTaskSpecs.forTask,
-    dataset?.task ? { task: dataset.task } : "skip"
+    specTask ? { task: specTask } : "skip"
   );
   const hasStageSpec = Boolean(stageSpecs?.some((row) => row.live));
   const [selectedIndex, setSelectedIndex] = useSearchParamNumber("episode");
@@ -542,7 +546,7 @@ function DatasetDetail({
     return (
       <OutcomeReview
         repoId={repoId}
-        task={dataset?.task}
+        task={specTask}
         onExit={() => {
           // The "episode" param means an array position in the explorer and an
           // episode_index in review mode; drop it when crossing the boundary.
@@ -558,7 +562,7 @@ function DatasetDetail({
     return (
       <StageReview
         repoId={repoId}
-        task={dataset?.task}
+        task={specTask}
         fixedTaxonomyVersion={releasedStageTask?.version}
         requireLiveTaxonomy={Boolean(releasedStageTask)}
         onExit={() => {
@@ -1029,9 +1033,7 @@ export default function DataExplorer({readOnly = false}: {readOnly?: boolean}) {
     : datasets.filter((d) => d.effective_status === "mainline");
 
   // Tasks for filter pills; TaskFilterChips dedupes and orders them (mainline first).
-  // Listed task: a renamed line (taskStatuses.datasets_listed_under) groups its
-  // datasets under the new name, e.g. routing_d1 recordings under routing_d2.
-  const allTasks = visibleDatasets.map((d) => d.listed_task);
+  const allTasks = visibleDatasets.map((d) => d.task);
 
   // Compute source type counts and episode counts (from all datasets before task filter)
   const sourceTypeCounts = new Map<string, number>();
@@ -1046,7 +1048,7 @@ export default function DataExplorer({readOnly = false}: {readOnly?: boolean}) {
   const filteredDatasets =
     taskFilter === "all"
       ? visibleDatasets
-      : visibleDatasets.filter((d) => d.listed_task === taskFilter);
+      : visibleDatasets.filter((d) => d.task === taskFilter);
 
   return (
     <div

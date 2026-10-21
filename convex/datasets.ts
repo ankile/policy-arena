@@ -3,7 +3,7 @@ import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { requireEditorOrService } from "./access";
 import { loadTaskStatusMap } from "./statuses";
-import { effectiveStatus, listedDatasetTask, statusOrInheritValidator } from "./statusShared";
+import { effectiveStatus, statusOrInheritValidator } from "./statusShared";
 
 export const register = mutation({
   args: {
@@ -43,10 +43,20 @@ export const register = mutation({
     };
     let datasetId;
     if (existing) {
-      await ctx.db.patch(existing._id, { ...fields, ...refreshFields });
+      // The task (line) is curated in Arena (datasets:updateTask); a re-push of
+      // the same repo must not reset it, e.g. a resumed routing eval re-registering
+      // a routing_d2 dataset with its recorded routing_d1.
+      const { task: _recordedTask, ...rest } = fields;
+      void _recordedTask;
+      await ctx.db.patch(existing._id, { ...rest, ...refreshFields });
       datasetId = existing._id;
     } else {
-      datasetId = await ctx.db.insert("datasets", { ...fields, ...refreshFields });
+      const taskRow = await ctx.db
+        .query("taskStatuses")
+        .withIndex("by_task", (q) => q.eq("task", fields.task))
+        .unique();
+      const task = taskRow?.register_new_datasets_as ?? fields.task;
+      datasetId = await ctx.db.insert("datasets", { ...fields, task, ...refreshFields });
     }
     await ctx.scheduler.runAfter(0, internal.datasetStats.refresh, {
       repo_id: fields.repo_id,
@@ -273,11 +283,9 @@ export const getByRepo = query({
       .unique();
     if (!dataset) return null;
     const taskStatuses = await loadTaskStatusMap(ctx);
-    const listedTask = listedDatasetTask(dataset.task, taskStatuses);
     return {
       ...dataset,
-      listed_task: listedTask,
-      effective_status: effectiveStatus(dataset.status, listedTask, taskStatuses),
+      effective_status: effectiveStatus(dataset.status, dataset.task, taskStatuses),
     };
   },
 });
@@ -356,11 +364,8 @@ export const list = query({
     } else {
       datasets = await ctx.db.query("datasets").collect();
     }
-    const taskStatuses = await loadTaskStatusMap(ctx);
     if (args.task) {
-      datasets = datasets.filter(
-        (d) => d.task === args.task || listedDatasetTask(d.task, taskStatuses) === args.task
-      );
+      datasets = datasets.filter((d) => d.task === args.task);
     }
     if (args.source_type && args.dataset_role) {
       datasets = datasets.filter((d) => d.source_type === args.source_type);
@@ -368,15 +373,12 @@ export const list = query({
     if (args.trainable !== undefined) {
       datasets = datasets.filter((d) => d.trainable === args.trainable);
     }
+    const taskStatuses = await loadTaskStatusMap(ctx);
     return datasets
-      .map((d) => {
-        const listedTask = listedDatasetTask(d.task, taskStatuses);
-        return {
-          ...d,
-          listed_task: listedTask,
-          effective_status: effectiveStatus(d.status, listedTask, taskStatuses),
-        };
-      })
+      .map((d) => ({
+        ...d,
+        effective_status: effectiveStatus(d.status, d.task, taskStatuses),
+      }))
       .sort((a, b) => b._creationTime - a._creationTime);
   },
 });

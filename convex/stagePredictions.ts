@@ -47,7 +47,7 @@ export const begin = mutation({
     ).unique();
     if (!spec || spec.taxonomy_hash !== args.taxonomy_hash) throw new Error("export the matching task spec and taxonomy hash first");
     const dataset = await ctx.db.query("datasets").withIndex("by_repo", (q) => q.eq("repo_id", args.dataset_repo)).unique();
-    if (dataset && dataset.task !== args.task) throw new Error("prediction task does not match registered dataset");
+    if (dataset && dataset.environment !== args.task) throw new Error("prediction task does not match registered dataset (environment)");
     const specDigest = await canonicalDigest(spec.spec);
     const identityDigest = await canonicalDigest(identity);
     const existing = await ctx.db.query("stagePredictionRuns").withIndex("by_key", (q) => q.eq("run_key", args.run_key)).unique();

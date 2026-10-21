@@ -47,13 +47,13 @@ export default function LabelingLab() {
 }
 
 function DatasetLab({ dataset, editor, enabled }: { dataset: Doc<"datasets">; editor: boolean; enabled: boolean }) {
-  const configs = useQuery(api.labelingLab.configs, { task: dataset.task });
+  const configs = useQuery(api.labelingLab.configs, { task: dataset.environment });
   const [selected, setSelected] = useState<string>("");
   const config = configs?.find((c) => c._id === selected) ?? configs?.[0];
   return <>
     <section className={card}>
       <h3 className="font-display text-xl mb-4">Pipeline configuration</h3>
-      {configs === undefined ? <p>Loading configurations…</p> : !config ? <p className="text-sm text-ink-muted">No Python pipeline preset is registered for {dataset.task} yet.</p> : <>
+      {configs === undefined ? <p>Loading configurations…</p> : !config ? <p className="text-sm text-ink-muted">No Python pipeline preset is registered for {dataset.environment} yet.</p> : <>
         <label className="block text-sm mb-2" htmlFor="label-config">Saved version</label>
         <select id="label-config" className={input} value={config._id} onChange={(e) => setSelected(e.target.value)}>
           {configs.map((c) => <option key={c._id} value={c._id}>{c.name} · {new Date(c.created_at).toLocaleString()}</option>)}
@@ -63,7 +63,7 @@ function DatasetLab({ dataset, editor, enabled }: { dataset: Doc<"datasets">; ed
     </section>
     {config && <JobPanel key={config._id} dataset={dataset} config={config} editor={editor} enabled={enabled} />}
     <PredictionPanel dataset={dataset} taxonomy={config?.taxonomy_version} editor={editor} />
-    <GoldPanel task={dataset.task} editor={editor} />
+    <GoldPanel task={dataset.environment} editor={editor} />
   </>;
 }
 
